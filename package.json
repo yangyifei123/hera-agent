@@ -1,0 +1,35 @@
+{
+  "name": "hera-agent",
+  "version": "1.0.0",
+  "description": "Hera - Agent Factory: Creates agents with memory, distillation, skills, and team collaboration",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "hera": "./bin/hera.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
+    "postinstall": "node postinstall.mjs",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.4.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/bun": "^1.2.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "postinstall.mjs"
+  ],
+  "license": "MIT"
+}

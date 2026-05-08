@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.hera/
+*.lockb
+bun.lock
