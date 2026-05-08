@@ -74,3 +74,20 @@ export interface CategoryConfig {
   temperature?: number;
   thinking?: { type: string; budgetTokens?: number };
 }
+
+/**
+ * Paths used by Hera, resolved at plugin init time.
+ * All persistent data lives under the opencode config directory.
+ */
+export interface HeraPaths {
+  /** ~/.config/opencode/ — opencode config root */
+  configRoot: string;
+  /** ~/.config/opencode/hera-data/ — Hera's own data */
+  dataDir: string;
+  /** ~/.config/opencode/hera-data/memory/ — memory store */
+  memoryDir: string;
+  /** ~/.config/opencode/hera-data/skills/ — skill files */
+  skillsDir: string;
+  /** ~/.config/opencode/agents/hera/ — agent .md files for opencode discovery */
+  agentsDir: string;
+}

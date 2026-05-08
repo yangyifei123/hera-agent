@@ -1,23 +1,20 @@
-// Hera Memory System - Persistent storage for agents and skills
+// Hera Memory System - Persistent storage under ~/.config/opencode/hera-data/memory/
 
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { HeraMemory } from "../types.js";
 
 export class MemoryStore {
   private dir: string;
 
-  constructor(baseDir: string) {
-    this.dir = join(baseDir, "hera-memory");
+  constructor(memoryDir: string) {
+    this.dir = memoryDir;
   }
 
   async init(): Promise<void> {
-    await mkdir(this.dir, { recursive: true });
-    await mkdir(join(this.dir, "sessions"), { recursive: true });
-    await mkdir(join(this.dir, "skills"), { recursive: true });
-    await mkdir(join(this.dir, "agents"), { recursive: true });
-    await mkdir(join(this.dir, "teams"), { recursive: true });
-    await mkdir(join(this.dir, "distillations"), { recursive: true });
+    for (const sub of ["sessions", "skills", "agents", "teams", "distillations"]) {
+      await mkdir(join(this.dir, sub), { recursive: true });
+    }
   }
 
   async save(memory: HeraMemory): Promise<void> {
@@ -49,7 +46,7 @@ export class MemoryStore {
           }
         }
       } catch {
-        // Directory may not exist yet
+        // skip
       }
     }
     return results.sort((a, b) => b.timestamp - a.timestamp);
@@ -57,9 +54,7 @@ export class MemoryStore {
 
   async delete(type: HeraMemory["type"], id: string): Promise<boolean> {
     try {
-      const filePath = join(this.dir, `${type}s`, `${id}.json`);
-      const { unlink } = await import("node:fs/promises");
-      await unlink(filePath);
+      await unlink(join(this.dir, `${type}s`, `${id}.json`));
       return true;
     } catch {
       return false;

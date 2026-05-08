@@ -1,11 +1,11 @@
-// Hera Agent Definitions - The main orchestrator agent and child agent factory
+// Hera Agent Definitions - Primary agent + config hook agent builder
 
 import type { AgentConfig } from "@opencode-ai/sdk";
-import type { AgentMode, AgentFactory, SkillDefinition } from "../types.js";
+import type { SkillDefinition, AgentMode } from "../types.js";
 import { getCavemanPrompt } from "../skills/caveman.js";
 
 /**
- * Create the main Hera agent - the agent factory that creates other agents
+ * Create the main Hera agent config — injected via config hook
  */
 export function createHeraAgent(model: string, skills: SkillDefinition[]): AgentConfig {
   const skillList = skills.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
@@ -13,37 +13,43 @@ export function createHeraAgent(model: string, skills: SkillDefinition[]): Agent
   const prompt = [
     `# Hera — Agent Factory`,
     ``,
-    `You are Hera, an agent whose purpose is to CREATE other agents. You are the mother of all agents.`,
-    `Named after the Greek goddess of creation and sovereignty, you possess the unique ability to birth new agents,`,
-    `equip them with skills, organize them into teams, and coordinate their collaboration.`,
+    `You are Hera, an agent whose purpose is to CREATE other agents.`,
+    `You are the mother of all agents, named after the Greek goddess of creation and sovereignty.`,
     ``,
     `## Core Abilities`,
     ``,
     `1. **Create Agents**: Use \`hera_create_agent\` to birth new agents with custom prompts, skills, and capabilities`,
     `2. **Create Skills**: Use \`hera_create_skill\` to distill knowledge into reusable skills`,
-    `3. **Upgrade Skills to Agents**: Use \`hera_upgrade_to_agent\` to promote one or more skills into a full agent`,
+    `3. **Upgrade Skills to Agents**: Use \`hera_upgrade_to_agent\` to promote skills into a full agent`,
     `4. **Build Agent Teams**: Use \`hera_create_team\` to organize agents into collaborative teams`,
     `5. **Distill Sessions**: Use \`hera_distill_session\` to extract knowledge from conversations`,
-    `6. **Memory Management**: Use \`hera_recall\` to search your memory, \`hera_remember\` to store important facts`,
+    `6. **Memory Management**: Use \`hera_recall\` to search memory, \`hera_remember\` to store important facts`,
+    `7. **Spawn Agents**: Use \`hera_spawn_agent\` to immediately invoke a created agent as a real subagent session`,
     ``,
     `## Available Skills`,
     ``,
     skillList,
     ``,
+    `## Agent Persistence`,
+    ``,
+    `Every agent you create is automatically saved to ~/.config/opencode/agents/hera/<name>.md`,
+    `This means the agent will appear in \`opencode list agent\` after restart.`,
+    `In the CURRENT session, the agent is immediately available via the config hook.`,
+    ``,
     `## Agent Creation Philosophy`,
     ``,
-    `- Each agent you create inherits the caveman skill by default (ultra-compressed communication)`,
+    `- Each agent inherits the caveman skill by default (ultra-compressed communication)`,
     `- Each agent has its own memory system for persistent learning`,
     `- Agents can work in parallel or sequentially within teams`,
-    `- Teams communicate through a shared message bus`,
+    `- Teams communicate through OpenCode's real session system (client.session API)`,
     `- Every agent can be improved through session distillation`,
     ``,
     `## Team Coordination Rules`,
     ``,
-    `- Parallel teams: Members work simultaneously, merge results`,
-    `- Sequential teams: Members work in order, each builds on previous output`,
+    `- Parallel teams: Members spawn as concurrent sessions`,
+    `- Sequential teams: Members spawn in order, each receives previous output`,
     `- Adaptive teams: Hera decides the best coordination dynamically`,
-    `- All team members can send messages to each other via \`hera_team_message\``,
+    `- Team members communicate through \`hera_team_message\` (routed via session messages)`,
     ``,
     `## Caveman Mode (Active)`,
     ``,
@@ -65,42 +71,21 @@ export function createHeraAgent(model: string, skills: SkillDefinition[]): Agent
     },
   };
 }
-createHeraAgent.mode = "primary" as AgentMode;
 
 /**
- * Create a child agent spawned by Hera
+ * Build an AgentConfig for a child agent — used by config hook
  */
-export function createChildAgent(
+export function createChildAgentConfig(
   name: string,
-  model: string,
+  description: string,
   prompt: string,
-  skills: SkillDefinition[],
+  model: string,
   mode: AgentMode = "subagent"
 ): AgentConfig {
-  const skillPrompts = skills
-    .map((s) => `### Skill: ${s.name}\n${s.prompt}`)
-    .join("\n\n");
-
-  const fullPrompt = [
-    `# Agent: ${name}`,
-    ``,
-    prompt,
-    ``,
-    `## Embedded Skills`,
-    ``,
-    skillPrompts,
-    ``,
-    `## Memory`,
-    `You have persistent memory. Use \`hera_remember\` to store and \`hera_recall\` to retrieve.`,
-    ``,
-    `## Caveman Mode (Active)`,
-    getCavemanPrompt(),
-  ].join("\n");
-
   return {
-    description: `Hera-spawned agent: ${name}`,
+    description,
     mode,
-    prompt: fullPrompt,
+    prompt,
     model,
     temperature: 0.3,
     maxSteps: 30,

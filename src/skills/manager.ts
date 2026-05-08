@@ -1,6 +1,6 @@
 // Skill Manager - Load, create, and manage skills
 
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkillDefinition } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
@@ -18,8 +18,6 @@ export class SkillManager {
 
   async init(): Promise<void> {
     await mkdir(this.skillsDir, { recursive: true });
-
-    // Register built-in skills
     this.loadedSkills.set("caveman", CAVEMAN_SKILL);
 
     // Load user-created skills from memory store
@@ -29,7 +27,7 @@ export class SkillManager {
         const skill = JSON.parse(mem.content) as SkillDefinition;
         this.loadedSkills.set(skill.name, skill);
       } catch {
-        // Skip malformed skills
+        // skip
       }
     }
   }
@@ -45,7 +43,6 @@ export class SkillManager {
       metadata: { name: skill.name, trigger: skill.trigger },
     });
 
-    // Also write to skills directory for opencode discovery
     const skillDir = join(this.skillsDir, skill.name);
     await mkdir(skillDir, { recursive: true });
     await writeFile(
@@ -63,9 +60,18 @@ export class SkillManager {
   }
 
   async deleteSkill(name: string): Promise<boolean> {
-    if (name === "caveman") return false; // Cannot delete built-in
+    if (name === "caveman") return false;
     this.loadedSkills.delete(name);
-    return this.store.delete("skill", `skill-${name}`);
+    await this.store.delete("skill", `skill-${name}`);
+
+    // Remove SKILL.md
+    try {
+      const skillDir = join(this.skillsDir, name);
+      await unlink(join(skillDir, "SKILL.md")).catch(() => {});
+    } catch {
+      // ok
+    }
+    return true;
   }
 
   getSkill(name: string): SkillDefinition | undefined {
@@ -76,13 +82,12 @@ export class SkillManager {
     return Array.from(this.loadedSkills.values());
   }
 
-  getSkillPrompt(name: string): string {
-    const skill = this.loadedSkills.get(name);
-    return skill?.prompt ?? "";
+  getSkillMap(): Map<string, SkillDefinition> {
+    return new Map(this.loadedSkills);
   }
 
   /**
-   * Upgrade one or more skills into a new agent definition
+   * Upgrade one or more skills into an agent prompt
    */
   upgradeSkillsToAgentPrompt(
     agentName: string,
@@ -101,7 +106,7 @@ export class SkillManager {
     return [
       `# Agent: ${agentName}`,
       ``,
-      `${description}`,
+      description,
       ``,
       `You are an autonomous agent created by Hera. You embody the following skills:`,
       ``,
