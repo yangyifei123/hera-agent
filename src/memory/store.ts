@@ -33,7 +33,14 @@ export class MemoryStore {
   }
 
   async list(type?: HeraMemory["type"]): Promise<HeraMemory[]> {
-    const types = type ? [type] : ["sessions", "skills", "agents", "teams", "distillations"];
+    const typeMap: Record<string, string> = {
+      session: "sessions",
+      skill: "skills",
+      agent: "agents",
+      team: "teams",
+      distillation: "distillations",
+    };
+    const types = type ? [typeMap[type] ?? type] : Object.values(typeMap);
     const results: HeraMemory[] = [];
     for (const t of types) {
       const dir = join(this.dir, t);
