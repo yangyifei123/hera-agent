@@ -6,7 +6,7 @@ import { createAgentFromTemplate, AGENT_TEMPLATES } from "../agents/hera.js";
 const z = tool.schema;
 
 export function createAllTools(ctx: PluginContext) {
-  const { skillManager, teamManager, distillation, memoryStore, agentRegistry, registeredAgents, client, config } = ctx;
+  const { skillManager, teamManager, distillation, store, agentRegistry, registeredAgents, client, config } = ctx;
 
   return {
     // === Agent Tools ===
@@ -44,7 +44,7 @@ export function createAllTools(ctx: PluginContext) {
         registeredAgents.set(args.name, agentDef);
         const skillsMap = skillManager.getSkillMap();
         const { config: agentConfig, fileWritten } = await agentRegistry.register(agentDef, skillsMap);
-        await memoryStore.save({
+        await store.save({
           id: `agent-${args.name}`,
           type: "agent",
           content: JSON.stringify(agentDef),
@@ -85,7 +85,7 @@ export function createAllTools(ctx: PluginContext) {
       async execute(args) {
         registeredAgents.delete(args.name);
         await agentRegistry.unregister(args.name);
-        await memoryStore.delete("agent", `agent-${args.name}`);
+        await store.delete("agent", `agent-${args.name}`);
         return `Agent "${args.name}" deleted.`;
       },
     }),
@@ -182,7 +182,7 @@ export function createAllTools(ctx: PluginContext) {
         registeredAgents.set(args.agent_name, agentDef);
         const skillsMap = skillManager.getSkillMap();
         const { fileWritten } = await agentRegistry.register(agentDef, skillsMap);
-        await memoryStore.save({
+        await store.save({
           id: `agent-${args.agent_name}`,
           type: "agent",
           content: JSON.stringify(agentDef),
@@ -298,7 +298,7 @@ export function createAllTools(ctx: PluginContext) {
         category: z.enum(["session", "skill", "agent", "team", "distillation", "preference", "decision", "pattern", "fix", "context"]).describe("Category"),
       },
       async execute(args) {
-        await memoryStore.save({
+        await store.save({
           id: `memo-${randomUUID().slice(0, 8)}`,
           type: args.category as any,
           content: args.content,
@@ -315,7 +315,7 @@ export function createAllTools(ctx: PluginContext) {
         category: z.enum(["session", "skill", "agent", "team", "distillation", "preference", "decision", "pattern", "fix", "context"]).optional().describe("Filter"),
       },
       async execute(args) {
-        const results = await memoryStore.search(args.query, args.category as any);
+        const results = await store.search(args.query, args.category as any);
         if (results.length === 0) return "No matching memories found.";
         return results.slice(0, 10).map((m) => `[${m.type}] ${m.content.slice(0, 200)}`).join("\n---\n");
       },
@@ -340,7 +340,7 @@ export function createAllTools(ctx: PluginContext) {
         def.evolvedAt = Date.now();
         registeredAgents.set(args.name, def);
         await agentRegistry.appendEvolution(args.name, entry);
-        await memoryStore.save({
+        await store.save({
           id: `agent-${args.name}`,
           type: "agent",
           content: JSON.stringify(def),
