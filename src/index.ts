@@ -35,6 +35,9 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const agentRegistry = new AgentRegistry(paths.agentsDir);
   await agentRegistry.init();
 
+  // Ensure hera itself has a .md file for OpenCode native discovery
+  await agentRegistry.ensureHeraMd(config);
+
   const registeredAgents = new Map<string, AgentDefinition>();
 
   // Load persisted agents from disk

@@ -60,6 +60,38 @@ export class AgentRegistry {
     }
   }
 
+  /**
+   * Ensure hera.md exists for OpenCode native discovery (weq agent list)
+   */
+  async ensureHeraMd(config: any): Promise<void> {
+    const filePath = join(this.agentsDir, "hera.md");
+    try {
+      await readFile(filePath, "utf-8");
+      return; // already exists
+    } catch {
+      // write it
+      const content = [
+        "---",
+        `name: hera`,
+        `description: "Hera — Agent Factory. Creates agents, skills, teams. Distills sessions. Self-evolving."`,
+        `mode: primary`,
+        "---",
+        "",
+        "# Hera — Agent Factory",
+        "",
+        "You are Hera. Use `weq --agent hera` to start.",
+        "",
+        "## Quick Commands",
+        "- Create agent: `hera_create_agent`",
+        "- List agents: `hera_list_agents`",
+        "- Create team: `hera_create_team`",
+        "- Evolve agent: `hera_evolve_agent`",
+        "",
+      ].join("\n");
+      await writeFile(filePath, content, "utf-8");
+    }
+  }
+
   async listRegistered(): Promise<string[]> {
     try {
       const files = await readdir(this.agentsDir);
