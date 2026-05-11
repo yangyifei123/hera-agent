@@ -1,10 +1,20 @@
-// Skill Manager - Load, create, and manage skills
-
 import { readFile, writeFile, mkdir, readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { SkillDefinition } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
 import { CAVEMAN_SKILL } from "./caveman.js";
+import { INIT_SKILL } from "./init.js";
+import { SKILL_COMBO_SKILL } from "./skill-combo.js";
+import { MEMORY_SKILL } from "./memory.js";
+import { EVOLUTION_SKILL } from "./evolution.js";
+
+const BUILTIN_SKILLS: SkillDefinition[] = [
+  CAVEMAN_SKILL,
+  INIT_SKILL,
+  SKILL_COMBO_SKILL,
+  MEMORY_SKILL,
+  EVOLUTION_SKILL,
+];
 
 export class SkillManager {
   private store: MemoryStore;
@@ -18,14 +28,18 @@ export class SkillManager {
 
   async init(): Promise<void> {
     await mkdir(this.skillsDir, { recursive: true });
-    this.loadedSkills.set("caveman", CAVEMAN_SKILL);
 
-    // Load user-created skills from memory store
+    for (const skill of BUILTIN_SKILLS) {
+      this.loadedSkills.set(skill.name, skill);
+    }
+
     const stored = await this.store.list("skill");
     for (const mem of stored) {
       try {
         const skill = JSON.parse(mem.content) as SkillDefinition;
-        this.loadedSkills.set(skill.name, skill);
+        if (!this.loadedSkills.has(skill.name)) {
+          this.loadedSkills.set(skill.name, skill);
+        }
       } catch {
         // skip
       }
@@ -60,11 +74,9 @@ export class SkillManager {
   }
 
   async deleteSkill(name: string): Promise<boolean> {
-    if (name === "caveman") return false;
+    if (this.isBuiltin(name)) return false;
     this.loadedSkills.delete(name);
     await this.store.delete("skill", `skill-${name}`);
-
-    // Remove SKILL.md
     try {
       const skillDir = join(this.skillsDir, name);
       await unlink(join(skillDir, "SKILL.md")).catch(() => {});
@@ -72,6 +84,10 @@ export class SkillManager {
       // ok
     }
     return true;
+  }
+
+  isBuiltin(name: string): boolean {
+    return BUILTIN_SKILLS.some((s) => s.name === name);
   }
 
   getSkill(name: string): SkillDefinition | undefined {
@@ -86,9 +102,6 @@ export class SkillManager {
     return new Map(this.loadedSkills);
   }
 
-  /**
-   * Upgrade one or more skills into an agent prompt
-   */
   upgradeSkillsToAgentPrompt(
     agentName: string,
     skillNames: string[],
@@ -116,6 +129,8 @@ export class SkillManager {
       `- Apply all embedded skills in every response`,
       `- Maintain skill intensity and style consistently`,
       `- Report outcomes concisely`,
+      `- Use memory to persist important findings`,
+      `- Reflect on performance and evolve when appropriate`,
       `- Collaborate with team members when asked`,
     ].join("\n");
   }

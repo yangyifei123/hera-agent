@@ -1,9 +1,3 @@
-// Team Manager — Agent teams via real OpenCode sessions
-//
-// Teams use client.session.create() + client.session.promptAsync()
-// to spawn actual agent sessions. This is NOT a fake message queue —
-// team members are real OpenCode sessions that can use tools, read files, etc.
-
 import type { TeamDefinition } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
 import { randomUUID } from "node:crypto";
@@ -43,6 +37,7 @@ export class TeamManager {
       try {
         const team = JSON.parse(mem.content) as TeamDefinition;
         this.teams.set(team.name, team);
+        this.messageQueue.set(team.name, []);
       } catch {
         // skip
       }
@@ -52,16 +47,12 @@ export class TeamManager {
   async createTeam(team: TeamDefinition): Promise<void> {
     this.teams.set(team.name, team);
     this.messageQueue.set(team.name, []);
-
     await this.store.save({
       id: `team-${team.name}`,
       type: "team",
       content: JSON.stringify(team),
       timestamp: Date.now(),
-      metadata: {
-        memberCount: team.members.length,
-        coordination: team.coordination,
-      },
+      metadata: { memberCount: team.members.length, coordination: team.coordination },
     });
   }
 
@@ -80,10 +71,6 @@ export class TeamManager {
     return Array.from(this.teams.values());
   }
 
-  /**
-   * Spawn a team — creates real OpenCode sessions for each member.
-   * Returns session IDs for tracking.
-   */
   async spawnTeam(
     teamName: string,
     taskPrompt: string,
@@ -98,25 +85,17 @@ export class TeamManager {
 
     switch (team.coordination) {
       case "parallel": {
-        // Spawn all members simultaneously
         const promises = team.members.map(async (member) => {
-          const session = await this.spawnMemberSession(
-            member.agentName, taskPrompt, parentSessionId, directory, hasClient
-          );
+          const session = await this.spawnMemberSession(member.agentName, taskPrompt, parentSessionId, directory, hasClient);
           sessions.push(session);
         });
         await Promise.all(promises);
         break;
       }
-
       case "sequential": {
-        // Spawn members one by one, pass previous result
         let accumulated = taskPrompt;
         for (const member of team.members) {
-          const session = await this.spawnMemberSession(
-            member.agentName, accumulated, parentSessionId, directory, hasClient
-          );
-          // For sequential, wait for result before spawning next
+          const session = await this.spawnMemberSession(member.agentName, accumulated, parentSessionId, directory, hasClient);
           if (hasClient) {
             const result = await this.pollSessionCompletion(session.sessionId);
             session.status = "completed";
@@ -127,16 +106,10 @@ export class TeamManager {
         }
         break;
       }
-
       case "adaptive": {
-        // First member plans, rest execute in parallel
         if (team.members.length === 0) break;
-
         const planner = team.members[0];
-        const planSession = await this.spawnMemberSession(
-          planner.agentName, taskPrompt, parentSessionId, directory, hasClient
-        );
-
+        const planSession = await this.spawnMemberSession(planner.agentName, taskPrompt, parentSessionId, directory, hasClient);
         let plan = taskPrompt;
         if (hasClient && team.members.length > 1) {
           const planResult = await this.pollSessionCompletion(planSession.sessionId);
@@ -145,13 +118,9 @@ export class TeamManager {
           plan = `Plan from ${planner.agentName}:\n${planResult}\n\nExecute your part of this plan.`;
         }
         sessions.push(planSession);
-
-        // Spawn remaining in parallel
         if (team.members.length > 1) {
           const promises = team.members.slice(1).map(async (member) => {
-            const session = await this.spawnMemberSession(
-              member.agentName, plan, parentSessionId, directory, hasClient
-            );
+            const session = await this.spawnMemberSession(member.agentName, plan, parentSessionId, directory, hasClient);
             sessions.push(session);
           });
           await Promise.all(promises);
@@ -164,9 +133,6 @@ export class TeamManager {
     return sessions;
   }
 
-  /**
-   * Spawn a single agent as a real OpenCode child session
-   */
   private async spawnMemberSession(
     agentName: string,
     prompt: string,
@@ -175,91 +141,48 @@ export class TeamManager {
     hasClient: boolean
   ): Promise<SpawnedSession> {
     if (!hasClient) {
-      // Fallback: just record it
-      return {
-        agentName,
-        sessionId: `local-${randomUUID().slice(0, 8)}`,
-        status: "pending",
-      };
+      return { agentName, sessionId: `local-${randomUUID().slice(0, 8)}`, status: "pending" };
     }
-
     try {
       const createResult = await this.client.session.create({
-        body: {
-          parentID: parentSessionId,
-          title: `Hera team task → @${agentName}`,
-        },
+        body: { parentID: parentSessionId, title: `Hera team task → @${agentName}` },
         query: { directory },
       });
-
       const sessionId = createResult.data?.id ?? createResult.data;
-
-      // Send the prompt asynchronously
       await this.client.session.promptAsync({
         path: { id: sessionId },
-        body: {
-          agent: agentName,
-          parts: [{ type: "text", text: prompt }],
-        },
+        body: { agent: agentName, parts: [{ type: "text", text: prompt }] },
       });
-
       return { agentName, sessionId, status: "running" };
     } catch (err: any) {
-      return {
-        agentName,
-        sessionId: `error-${randomUUID().slice(0, 8)}`,
-        status: "error",
-        result: err?.message ?? String(err),
-      };
+      return { agentName, sessionId: `error-${randomUUID().slice(0, 8)}`, status: "error", result: err?.message ?? String(err) };
     }
   }
 
-  /**
-   * Poll a session until it completes, return the last assistant message
-   */
   private async pollSessionCompletion(sessionId: string): Promise<string> {
-    const maxAttempts = 120; // 2 minutes at 1s interval
+    const maxAttempts = 120;
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const statusResult = await this.client.session.status({
-          path: { id: sessionId },
-        });
-
+        const statusResult = await this.client.session.status({ path: { id: sessionId } });
         const status = statusResult.data?.status;
         if (status === "completed" || status === "idle" || status === "error") {
-          // Get messages
-          const messagesResult = await this.client.session.messages({
-            path: { id: sessionId },
-          });
+          const messagesResult = await this.client.session.messages({ path: { id: sessionId } });
           const messages = messagesResult.data ?? [];
-
-          // Find last assistant message
           for (let j = messages.length - 1; j >= 0; j--) {
-            const msg = messages[j];
-            if (msg.role === "assistant") {
-              return msg.parts?.map((p: any) => p.text ?? "").join("") ?? "";
+            if (messages[j].role === "assistant") {
+              return messages[j].parts?.map((p: any) => p.text ?? "").join("") ?? "";
             }
           }
           return "(no response)";
         }
       } catch {
-        // Continue polling
+        // continue
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
-    return "(timeout waiting for agent response)";
+    return "(timeout)";
   }
 
-  /**
-   * Get spawned sessions for a team
-   */
-  getSpawnedSessions(teamName: string): SpawnedSession[] {
-    return this.spawnedSessions.get(teamName) ?? [];
-  }
-
-  /**
-   * Send a message between team members
-   */
   sendMessage(
     teamName: string,
     from: string,
@@ -267,15 +190,7 @@ export class TeamManager {
     content: string,
     kind: TeamMessage["kind"] = "message"
   ): TeamMessage {
-    const msg: TeamMessage = {
-      id: randomUUID(),
-      from,
-      to,
-      teamName,
-      content,
-      timestamp: Date.now(),
-      kind,
-    };
+    const msg: TeamMessage = { id: randomUUID(), from, to, teamName, content, timestamp: Date.now(), kind };
     const queue = this.messageQueue.get(teamName) ?? [];
     queue.push(msg);
     this.messageQueue.set(teamName, queue);
@@ -284,27 +199,17 @@ export class TeamManager {
 
   getMessages(teamName: string, memberName: string): TeamMessage[] {
     const queue = this.messageQueue.get(teamName) ?? [];
-    return queue.filter(
-      (m) => m.to === memberName || m.to === "broadcast"
-    );
+    return queue.filter((m) => m.to === memberName || m.to === "broadcast");
   }
 
-  /**
-   * Build team context for system prompt injection
-   */
   buildTeamContext(teamName: string): string {
     const team = this.teams.get(teamName);
     if (!team) return "";
-
-    const members = team.members
-      .map((m) => `- **${m.agentName}** (${m.role})`)
-      .join("\n");
-
+    const members = team.members.map((m) => `- **${m.agentName}** (${m.role})`).join("\n");
     const sessions = this.spawnedSessions.get(teamName) ?? [];
     const sessionInfo = sessions.length > 0
       ? `\nActive Sessions:\n${sessions.map((s) => `- ${s.agentName}: ${s.status} (${s.sessionId})`).join("\n")}`
       : "";
-
     return [
       `## Team: ${team.name}`,
       `Description: ${team.description}`,

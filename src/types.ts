@@ -1,12 +1,6 @@
-// Hera Agent - Core Types
-
 import type { AgentConfig } from "@opencode-ai/sdk";
 
 export type AgentMode = "primary" | "subagent" | "all";
-
-export type AgentFactory = ((model: string) => AgentConfig) & {
-  mode: AgentMode;
-};
 
 export interface HeraMemory {
   id: string;
@@ -21,6 +15,7 @@ export interface SkillDefinition {
   description: string;
   trigger: string;
   prompt: string;
+  category: "builtin" | "user";
   intensity?: "lite" | "full" | "ultra" | "wenyan-lite" | "wenyan-full" | "wenyan-ultra";
 }
 
@@ -34,6 +29,29 @@ export interface AgentDefinition {
   tools?: Record<string, boolean>;
   permission?: AgentConfig["permission"];
   maxSteps?: number;
+  template?: AgentTemplateName;
+  createdAt?: number;
+  evolvedAt?: number;
+  evolutionLog?: EvolutionEntry[];
+}
+
+export interface EvolutionEntry {
+  timestamp: number;
+  trigger: string;
+  observation: string;
+  directive: string;
+  rolledBack: boolean;
+}
+
+export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator";
+
+export interface AgentTemplate {
+  name: AgentTemplateName;
+  label: string;
+  description: string;
+  defaultMode: AgentMode;
+  defaultSkills: string[];
+  promptFn: (name: string, customPrompt?: string) => string;
 }
 
 export interface TeamDefinition {
@@ -41,6 +59,8 @@ export interface TeamDefinition {
   description: string;
   members: TeamMember[];
   coordination: "parallel" | "sequential" | "adaptive";
+  sharedMemory?: string[];
+  createdAt?: number;
 }
 
 export interface TeamMember {
@@ -75,19 +95,22 @@ export interface CategoryConfig {
   thinking?: { type: string; budgetTokens?: number };
 }
 
-/**
- * Paths used by Hera, resolved at plugin init time.
- * All persistent data lives under the opencode config directory.
- */
 export interface HeraPaths {
-  /** ~/.config/opencode/ — opencode config root */
   configRoot: string;
-  /** ~/.config/opencode/hera-data/ — Hera's own data */
   dataDir: string;
-  /** ~/.config/opencode/hera-data/memory/ — memory store */
   memoryDir: string;
-  /** ~/.config/opencode/hera-data/skills/ — skill files */
   skillsDir: string;
-  /** ~/.config/opencode/agents/hera/ — agent .md files for opencode discovery */
   agentsDir: string;
+}
+
+export interface PluginContext {
+  store: import("./memory/store.js").MemoryStore;
+  skillManager: import("./skills/manager.js").SkillManager;
+  teamManager: import("./team/manager.js").TeamManager;
+  distillation: import("./distillation/engine.js").DistillationEngine;
+  agentRegistry: import("./agents/registry.js").AgentRegistry;
+  registeredAgents: Map<string, AgentDefinition>;
+  client: any;
+  config: HeraConfig;
+  paths: HeraPaths;
 }

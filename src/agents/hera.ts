@@ -1,55 +1,146 @@
-// Hera Agent Definitions - Primary agent + config hook agent builder
-
 import type { AgentConfig } from "@opencode-ai/sdk";
-import type { SkillDefinition, AgentMode } from "../types.js";
+import type {
+  SkillDefinition,
+  AgentMode,
+  AgentDefinition,
+  AgentTemplateName,
+  AgentTemplate,
+  EvolutionEntry,
+} from "../types.js";
 import { getCavemanPrompt } from "../skills/caveman.js";
+import { getInitPrompt } from "../skills/init.js";
+import { getMemoryPrompt } from "../skills/memory.js";
+import { getEvolutionPrompt, buildEvolutionBlock } from "../skills/evolution.js";
 
-/**
- * Create the main Hera agent config — injected via config hook
- */
-export function createHeraAgent(model: string, skills: SkillDefinition[]): AgentConfig {
-  const skillList = skills.map((s) => `- **${s.name}**: ${s.description}`).join("\n");
+export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
+  general: {
+    name: "general",
+    label: "General Assistant",
+    description: "Versatile assistant for any task",
+    defaultMode: "all",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name) =>
+      [
+        `You are ${name}, a versatile AI assistant.`,
+        `Adapt your approach to the task at hand.`,
+        `Be concise, accurate, and helpful.`,
+      ].join("\n"),
+  },
+  coder: {
+    name: "coder",
+    label: "Coding Expert",
+    description: "Specialized in writing, debugging, and refactoring code",
+    defaultMode: "all",
+    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    promptFn: (name) =>
+      [
+        `You are ${name}, a senior software engineer.`,
+        `Write clean, tested, maintainable code.`,
+        `Follow project conventions and best practices.`,
+        `Always verify your changes compile/run before reporting done.`,
+      ].join("\n"),
+  },
+  reviewer: {
+    name: "reviewer",
+    label: "Code Reviewer",
+    description: "Reviews code for quality, security, and maintainability",
+    defaultMode: "subagent",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name) =>
+      [
+        `You are ${name}, a code review specialist.`,
+        `Focus on: security, performance, maintainability, correctness.`,
+        `Provide actionable feedback with specific line references.`,
+        `Rate severity: critical > warning > suggestion > nit.`,
+      ].join("\n"),
+  },
+  researcher: {
+    name: "researcher",
+    label: "Research Analyst",
+    description: "Researches solutions, libraries, patterns, and technical topics",
+    defaultMode: "subagent",
+    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    promptFn: (name) =>
+      [
+        `You are ${name}, a research analyst.`,
+        `Investigate thoroughly before concluding.`,
+        `Provide pros/cons, alternatives, and clear recommendations.`,
+        `Cite sources when available.`,
+      ].join("\n"),
+  },
+  coordinator: {
+    name: "coordinator",
+    label: "Team Coordinator",
+    description: "Coordinates agent teams, distributes tasks, aggregates results",
+    defaultMode: "all",
+    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    promptFn: (name) =>
+      [
+        `You are ${name}, a team coordinator.`,
+        `Break complex tasks into subtasks for team members.`,
+        `Distribute work based on member specializations.`,
+        `Aggregate results into coherent deliverables.`,
+        `Track progress and handle failures gracefully.`,
+      ].join("\n"),
+  },
+};
+
+export function createHeraAgent(
+  model: string,
+  skills: SkillDefinition[]
+): AgentConfig {
+  const skillList = skills
+    .map((s) => `- **${s.name}** (${s.category}): ${s.description}`)
+    .join("\n");
+
+  const templateList = Object.values(AGENT_TEMPLATES)
+    .map((t) => `- **${t.name}**: ${t.label} — ${t.description}`)
+    .join("\n");
 
   const prompt = [
     `# Hera — Agent Factory`,
     ``,
-    `You are Hera, an agent whose purpose is to CREATE other agents.`,
-    `You are the mother of all agents, named after the Greek goddess of creation and sovereignty.`,
+    `You are Hera, an agent whose purpose is to CREATE other agents and agent teams.`,
+    `Named after the Greek goddess of creation and sovereignty.`,
     ``,
     `## Core Abilities`,
     ``,
-    `1. **Create Agents**: Use \`hera_create_agent\` to birth new agents with custom prompts, skills, and capabilities`,
+    `1. **Create Agents**: Use \`hera_create_agent\` — optionally from a template`,
     `2. **Create Skills**: Use \`hera_create_skill\` to distill knowledge into reusable skills`,
-    `3. **Upgrade Skills to Agents**: Use \`hera_upgrade_to_agent\` to promote skills into a full agent`,
-    `4. **Build Agent Teams**: Use \`hera_create_team\` to organize agents into collaborative teams`,
-    `5. **Distill Sessions**: Use \`hera_distill_session\` to extract knowledge from conversations`,
-    `6. **Memory Management**: Use \`hera_recall\` to search memory, \`hera_remember\` to store important facts`,
-    `7. **Spawn Agents**: Use \`hera_spawn_agent\` to immediately invoke a created agent as a real subagent session`,
+    `3. **Upgrade to Agent**: Use \`hera_upgrade_to_agent\` — skills → full agent`,
+    `4. **Build Agent Teams**: Use \`hera_create_team\` — organize agents with roles`,
+    `5. **Spawn Agents**: Use \`hera_spawn_agent\` — invoke agent as real OpenCode session`,
+    `6. **Distill Sessions**: Use \`hera_distill_session\` — extract knowledge from conversations`,
+    `7. **Evolve Agents**: Use \`hera_evolve_agent\` — append improvement directives`,
+    `8. **Memory**: Use \`hera_remember\` / \`hera_recall\` — persistent knowledge store`,
     ``,
-    `## Available Skills`,
+    `## Built-in Skills (inherited by all agents)`,
     ``,
     skillList,
     ``,
+    `## Agent Templates`,
+    ``,
+    templateList,
+    ``,
     `## Agent Persistence`,
     ``,
-    `Every agent you create is automatically saved to ~/.config/opencode/agents/hera/<name>.md`,
-    `This means the agent will appear in \`opencode list agent\` after restart.`,
-    `In the CURRENT session, the agent is immediately available via the config hook.`,
+    `Every agent is saved to \`~/.config/opencode/agents/hera/<name>.md\`.`,
+    `Available via \`weq --agent <name>\` or \`@<name>\` after restart.`,
+    `Immediately available in current session via the config hook.`,
     ``,
     `## Agent Creation Philosophy`,
     ``,
-    `- Each agent inherits the caveman skill by default (ultra-compressed communication)`,
-    `- Each agent has its own memory system for persistent learning`,
-    `- Agents can work in parallel or sequentially within teams`,
-    `- Teams communicate through OpenCode's real session system (client.session API)`,
-    `- Every agent can be improved through session distillation`,
+    `- All agents inherit: caveman, init, memory, evolution (non-removable)`,
+    `- skill-combo added for complex agents (coder, researcher, coordinator)`,
+    `- Each agent has persistent memory for learning across sessions`,
+    `- Agents can self-evolve by appending directives after reflection`,
+    `- Teams coordinate through real OpenCode sessions`,
     ``,
-    `## Team Coordination Rules`,
+    `## Team Coordination`,
     ``,
-    `- Parallel teams: Members spawn as concurrent sessions`,
-    `- Sequential teams: Members spawn in order, each receives previous output`,
-    `- Adaptive teams: Hera decides the best coordination dynamically`,
-    `- Team members communicate through \`hera_team_message\` (routed via session messages)`,
+    `- **parallel**: All members run simultaneously`,
+    `- **sequential**: Chain — each receives previous output`,
+    `- **adaptive**: First plans, rest execute in parallel`,
     ``,
     `## Caveman Mode (Active)`,
     ``,
@@ -58,7 +149,7 @@ export function createHeraAgent(model: string, skills: SkillDefinition[]): Agent
 
   return {
     description:
-      "Hera — Agent Factory. Creates agents, skills, and teams. Distills sessions into knowledge.",
+      "Hera — Agent Factory. Creates agents, skills, teams. Distills sessions. Self-evolving.",
     mode: "primary",
     prompt,
     model,
@@ -72,9 +163,6 @@ export function createHeraAgent(model: string, skills: SkillDefinition[]): Agent
   };
 }
 
-/**
- * Build an AgentConfig for a child agent — used by config hook
- */
 export function createChildAgentConfig(
   name: string,
   description: string,
@@ -94,5 +182,70 @@ export function createChildAgentConfig(
       bash: "allow",
       webfetch: "allow",
     },
+  };
+}
+
+export function buildAgentPrompt(
+  def: AgentDefinition,
+  resolvedSkills: SkillDefinition[]
+): string {
+  const sections: string[] = [];
+
+  sections.push(`# Agent: ${def.name}`);
+  sections.push("");
+  sections.push(def.prompt);
+  sections.push("");
+
+  // Embed core skills
+  sections.push("## Built-in Skill: Caveman");
+  sections.push(getCavemanPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Init");
+  sections.push(getInitPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Memory");
+  sections.push(getMemoryPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Evolution");
+  sections.push(getEvolutionPrompt());
+  sections.push("");
+
+  // Embed additional user skills
+  for (const skill of resolvedSkills) {
+    if (["caveman", "init", "memory", "evolution"].includes(skill.name)) continue;
+    sections.push(`## Skill: ${skill.name}`);
+    sections.push(skill.prompt);
+    sections.push("");
+  }
+
+  // Append evolution log if present
+  if (def.evolutionLog && def.evolutionLog.length > 0) {
+    sections.push(buildEvolutionBlock(def.evolutionLog));
+    sections.push("");
+  }
+
+  return sections.join("\n");
+}
+
+export function createAgentFromTemplate(
+  templateName: AgentTemplateName,
+  agentName: string,
+  customPrompt?: string,
+  model?: string
+): AgentDefinition {
+  const tpl = AGENT_TEMPLATES[templateName];
+  return {
+    name: agentName,
+    description: `${tpl.label} — ${tpl.description}`,
+    mode: tpl.defaultMode,
+    prompt: customPrompt ?? tpl.promptFn(agentName),
+    model,
+    skills: [...tpl.defaultSkills],
+    template: templateName,
+    createdAt: Date.now(),
+    evolutionLog: [],
   };
 }
