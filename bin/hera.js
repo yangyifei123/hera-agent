@@ -15,15 +15,15 @@ switch (cmd) {
 Hera Agent Factory — Installation
 
 1. Use the opencode plugin command:
-   weq plugin E:/AI_field/hera-agent --global -f
+   opencode plugin hera-agent --global -f
 
    Or manually:
-   cd ~/.config/opencode && bun add <path-to-hera-agent>
+   cd ~/.config/opencode && bun add hera-agent
 
 2. Verify in opencode.json:
-   { "plugin": ["oh-my-openagent", "E:/AI_field/hera-agent"] }
+   { "plugin": ["oh-my-openagent", "hera-agent"] }
 
-3. Launch: weq --agent hera
+3. Launch: opencode --agent hera
 `);
     break;
 
@@ -40,7 +40,7 @@ Hera Agent Factory — Uninstall
 
   case "list":
     console.log("Hera Agent Factory — Registered Agents & Teams");
-    console.log("Run: weq run --agent hera 'list all agents and teams'");
+    console.log("Run: opencode run --agent hera 'list all agents and teams'");
     break;
 
   case "help":
@@ -56,9 +56,9 @@ Commands:
   hera help        Show this help
 
 Usage:
-  weq --agent hera              Start Hera agent
-  weq --agent <agent-name>      Start a Hera-created agent
-  weq run --agent hera "..."    Run a single command
+  opencode --agent hera              Start Hera agent
+  opencode --agent <agent-name>      Start a Hera-created agent
+  opencode run --agent hera "..."    Run a single command
 
 Built-in Skills:
   caveman       Ultra-compressed communication (~75% token savings)

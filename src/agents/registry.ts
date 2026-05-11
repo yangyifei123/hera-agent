@@ -61,7 +61,7 @@ export class AgentRegistry {
   }
 
   /**
-   * Ensure hera.md exists for OpenCode native discovery (weq agent list)
+   * Ensure hera.md exists for OpenCode native discovery (opencode agent list)
    */
   async ensureHeraMd(config: any): Promise<void> {
     const filePath = join(this.agentsDir, "hera.md");
@@ -79,7 +79,7 @@ export class AgentRegistry {
         "",
         "# Hera — Agent Factory",
         "",
-        "You are Hera. Use `weq --agent hera` to start.",
+        "You are Hera. Use `opencode --agent hera` to start.",
         "",
         "## Quick Commands",
         "- Create agent: `hera_create_agent`",

@@ -54,7 +54,7 @@ export function createAllTools(ctx: PluginContext) {
         return [
           `Agent "${args.name}" created and registered.`,
           `Mode: ${agentDef.mode}. Skills: ${agentDef.skills.join(", ")}.`,
-          `Available now via @${args.name} or weq --agent ${args.name}.`,
+          `Available now via @${args.name} or opencode --agent ${args.name}.`,
           `Persisted to ${fileWritten}.`,
         ].join("\n");
       },

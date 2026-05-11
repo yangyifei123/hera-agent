@@ -18,11 +18,11 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 
 ```bash
 # Using OpenCode plugin command (recommended)
-weq plugin E:/AI_field/hera-agent --global -f
+opencode plugin hera-agent --global -f
 
 # Or manually
 cd ~/.config/opencode
-bun add E:/AI_field/hera-agent
+bun add hera-agent
 ```
 
 Then verify `opencode.json` contains:
@@ -31,7 +31,7 @@ Then verify `opencode.json` contains:
 {
   "plugin": [
     "oh-my-openagent",
-    "E:/AI_field/hera-agent"
+    "hera-agent"
   ]
 }
 ```
@@ -40,13 +40,13 @@ Then verify `opencode.json` contains:
 
 ```bash
 # Start Hera
-weq --agent hera
+opencode --agent hera
 
 # Or run a single command
-weq run --agent hera "创建一个名为 my-coder 的编码专家 agent"
+opencode run --agent hera "创建一个名为 my-coder 的编码专家 agent"
 
 # Use a created agent
-weq --agent my-coder "帮我写一个排序算法"
+opencode --agent my-coder "帮我写一个排序算法"
 ```
 
 ## Built-in Skills
@@ -103,7 +103,7 @@ weq --agent my-coder "帮我写一个排序算法"
 ```json
 {
   "plugin": [
-    ["E:/AI_field/hera-agent", {
+    ["hera-agent", {
       "default_model": "cherry/GLM-5",
       "disabled_agents": [],
       "disabled_skills": [],

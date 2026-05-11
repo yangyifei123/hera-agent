@@ -125,7 +125,7 @@ export function createHeraAgent(
     `## Agent Persistence`,
     ``,
     `Every agent is saved to \`~/.config/opencode/agents/hera/<name>.md\`.`,
-    `Available via \`weq --agent <name>\` or \`@<name>\` after restart.`,
+    `Available via \`opencode --agent <name>\` or \`@<name>\` after restart.`,
     `Immediately available in current session via the config hook.`,
     ``,
     `## Agent Creation Philosophy`,
