@@ -43,7 +43,7 @@ export interface EvolutionEntry {
   rolledBack: boolean;
 }
 
-export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator";
+export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator" | "architect" | "debugger" | "tester" | "documenter" | "optimizer";
 
 export interface AgentTemplate {
   name: AgentTemplateName;

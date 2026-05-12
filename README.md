@@ -45,8 +45,11 @@ opencode --agent hera
 # Or run a single command
 opencode run --agent hera "创建一个名为 my-coder 的编码专家 agent"
 
-# Use a created agent
+# Use a created agent (if mode is 'all' or 'primary')
 opencode --agent my-coder "帮我写一个排序算法"
+
+# Use a subagent via @mention
+opencode run "请 @code-guardian 审查这段代码"
 ```
 
 ## Built-in Skills
@@ -68,6 +71,11 @@ opencode --agent my-coder "帮我写一个排序算法"
 | **reviewer** | subagent | Code review specialist |
 | **researcher** | subagent | Research analyst with skill-combo |
 | **coordinator** | all | Team coordinator with skill-combo |
+| **architect** | all | System architect with skill-combo |
+| **debugger** | all | Debug specialist |
+| **tester** | subagent | Test engineer |
+| **documenter** | subagent | Documentation specialist |
+| **optimizer** | subagent | Performance optimizer |
 
 ## Tool Reference
 
@@ -76,6 +84,9 @@ opencode --agent my-coder "帮我写一个排序算法"
 - `hera_list_agents` — List all created agents
 - `hera_delete_agent` — Remove an agent
 - `hera_spawn_agent` — Spawn agent as real OpenCode session
+- `hera_verify_agent` — Verify agent registration
+- `hera_export_agent` — Export agent as JSON
+- `hera_import_agent` — Import agent from JSON
 
 ### Skill Management
 - `hera_create_skill` — Create a reusable skill
@@ -97,6 +108,9 @@ opencode --agent my-coder "帮我写一个排序算法"
 - `hera_list_evolutions` — View agent evolution history
 - `hera_rollback_evolution` — Rollback latest evolution
 - `hera_distill_session` — Extract knowledge from session
+
+### System Management
+- `hera_status` — Show system status (agents, skills, teams, memory)
 
 ## Configuration
 
