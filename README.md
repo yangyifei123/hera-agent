@@ -20,31 +20,122 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 - **25+ Management Tools** — Complete agent/skill/team lifecycle management
 - **Session Distillation** — Extract structured knowledge from conversations
 
-## Installation
+## 📦 Installation
+
+### Method 1: From npm (Recommended)
 
 ```bash
-# Using OpenCode plugin command (recommended)
+# Using OpenCode plugin command
 opencode plugin hera-agent --global -f
 
-# Or manually
+# Or manually with bun
 cd ~/.config/opencode
 bun add hera-agent
 ```
 
-Then verify `opencode.json` contains:
+### Method 2: From GitHub Release (ZIP)
+
+**If you downloaded the ZIP from GitHub Releases:**
+
+```bash
+# 1. Extract the ZIP
+unzip hera-agent-2.0.0.zip
+cd hera-agent-2.0.0
+
+# 2. Install dependencies and build (if dist/ is missing)
+bun install
+bun run build
+
+# 3. Install to OpenCode
+cd ~/.config/opencode
+bun add file:///path/to/hera-agent-2.0.0
+
+# Example on Windows:
+# bun add file:///E:/Downloads/hera-agent-2.0.0
+
+# Example on Linux/Mac:
+# bun add file:///home/user/Downloads/hera-agent-2.0.0
+```
+
+### Method 3: From Source (Development)
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yangyifei123/hera-agent.git
+cd hera-agent
+
+# 2. Install dependencies
+bun install
+
+# 3. Build
+bun run build
+
+# 4. Link for development
+cd ~/.config/opencode
+bun add file:///path/to/hera-agent
+```
+
+### Verify Installation
+
+After installation, verify `opencode.json` contains:
 
 ```json
 {
   "plugin": [
-    "oh-my-openagent",
     "hera-agent"
   ]
 }
 ```
 
+Then test:
+
+```bash
+# Check if Hera is loaded
+opencode agent list | grep hera
+
+# Should show:
+# hera (primary)
+
+# Start Hera
+opencode --agent hera
+```
+
 **That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
 
-## Quick Start
+## 🗑️ Uninstallation
+
+### Complete Uninstall
+
+```bash
+# 1. Remove from opencode.json
+# Edit ~/.config/opencode/opencode.json and remove "hera-agent" from plugin array
+
+# 2. Remove the package
+cd ~/.config/opencode
+bun remove hera-agent
+
+# 3. (Optional) Remove all Hera data
+rm -rf ~/.config/opencode/hera-data/
+rm -rf ~/.config/opencode/agents/hera/
+rm -f ~/.config/opencode/hera.json
+```
+
+### Keep Data (Reinstall Later)
+
+If you want to keep your agents, skills, and memory:
+
+```bash
+# Only remove the package
+cd ~/.config/opencode
+bun remove hera-agent
+
+# Data remains in:
+# - ~/.config/opencode/hera-data/      (memory, skills)
+# - ~/.config/opencode/agents/hera/    (agent definitions)
+# - ~/.config/opencode/hera.json       (configuration)
+```
+
+## 🚀 Quick Start
 
 ```bash
 # Start Hera
@@ -58,6 +149,23 @@ opencode --agent my-coder "帮我写一个排序算法"
 
 # Use a subagent via @mention
 opencode run "请 @code-guardian 审查这段代码"
+```
+
+### 5-Minute Quick Verification
+
+Verify Hera works correctly:
+
+```bash
+# 1. Create a test agent
+opencode run --agent hera "创建 test-agent，mode: all，template: coder"
+
+# 2. Use the agent
+opencode run --agent test-agent "创建一个 hello.js 文件，输出 Hello World"
+
+# 3. Verify the result
+cat hello.js && node hello.js
+
+# Should output: Hello World
 ```
 
 ## Built-in Skills
@@ -130,8 +238,7 @@ Hera automatically creates `~/.config/opencode/hera.json` on first load. Edit it
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
-  "default_model": "cherry/GLM-5",
+  "$schema": "./hera.schema.json",
   "disabled_agents": [],
   "disabled_skills": [],
   "disabled_tools": [],
@@ -168,7 +275,6 @@ You can also configure via plugin options in `opencode.json`:
 {
   "plugin": [
     ["hera-agent", {
-      "default_model": "cherry/GLM-5",
       "disabled_agents": [],
       "disabled_skills": [],
       "disabled_tools": []
@@ -210,6 +316,53 @@ hera-agent/
 └── README.md
 ```
 
+## Troubleshooting
+
+### Issue: "agent not found"
+
+**Check 1**: Verify Hera is in opencode.json:
+```bash
+cat ~/.config/opencode/opencode.json | grep hera-agent
+```
+
+**Check 2**: Verify installation:
+```bash
+ls ~/.config/opencode/node_modules/hera-agent/dist/index.js
+```
+
+**Check 3**: Restart OpenCode:
+```bash
+# OpenCode should auto-detect the plugin on next start
+opencode --agent hera
+```
+
+### Issue: "fetch() cannot be empty string" (v1.x only)
+
+**Solution**: Upgrade to v2.0.0+:
+```bash
+cd ~/.config/opencode
+bun remove hera-agent
+bun add hera-agent@latest
+```
+
+v2.0.0+ has zero network dependencies and works in internal networks.
+
+### Issue: Created agent doesn't work
+
+**Check mode**: Subagents can't be called with `--agent`:
+```bash
+# ❌ Wrong (if agent is subagent mode)
+opencode --agent my-subagent
+
+# ✅ Correct
+opencode run "请 @my-subagent 帮我..."
+```
+
+**Solution**: Create agents with `mode: "all"` for direct `--agent` usage:
+```bash
+opencode run --agent hera "创建 my-agent，mode: all，template: coder"
+```
+
 ## License
 
 MIT
@@ -218,6 +371,7 @@ MIT
 
 ## 📚 Documentation
 
+- [INSTALLATION.md](docs/INSTALLATION.md) - Detailed installation guide (online/offline/internal networks)
 - [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Development setup and contribution guidelines
 - [CLAUDE.md](CLAUDE.md) - Development documentation for Claude Code

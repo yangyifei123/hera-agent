@@ -14,16 +14,25 @@ switch (cmd) {
     console.log(`
 Hera Agent Factory — Installation
 
-1. Use the opencode plugin command:
-   opencode plugin hera-agent --global -f
+Method 1: From npm (Recommended)
+  opencode plugin hera-agent --global -f
 
-   Or manually:
-   cd ~/.config/opencode && bun add hera-agent
+  Or manually:
+  cd ~/.config/opencode && bun add hera-agent
 
-2. Verify in opencode.json:
-   { "plugin": ["oh-my-openagent", "hera-agent"] }
+Method 2: From GitHub ZIP
+  1. Extract the ZIP file
+  2. cd path/to/extracted/hera-agent
+  3. bun install && bun run build (if dist/ is missing)
+  4. cd ~/.config/opencode
+  5. bun add file:///path/to/hera-agent
 
-3. Launch: opencode --agent hera
+  Example: bun add file:///E:/Downloads/hera-agent-2.0.0
+
+Verify:
+  1. Check opencode.json contains: { "plugin": ["hera-agent"] }
+  2. Test: opencode agent list | grep hera
+  3. Launch: opencode --agent hera
 `);
     break;
 
@@ -31,10 +40,17 @@ Hera Agent Factory — Installation
     console.log(`
 Hera Agent Factory — Uninstall
 
-1. Remove from opencode.json plugin array
-2. cd ~/.config/opencode && bun remove hera-agent
-3. (Optional) rm -rf ~/.config/opencode/hera-data/
-4. (Optional) rm -rf ~/.config/opencode/agents/hera/
+Complete Uninstall (removes everything):
+  1. Edit ~/.config/opencode/opencode.json - remove "hera-agent" from plugin array
+  2. cd ~/.config/opencode && bun remove hera-agent
+  3. rm -rf ~/.config/opencode/hera-data/
+  4. rm -rf ~/.config/opencode/agents/hera/
+  5. rm -f ~/.config/opencode/hera.json
+
+Keep Data (reinstall later):
+  1. Edit ~/.config/opencode/opencode.json - remove "hera-agent" from plugin array
+  2. cd ~/.config/opencode && bun remove hera-agent
+  (Your agents, skills, and memory will be preserved)
 `);
     break;
 
