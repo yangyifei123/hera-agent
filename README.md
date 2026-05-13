@@ -2,16 +2,22 @@
 
 > Named after the Greek goddess of creation. Hera creates agents, skills, and teams that self-evolve.
 
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.0.0)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![OpenCode](https://img.shields.io/badge/OpenCode-Plugin-orange.svg)](https://github.com/opencode-ai/opencode)
+
 Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts as an **agent factory**. It creates autonomous agents with persistent memory, distills conversations into reusable skills, and organizes agents into collaborative teams. Every agent inherits 5 built-in skills and can self-evolve over time.
 
-## Features
+## ✨ Features
 
-- **Agent Factory** — Create agents from templates (general, coder, reviewer, researcher, coordinator) or custom prompts
+- **Agent Factory** — Create agents from 10 templates or custom prompts
+- **Zero-Config Setup** — Auto-creates configuration on first load
 - **5 Built-in Skills** — caveman, init, skill-combo, memory, evolution (inherited by all agents)
 - **Skill → Agent Upgrade** — Promote one or more skills into a full agent
 - **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
 - **Self-Evolution** — Agents reflect on performance and append improvement directives
 - **Persistent Memory** — JSON-based memory that survives restarts
+- **25+ Management Tools** — Complete agent/skill/team lifecycle management
 - **Session Distillation** — Extract structured knowledge from conversations
 
 ## Installation
@@ -78,6 +84,8 @@ opencode run "请 @code-guardian 审查这段代码"
 | **tester** | subagent | Test engineer |
 | **documenter** | subagent | Documentation specialist |
 | **optimizer** | subagent | Performance optimizer |
+
+> **New in v2.0**: 5 additional templates (architect, debugger, tester, documenter, optimizer)
 
 ## Tool Reference
 
@@ -205,3 +213,27 @@ hera-agent/
 ## License
 
 MIT
+
+---
+
+## 📚 Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Development setup and contribution guidelines
+- [CLAUDE.md](CLAUDE.md) - Development documentation for Claude Code
+- [TEST_REPORT.md](TEST_REPORT.md) - Comprehensive test coverage report
+- [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md) - Technical architecture deep-dive
+
+## 🔗 Links
+
+- **GitHub**: https://github.com/yangyifei123/hera-agent
+- **Issues**: https://github.com/yangyifei123/hera-agent/issues
+- **Releases**: https://github.com/yangyifei123/hera-agent/releases
+
+## 🙏 Acknowledgments
+
+Thanks to the [OpenCode](https://github.com/opencode-ai/opencode) team for the excellent plugin system.
+
+---
+
+**Current Version**: v2.0.0 | **License**: MIT | **Status**: Production Ready ✅
