@@ -14,17 +14,39 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const configRoot = resolveConfigRoot(directory);
 
-  // Load hera.json if exists
+  // Auto-initialize hera.json on first load
+  const heraConfigPath = join(configRoot, "hera.json");
   let config = (options ?? {}) as HeraConfig;
+
   try {
-    const heraConfigPath = join(configRoot, "hera.json");
     const { readFile } = await import("node:fs/promises");
     const heraConfigContent = await readFile(heraConfigPath, "utf-8");
     const heraConfig = JSON.parse(heraConfigContent);
-    // Merge: hera.json takes precedence over plugin options
     config = { ...config, ...heraConfig };
   } catch {
-    // hera.json not found or invalid, use plugin options only
+    // hera.json doesn't exist, create it automatically
+    try {
+      const { writeFile } = await import("node:fs/promises");
+      const defaultConfig = {
+        "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
+        "default_model": config.default_model ?? "cherry/GLM-5",
+        "disabled_agents": [],
+        "disabled_skills": [],
+        "disabled_tools": [],
+        "agent_overrides": {},
+        "templates": {},
+        "auto_evolve": false,
+        "memory_limit": 1000,
+        "team_defaults": {
+          "coordination": "parallel",
+          "timeout": 300000
+        }
+      };
+      await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
+      console.log(`[Hera] Created config file: ${heraConfigPath}`);
+    } catch (err) {
+      console.warn(`[Hera] Could not create config file: ${err}`);
+    }
   }
 
   const paths: HeraPaths = {
