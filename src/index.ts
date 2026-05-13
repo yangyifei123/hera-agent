@@ -11,9 +11,22 @@ import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./ty
 
 const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
   const { client, project, directory } = input;
-  const config = (options ?? {}) as HeraConfig;
 
   const configRoot = resolveConfigRoot(directory);
+
+  // Load hera.json if exists
+  let config = (options ?? {}) as HeraConfig;
+  try {
+    const heraConfigPath = join(configRoot, "hera.json");
+    const { readFile } = await import("node:fs/promises");
+    const heraConfigContent = await readFile(heraConfigPath, "utf-8");
+    const heraConfig = JSON.parse(heraConfigContent);
+    // Merge: hera.json takes precedence over plugin options
+    config = { ...config, ...heraConfig };
+  } catch {
+    // hera.json not found or invalid, use plugin options only
+  }
+
   const paths: HeraPaths = {
     configRoot,
     dataDir: join(configRoot, "hera-data"),

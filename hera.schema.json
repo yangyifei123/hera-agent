@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hera Configuration",
+  "description": "Configuration schema for Hera Agent Factory",
+  "type": "object",
+  "properties": {
+    "default_model": {
+      "type": "string",
+      "description": "Default model for all agents",
+      "default": "cherry/GLM-5"
+    },
+    "disabled_agents": {
+      "type": "array",
+      "description": "List of agent names to disable",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "disabled_skills": {
+      "type": "array",
+      "description": "List of skill names to disable",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "disabled_tools": {
+      "type": "array",
+      "description": "List of tool names to disable",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "agent_overrides": {
+      "type": "object",
+      "description": "Override settings for specific agents",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model override for this agent"
+          },
+          "prompt_append": {
+            "type": "string",
+            "description": "Additional prompt to append"
+          },
+          "temperature": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2
+          },
+          "maxSteps": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "templates": {
+      "type": "object",
+      "description": "Custom agent templates",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Display name for the template"
+          },
+          "description": {
+            "type": "string",
+            "description": "Template description"
+          },
+          "defaultMode": {
+            "type": "string",
+            "enum": ["primary", "subagent", "all"],
+            "description": "Default agent mode"
+          },
+          "defaultSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills to include by default"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Template prompt"
+          }
+        },
+        "required": ["label", "description", "defaultMode", "prompt"]
+      }
+    },
+    "auto_evolve": {
+      "type": "boolean",
+      "description": "Enable automatic agent evolution",
+      "default": false
+    },
+    "memory_limit": {
+      "type": "integer",
+      "description": "Maximum number of memory entries to keep",
+      "minimum": 10,
+      "default": 1000
+    },
+    "team_defaults": {
+      "type": "object",
+      "description": "Default settings for teams",
+      "properties": {
+        "coordination": {
+          "type": "string",
+          "enum": ["parallel", "sequential", "adaptive"],
+          "default": "parallel"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Default timeout in milliseconds",
+          "default": 300000
+        }
+      }
+    }
+  }
+}

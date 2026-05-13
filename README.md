@@ -114,6 +114,53 @@ opencode run "请 @code-guardian 审查这段代码"
 
 ## Configuration
 
+Hera can be configured via `~/.config/opencode/hera.json`:
+
+```bash
+# Initialize default config
+opencode --agent hera run "hera_init_config"
+
+# Or manually create hera.json
+```
+
+### Configuration Options
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
+  "default_model": "cherry/GLM-5",
+  "disabled_agents": [],
+  "disabled_skills": [],
+  "disabled_tools": [],
+  "agent_overrides": {
+    "architect": {
+      "model": "cherry/glm-5.1",
+      "temperature": 0.3,
+      "maxSteps": 50
+    }
+  },
+  "templates": {
+    "custom-analyst": {
+      "label": "Data Analyst",
+      "description": "Analyzes data and generates insights",
+      "defaultMode": "subagent",
+      "defaultSkills": ["caveman", "init", "memory", "evolution"],
+      "prompt": "You are a data analyst..."
+    }
+  },
+  "auto_evolve": false,
+  "memory_limit": 1000,
+  "team_defaults": {
+    "coordination": "parallel",
+    "timeout": 300000
+  }
+}
+```
+
+### Legacy Configuration (opencode.json)
+
+You can also configure via plugin options in `opencode.json`:
+
 ```json
 {
   "plugin": [
@@ -126,6 +173,8 @@ opencode run "请 @code-guardian 审查这段代码"
   ]
 }
 ```
+
+**Note**: `hera.json` takes precedence over `opencode.json` plugin options.
 
 ## Architecture
 
