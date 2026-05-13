@@ -1,0 +1,26 @@
+FROM oven/bun:1.1-alpine
+
+# Install git and other dependencies
+RUN apk add --no-cache git nodejs npm
+
+# Create test user
+RUN adduser -D testuser
+USER testuser
+WORKDIR /home/testuser
+
+# Set up OpenCode config directory
+RUN mkdir -p /home/testuser/.config/opencode
+
+# Copy hera-agent source
+COPY --chown=testuser:testuser . /home/testuser/hera-agent
+
+WORKDIR /home/testuser/hera-agent
+
+# Install dependencies and build
+RUN bun install && bun run build
+
+# Create a minimal opencode.json for testing
+RUN echo '{"plugin": ["hera-agent"]}' > /home/testuser/.config/opencode/opencode.json
+
+# Test script will be run as CMD
+CMD ["/bin/sh"]

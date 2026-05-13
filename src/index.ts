@@ -27,8 +27,9 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     // hera.json doesn't exist, create it automatically
     try {
       const { writeFile } = await import("node:fs/promises");
+      // Use relative path for schema to avoid network dependency in internal networks
       const defaultConfig = {
-        "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
+        "$schema": "./hera.schema.json",
         "disabled_agents": [],
         "disabled_skills": [],
         "disabled_tools": [],
