@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { PluginContext, AgentDefinition, AgentTemplateName } from "../types.js";
 import { createAgentFromTemplate, AGENT_TEMPLATES } from "../agents/hera.js";
 
@@ -517,46 +518,6 @@ export function createAllTools(ctx: PluginContext) {
           `**Skill List**: ${skills.map(s => s.name).join(", ")}`,
           `**Team List**: ${teams.map(t => t.name).join(", ") || "none"}`,
         ].join("\n");
-      },
-    }),
-
-    hera_init_config: tool({
-      description: "Initialize hera.json configuration file in ~/.config/opencode/",
-      args: {
-        overwrite: z.boolean().optional().describe("Overwrite existing config file"),
-      },
-      async execute(args) {
-        const { writeFile, readFile } = await import("node:fs/promises");
-        const configPath = join(ctx.paths.configRoot, "hera.json");
-
-        // Check if file exists
-        try {
-          await readFile(configPath, "utf-8");
-          if (!args.overwrite) {
-            return `Config file already exists at ${configPath}. Use overwrite=true to replace it.`;
-          }
-        } catch {
-          // File doesn't exist, proceed
-        }
-
-        const defaultConfig = {
-          "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
-          "default_model": config.default_model ?? "cherry/GLM-5",
-          "disabled_agents": [],
-          "disabled_skills": [],
-          "disabled_tools": [],
-          "agent_overrides": {},
-          "templates": {},
-          "auto_evolve": false,
-          "memory_limit": 1000,
-          "team_defaults": {
-            "coordination": "parallel",
-            "timeout": 300000
-          }
-        };
-
-        await writeFile(configPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
-        return `Created hera.json at ${configPath}. Edit this file to customize Hera configuration.`;
       },
     }),
   };

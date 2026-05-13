@@ -36,6 +36,8 @@ Then verify `opencode.json` contains:
 }
 ```
 
+**That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
+
 ## Quick Start
 
 ```bash
@@ -114,14 +116,7 @@ opencode run "请 @code-guardian 审查这段代码"
 
 ## Configuration
 
-Hera can be configured via `~/.config/opencode/hera.json`:
-
-```bash
-# Initialize default config
-opencode --agent hera run "hera_init_config"
-
-# Or manually create hera.json
-```
+Hera automatically creates `~/.config/opencode/hera.json` on first load. Edit it to customize:
 
 ### Configuration Options
 
