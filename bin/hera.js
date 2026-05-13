@@ -36,6 +36,39 @@ Verify:
 `);
     break;
 
+  case "update":
+  case "upgrade":
+    console.log(`
+Hera Agent Factory — Update
+
+Update from npm:
+  cd ~/.config/opencode
+  bun update hera-agent
+
+  Or force reinstall latest:
+  bun remove hera-agent && bun add hera-agent@latest
+
+Update from local source:
+  1. cd /path/to/hera-agent
+  2. git pull origin master (if from git)
+  3. bun install && bun run build
+  4. cd ~/.config/opencode
+  5. bun remove hera-agent
+  6. bun add file:///path/to/hera-agent
+
+Check current version:
+  hera version
+
+Check latest version:
+  npm view hera-agent version
+
+After update:
+  1. Restart OpenCode
+  2. Verify: opencode --agent hera
+  3. Check: hera version
+`);
+    break;
+
   case "uninstall":
     console.log(`
 Hera Agent Factory — Uninstall
@@ -66,6 +99,7 @@ Hera Agent Factory v2.0.0
 
 Commands:
   hera install     Show installation instructions
+  hera update      Show update/upgrade instructions
   hera uninstall   Show uninstall instructions
   hera list        Show registered agents and teams
   hera version     Show version

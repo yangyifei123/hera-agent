@@ -102,6 +102,52 @@ opencode --agent hera
 
 **That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
 
+## 🔄 Update / Upgrade
+
+### Update from npm
+
+```bash
+# Quick update
+cd ~/.config/opencode
+bun update hera-agent
+
+# Or force reinstall latest
+bun remove hera-agent && bun add hera-agent@latest
+```
+
+### Update from local source
+
+```bash
+# 1. Update source
+cd /path/to/hera-agent
+git pull origin master  # if from git
+# or extract new ZIP
+
+# 2. Rebuild
+bun install
+bun run build
+
+# 3. Reinstall
+cd ~/.config/opencode
+bun remove hera-agent
+bun add file:///path/to/hera-agent
+```
+
+### Check versions
+
+```bash
+# Current installed version
+hera version
+
+# Latest available version
+npm view hera-agent version
+
+# Or use CLI helper
+hera update
+```
+
+**After update**: Restart OpenCode to load the new version.
+
 ## 🗑️ Uninstallation
 
 ### Complete Uninstall
