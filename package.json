@@ -18,8 +18,22 @@
   "scripts": {
     "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
     "postinstall": "node postinstall.mjs",
-    "dev": "bun run --watch src/index.ts"
+    "dev": "bun run --watch src/index.ts",
+    "test": "echo 'See TEST_REPORT.md for comprehensive test results'"
   },
+  "keywords": [
+    "opencode",
+    "agent",
+    "ai",
+    "llm",
+    "agent-factory",
+    "multi-agent",
+    "team-collaboration",
+    "self-evolution",
+    "memory",
+    "skills"
+  ],
+  "author": "Yang Yifei",
   "dependencies": {
     "@opencode-ai/plugin": "^1.4.6"
   },
@@ -30,11 +44,21 @@
   "files": [
     "dist",
     "bin",
-    "postinstall.mjs"
+    "postinstall.mjs",
+    "hera.schema.json",
+    "hera.example.json"
   ],
   "repository": {
     "type": "git",
     "url": "https://github.com/yangyifei123/hera-agent.git"
   },
-  "license": "MIT"
+  "bugs": {
+    "url": "https://github.com/yangyifei123/hera-agent/issues"
+  },
+  "homepage": "https://github.com/yangyifei123/hera-agent#readme",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  }
 }
