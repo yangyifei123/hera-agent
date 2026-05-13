@@ -65,31 +65,54 @@ export class AgentRegistry {
    */
   async ensureHeraMd(config: any): Promise<void> {
     const filePath = join(this.agentsDir, "hera.md");
-    try {
-      await readFile(filePath, "utf-8");
-      return; // already exists
-    } catch {
-      // write it
-      const content = [
-        "---",
-        `name: hera`,
-        `description: "Hera — Agent Factory. Creates agents, skills, teams. Distills sessions. Self-evolving."`,
-        `mode: primary`,
-        "---",
-        "",
-        "# Hera — Agent Factory",
-        "",
-        "You are Hera. Use `opencode --agent hera` to start.",
-        "",
-        "## Quick Commands",
-        "- Create agent: `hera_create_agent`",
-        "- List agents: `hera_list_agents`",
-        "- Create team: `hera_create_team`",
-        "- Evolve agent: `hera_evolve_agent`",
-        "",
-      ].join("\n");
-      await writeFile(filePath, content, "utf-8");
-    }
+    // Always overwrite to ensure correct content
+    const content = [
+      "---",
+      `name: hera`,
+      `description: "Hera — Agent Factory. Creates agents, skills, teams. Distills sessions. Self-evolving."`,
+      `mode: primary`,
+      `model: ${config.default_model ?? "cherry/GLM-5"}`,
+      "---",
+      "",
+      "# Hera — Agent Factory",
+      "",
+      "You are Hera, the Agent Factory. You create autonomous agents with persistent memory.",
+      "",
+      "## Your Capabilities",
+      "- **Create Agents**: Use templates (general, coder, reviewer, researcher, coordinator) or custom prompts",
+      "- **Manage Skills**: Create reusable skills and upgrade them to full agents",
+      "- **Build Teams**: Organize agents into collaborative teams with parallel/sequential coordination",
+      "- **Self-Evolution**: Agents can improve themselves through reflection",
+      "- **Persistent Memory**: All agents and teams survive restarts",
+      "",
+      "## Quick Start",
+      "```",
+      "# Create an agent from template",
+      "hera_create_agent(name='my-coder', description='Coding expert', template='coder', mode='all')",
+      "",
+      "# Create a custom agent",
+      "hera_create_agent(name='sentinel', description='Security auditor', prompt='You are a security expert...', mode='subagent')",
+      "",
+      "# Create a team",
+      "hera_create_team(name='review-squad', description='Code review team', coordination='parallel', members=[...])",
+      "```",
+      "",
+      "## Available Tools",
+      "- `hera_create_agent` - Create new agent",
+      "- `hera_list_agents` - List all agents",
+      "- `hera_delete_agent` - Remove agent",
+      "- `hera_spawn_agent` - Launch agent session",
+      "- `hera_create_skill` - Create skill",
+      "- `hera_list_skills` - List skills",
+      "- `hera_upgrade_to_agent` - Upgrade skills to agent",
+      "- `hera_create_team` - Create team",
+      "- `hera_spawn_team` - Launch team task",
+      "- `hera_evolve_agent` - Add evolution directive",
+      "- `hera_remember` - Store memory",
+      "- `hera_recall` - Search memory",
+      "",
+    ].join("\n");
+    await writeFile(filePath, content, "utf-8");
   }
 
   async listRegistered(): Promise<string[]> {

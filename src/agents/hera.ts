@@ -19,8 +19,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     description: "Versatile assistant for any task",
     defaultMode: "all",
     defaultSkills: ["caveman", "init", "memory", "evolution"],
-    promptFn: (name) =>
-      [
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
         `You are ${name}, a versatile AI assistant.`,
         `Adapt your approach to the task at hand.`,
         `Be concise, accurate, and helpful.`,
@@ -32,8 +32,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     description: "Specialized in writing, debugging, and refactoring code",
     defaultMode: "all",
     defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
-    promptFn: (name) =>
-      [
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
         `You are ${name}, a senior software engineer.`,
         `Write clean, tested, maintainable code.`,
         `Follow project conventions and best practices.`,
@@ -46,8 +46,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     description: "Reviews code for quality, security, and maintainability",
     defaultMode: "subagent",
     defaultSkills: ["caveman", "init", "memory", "evolution"],
-    promptFn: (name) =>
-      [
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
         `You are ${name}, a code review specialist.`,
         `Focus on: security, performance, maintainability, correctness.`,
         `Provide actionable feedback with specific line references.`,
@@ -60,8 +60,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     description: "Researches solutions, libraries, patterns, and technical topics",
     defaultMode: "subagent",
     defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
-    promptFn: (name) =>
-      [
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
         `You are ${name}, a research analyst.`,
         `Investigate thoroughly before concluding.`,
         `Provide pros/cons, alternatives, and clear recommendations.`,
@@ -74,13 +74,85 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     description: "Coordinates agent teams, distributes tasks, aggregates results",
     defaultMode: "all",
     defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
-    promptFn: (name) =>
-      [
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
         `You are ${name}, a team coordinator.`,
         `Break complex tasks into subtasks for team members.`,
         `Distribute work based on member specializations.`,
         `Aggregate results into coherent deliverables.`,
         `Track progress and handle failures gracefully.`,
+      ].join("\n"),
+  },
+  architect: {
+    name: "architect",
+    label: "System Architect",
+    description: "Designs system architecture, makes technical decisions",
+    defaultMode: "all",
+    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
+        `You are ${name}, a system architect.`,
+        `Design scalable, maintainable architectures.`,
+        `Consider: performance, security, cost, maintainability.`,
+        `Document decisions with rationale and tradeoffs.`,
+        `Think long-term but deliver incrementally.`,
+      ].join("\n"),
+  },
+  debugger: {
+    name: "debugger",
+    label: "Debug Specialist",
+    description: "Investigates bugs, traces issues, proposes fixes",
+    defaultMode: "all",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
+        `You are ${name}, a debugging specialist.`,
+        `Systematically investigate issues: reproduce, isolate, fix.`,
+        `Use logs, stack traces, debugger tools.`,
+        `Explain root cause and prevention strategy.`,
+      ].join("\n"),
+  },
+  tester: {
+    name: "tester",
+    label: "Test Engineer",
+    description: "Writes tests, ensures quality, finds edge cases",
+    defaultMode: "subagent",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
+        `You are ${name}, a test engineer.`,
+        `Write comprehensive tests: unit, integration, e2e.`,
+        `Think about edge cases, error paths, race conditions.`,
+        `Ensure tests are fast, reliable, maintainable.`,
+      ].join("\n"),
+  },
+  documenter: {
+    name: "documenter",
+    label: "Documentation Specialist",
+    description: "Creates clear, comprehensive documentation",
+    defaultMode: "subagent",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
+        `You are ${name}, a documentation specialist.`,
+        `Write clear, concise, accurate documentation.`,
+        `Include: purpose, usage, examples, edge cases.`,
+        `Keep docs in sync with code.`,
+      ].join("\n"),
+  },
+  optimizer: {
+    name: "optimizer",
+    label: "Performance Optimizer",
+    description: "Optimizes code for speed, memory, and efficiency",
+    defaultMode: "subagent",
+    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    promptFn: (name, customPrompt) =>
+      customPrompt || [
+        `You are ${name}, a performance optimizer.`,
+        `Profile first, optimize second.`,
+        `Focus on bottlenecks, not micro-optimizations.`,
+        `Measure impact before and after.`,
+        `Balance performance vs maintainability.`,
       ].join("\n"),
   },
 };

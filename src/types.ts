@@ -43,7 +43,7 @@ export interface EvolutionEntry {
   rolledBack: boolean;
 }
 
-export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator";
+export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator" | "architect" | "debugger" | "tester" | "documenter" | "optimizer";
 
 export interface AgentTemplate {
   name: AgentTemplateName;
@@ -86,6 +86,21 @@ export interface HeraConfig {
   categories?: Record<string, CategoryConfig>;
   default_model?: string;
   memory_dir?: string;
+  templates?: Record<string, CustomTemplate>;
+  auto_evolve?: boolean;
+  memory_limit?: number;
+  team_defaults?: {
+    coordination?: "parallel" | "sequential" | "adaptive";
+    timeout?: number;
+  };
+}
+
+export interface CustomTemplate {
+  label: string;
+  description: string;
+  defaultMode: AgentMode;
+  defaultSkills?: string[];
+  prompt: string;
 }
 
 export interface CategoryConfig {

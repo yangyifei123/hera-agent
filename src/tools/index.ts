@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { PluginContext, AgentDefinition, AgentTemplateName } from "../types.js";
 import { createAgentFromTemplate, AGENT_TEMPLATES } from "../agents/hera.js";
 
@@ -20,7 +21,7 @@ export function createAllTools(ctx: PluginContext) {
         mode: z.enum(["primary", "subagent", "all"]).describe("Agent mode"),
         model: z.string().optional().describe("Model override"),
         skills: z.array(z.string()).optional().describe("Additional skills to embed"),
-        template: z.enum(["general", "coder", "reviewer", "researcher", "coordinator"]).optional().describe("Agent template to use"),
+        template: z.enum(["general", "coder", "reviewer", "researcher", "coordinator", "architect", "debugger", "tester", "documenter", "optimizer"]).optional().describe("Agent template to use"),
         max_steps: z.number().optional().describe("Maximum agentic steps"),
       },
       async execute(args) {
@@ -406,6 +407,116 @@ export function createAllTools(ctx: PluginContext) {
           `Summary: ${result.summary}`,
           `Decisions: ${result.keyDecisions.join("; ")}`,
           `Patterns: ${result.patternsLearned.join(", ")}`,
+        ].join("\n");
+      },
+    }),
+
+    // === Management Tools ===
+
+    hera_verify_agent: tool({
+      description: "Verify that an agent is properly registered and accessible.",
+      args: {
+        name: z.string().describe("Agent name to verify"),
+      },
+      async execute(args) {
+        const def = registeredAgents.get(args.name);
+        if (!def) return `❌ Agent "${args.name}" not found in registry.`;
+
+        const diskAgents = await agentRegistry.listRegistered();
+        const onDisk = diskAgents.includes(args.name);
+
+        const lines = [
+          `✅ Agent "${args.name}" verified.`,
+          ``,
+          `**Status**: ${onDisk ? "Persisted to disk" : "Session-only (not persisted)"}`,
+          `**Mode**: ${def.mode}`,
+          `**Template**: ${def.template ?? "custom"}`,
+          `**Skills**: ${def.skills.join(", ")}`,
+          `**Model**: ${def.model ?? "default"}`,
+          `**Created**: ${def.createdAt ? new Date(def.createdAt).toISOString() : "unknown"}`,
+        ];
+
+        if (def.evolutionLog && def.evolutionLog.length > 0) {
+          const active = def.evolutionLog.filter(e => !e.rolledBack);
+          lines.push(`**Evolutions**: ${active.length} active`);
+        }
+
+        if (onDisk) {
+          const filePath = `~/.config/opencode/agents/hera/${args.name}.md`;
+          lines.push(`**File**: ${filePath}`);
+        }
+
+        return lines.join("\n");
+      },
+    }),
+
+    hera_export_agent: tool({
+      description: "Export agent definition as JSON for backup or sharing.",
+      args: {
+        name: z.string().describe("Agent name to export"),
+      },
+      async execute(args) {
+        const def = registeredAgents.get(args.name);
+        if (!def) return `Error: Agent "${args.name}" not found.`;
+
+        return JSON.stringify(def, null, 2);
+      },
+    }),
+
+    hera_import_agent: tool({
+      description: "Import agent from JSON definition.",
+      args: {
+        json: z.string().describe("JSON agent definition"),
+      },
+      async execute(args) {
+        try {
+          const def = JSON.parse(args.json) as AgentDefinition;
+          if (!def.name || !def.description || !def.mode || !def.prompt) {
+            return "Error: Invalid agent definition. Missing required fields.";
+          }
+
+          registeredAgents.set(def.name, def);
+          const skillsMap = skillManager.getSkillMap();
+          const { fileWritten } = await agentRegistry.register(def, skillsMap);
+
+          await store.save({
+            id: `agent-${def.name}`,
+            type: "agent",
+            content: JSON.stringify(def),
+            timestamp: Date.now(),
+            metadata: { imported: true },
+          });
+
+          return `Agent "${def.name}" imported successfully. Persisted to ${fileWritten}.`;
+        } catch (err: any) {
+          return `Error importing agent: ${err?.message ?? String(err)}`;
+        }
+      },
+    }),
+
+    hera_status: tool({
+      description: "Show Hera system status: agents, skills, teams, memory usage.",
+      args: {},
+      async execute() {
+        const agents = Array.from(registeredAgents.keys());
+        const skills = skillManager.getAllSkills();
+        const teams = teamManager.getAllTeams();
+        const memories = await store.list("agent");
+
+        const diskAgents = await agentRegistry.listRegistered();
+        const persistedCount = agents.filter(a => diskAgents.includes(a)).length;
+
+        return [
+          `# Hera System Status`,
+          ``,
+          `**Agents**: ${agents.length} total (${persistedCount} persisted, ${agents.length - persistedCount} session-only)`,
+          `**Skills**: ${skills.length} (${skills.filter(s => s.category === "builtin").length} builtin, ${skills.filter(s => s.category === "user").length} user)`,
+          `**Teams**: ${teams.length}`,
+          `**Memory Entries**: ${memories.length}`,
+          ``,
+          `**Agent List**: ${agents.join(", ") || "none"}`,
+          `**Skill List**: ${skills.map(s => s.name).join(", ")}`,
+          `**Team List**: ${teams.map(t => t.name).join(", ") || "none"}`,
         ].join("\n");
       },
     }),

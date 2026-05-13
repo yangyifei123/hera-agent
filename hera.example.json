@@ -1,0 +1,33 @@
+{
+  "$schema": "./hera.schema.json",
+  "default_model": "cherry/GLM-5",
+  "disabled_agents": [],
+  "disabled_skills": [],
+  "disabled_tools": [],
+  "agent_overrides": {
+    "architect": {
+      "model": "cherry/glm-5.1",
+      "temperature": 0.3,
+      "maxSteps": 50
+    },
+    "senior-dev": {
+      "model": "cherry/glm-5.1",
+      "prompt_append": "\n\nAlways write comprehensive tests for new features."
+    }
+  },
+  "templates": {
+    "custom-analyst": {
+      "label": "Data Analyst",
+      "description": "Analyzes data and generates insights",
+      "defaultMode": "subagent",
+      "defaultSkills": ["caveman", "init", "memory", "evolution"],
+      "prompt": "You are a data analyst. Analyze data, identify patterns, generate insights. Focus on: statistical analysis, data visualization, trend identification, actionable recommendations."
+    }
+  },
+  "auto_evolve": false,
+  "memory_limit": 1000,
+  "team_defaults": {
+    "coordination": "parallel",
+    "timeout": 300000
+  }
+}
