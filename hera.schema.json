@@ -6,8 +6,7 @@
   "properties": {
     "default_model": {
       "type": "string",
-      "description": "Default model for all agents",
-      "default": "cherry/GLM-5"
+      "description": "Default model for all agents (optional, inherits from OpenCode config if not set)"
     },
     "disabled_agents": {
       "type": "array",

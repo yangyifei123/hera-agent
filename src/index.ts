@@ -29,7 +29,6 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       const { writeFile } = await import("node:fs/promises");
       const defaultConfig = {
         "$schema": "https://raw.githubusercontent.com/yangyifei123/hera-agent/master/hera.schema.json",
-        "default_model": config.default_model ?? "cherry/GLM-5",
         "disabled_agents": [],
         "disabled_skills": [],
         "disabled_tools": [],
@@ -111,7 +110,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const hooks: Hooks = {
     async config(input: Config) {
-      const model = config.default_model ?? input.model ?? "cherry/GLM-5";
+      const model = config.default_model ?? input.model;
       const skills = skillManager.getAllSkills();
 
       // Inject Hera itself

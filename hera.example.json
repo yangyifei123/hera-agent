@@ -1,20 +1,9 @@
 {
   "$schema": "./hera.schema.json",
-  "default_model": "cherry/GLM-5",
   "disabled_agents": [],
   "disabled_skills": [],
   "disabled_tools": [],
-  "agent_overrides": {
-    "architect": {
-      "model": "cherry/glm-5.1",
-      "temperature": 0.3,
-      "maxSteps": 50
-    },
-    "senior-dev": {
-      "model": "cherry/glm-5.1",
-      "prompt_append": "\n\nAlways write comprehensive tests for new features."
-    }
-  },
+  "agent_overrides": {},
   "templates": {
     "custom-analyst": {
       "label": "Data Analyst",

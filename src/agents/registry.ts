@@ -66,12 +66,13 @@ export class AgentRegistry {
   async ensureHeraMd(config: any): Promise<void> {
     const filePath = join(this.agentsDir, "hera.md");
     // Always overwrite to ensure correct content
+    const modelLine = config.default_model ? `model: ${config.default_model}` : "";
     const content = [
       "---",
       `name: hera`,
       `description: "Hera — Agent Factory. Creates agents, skills, teams. Distills sessions. Self-evolving."`,
       `mode: primary`,
-      `model: ${config.default_model ?? "cherry/GLM-5"}`,
+      modelLine,
       "---",
       "",
       "# Hera — Agent Factory",
