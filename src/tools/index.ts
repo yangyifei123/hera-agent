@@ -1,5 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { PluginContext, AgentDefinition, AgentTemplateName } from "../types.js";
 import { createAgentFromTemplate, AGENT_TEMPLATES } from "../agents/hera.js";
 
