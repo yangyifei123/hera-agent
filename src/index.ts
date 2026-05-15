@@ -8,6 +8,11 @@ import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
 import { join } from "node:path";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
+import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS } from "./constants.js";
+import { heraLog } from "./logger.js";
+import { extractMemories } from "./memory/smart-extractor.js";
+import { randomUUID } from "node:crypto";
+import { isFirstRun, runOnboarding } from "./onboarding.js";
 
 const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
   const { client, project, directory } = input;
@@ -36,16 +41,17 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         "agent_overrides": {},
         "templates": {},
         "auto_evolve": false,
-        "memory_limit": 1000,
+        "auto_memory": false,
+        "memory_limit": DEFAULT_MEMORY_LIMIT,
         "team_defaults": {
           "coordination": "parallel",
-          "timeout": 300000
+          "timeout": DEFAULT_TEAM_TIMEOUT_MS
         }
       };
       await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
-      console.log(`[Hera] Created config file: ${heraConfigPath}`);
+      heraLog("info", `Created config file: ${heraConfigPath}`);
     } catch (err) {
-      console.warn(`[Hera] Could not create config file: ${err}`);
+      heraLog("warn", `Could not create config file`, err);
     }
   }
 
@@ -73,6 +79,11 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);
 
+  // First-run onboarding: create default agents and team
+  if (isFirstRun(paths)) {
+    await runOnboarding(paths, agentRegistry, teamManager, store, skillManager);
+  }
+
   const registeredAgents = new Map<string, AgentDefinition>();
 
   // Load persisted agents from disk
@@ -91,7 +102,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         registeredAgents.set(agent.name, agent);
       }
     } catch {
-      // skip
+      heraLog("debug", `Failed to parse stored agent definition`);
     }
   }
 
@@ -105,6 +116,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     client,
     config,
     paths,
+    autoEvolve: config.auto_evolve === true,
   };
 
   const tools = createAllTools(ctx);
@@ -179,6 +191,33 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
     async "experimental.session.compacting"(input, output) {
       output.context.push("Hera Session Context: Distill key decisions, patterns, and skills before compaction. Recall relevant memories.");
+      if (ctx.autoEvolve) {
+        output.context.push("Reflect on this session's failures and propose evolution directives if needed. Use hera_evolve_agent to suggest improvements. If you encountered failures, describe them and I'll propose evolution directives via hera_propose_evolution.");
+      }
+
+      // Auto-memory extraction
+      if (config.auto_memory === true) {
+        try {
+          const messages = (input as any).messages as Array<{ role: string; content: string }> | undefined;
+          if (messages && messages.length > 0) {
+            const extracted = extractMemories(messages);
+            for (const memory of extracted) {
+              await store.save({
+                id: `auto-${memory.category}-${randomUUID().slice(0, 8)}`,
+                type: memory.category,
+                content: memory.content,
+                timestamp: Date.now(),
+                metadata: { source: "auto-memory", confidence: memory.confidence },
+              });
+            }
+            if (extracted.length > 0) {
+              heraLog("debug", `Auto-memory: extracted ${extracted.length} memories from session compaction`);
+            }
+          }
+        } catch (err) {
+          heraLog("debug", "Auto-memory extraction failed during compaction", err);
+        }
+      }
     },
   };
 

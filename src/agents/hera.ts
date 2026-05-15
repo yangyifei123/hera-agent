@@ -7,6 +7,12 @@ import type {
   AgentTemplate,
   EvolutionEntry,
 } from "../types.js";
+import {
+  DEFAULT_HERA_MAX_STEPS,
+  DEFAULT_CHILD_MAX_STEPS,
+  DEFAULT_SKILLS,
+} from "../constants.js";
+import { getDefaultPermission } from "../helpers.js";
 import { getCavemanPrompt } from "../skills/caveman.js";
 import { getInitPrompt } from "../skills/init.js";
 import { getMemoryPrompt } from "../skills/memory.js";
@@ -18,7 +24,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "General Assistant",
     description: "Versatile assistant for any task",
     defaultMode: "all",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a versatile AI assistant.`,
@@ -31,7 +37,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Coding Expert",
     description: "Specialized in writing, debugging, and refactoring code",
     defaultMode: "all",
-    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a senior software engineer.`,
@@ -45,7 +51,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Code Reviewer",
     description: "Reviews code for quality, security, and maintainability",
     defaultMode: "subagent",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a code review specialist.`,
@@ -59,7 +65,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Research Analyst",
     description: "Researches solutions, libraries, patterns, and technical topics",
     defaultMode: "subagent",
-    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a research analyst.`,
@@ -73,7 +79,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Team Coordinator",
     description: "Coordinates agent teams, distributes tasks, aggregates results",
     defaultMode: "all",
-    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a team coordinator.`,
@@ -88,7 +94,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "System Architect",
     description: "Designs system architecture, makes technical decisions",
     defaultMode: "all",
-    defaultSkills: ["caveman", "init", "memory", "evolution", "skill-combo"],
+    defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a system architect.`,
@@ -103,7 +109,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Debug Specialist",
     description: "Investigates bugs, traces issues, proposes fixes",
     defaultMode: "all",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a debugging specialist.`,
@@ -117,7 +123,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Test Engineer",
     description: "Writes tests, ensures quality, finds edge cases",
     defaultMode: "subagent",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a test engineer.`,
@@ -131,7 +137,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Documentation Specialist",
     description: "Creates clear, comprehensive documentation",
     defaultMode: "subagent",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a documentation specialist.`,
@@ -145,7 +151,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     label: "Performance Optimizer",
     description: "Optimizes code for speed, memory, and efficiency",
     defaultMode: "subagent",
-    defaultSkills: ["caveman", "init", "memory", "evolution"],
+    defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
       customPrompt || [
         `You are ${name}, a performance optimizer.`,
@@ -226,12 +232,8 @@ export function createHeraAgent(
     prompt,
     model,
     temperature: 0.3,
-    maxSteps: 50,
-    permission: {
-      edit: "allow",
-      bash: "allow",
-      webfetch: "allow",
-    },
+    maxSteps: DEFAULT_HERA_MAX_STEPS,
+    permission: { ...DEFAULT_PERMISSION },
   };
 }
 
@@ -248,12 +250,8 @@ export function createChildAgentConfig(
     prompt,
     model,
     temperature: 0.3,
-    maxSteps: 30,
-    permission: {
-      edit: "allow",
-      bash: "allow",
-      webfetch: "allow",
-    },
+    maxSteps: DEFAULT_CHILD_MAX_STEPS,
+    permission: { ...DEFAULT_PERMISSION },
   };
 }
 
@@ -287,7 +285,7 @@ export function buildAgentPrompt(
 
   // Embed additional user skills
   for (const skill of resolvedSkills) {
-    if (["caveman", "init", "memory", "evolution"].includes(skill.name)) continue;
+    if ((DEFAULT_SKILLS as readonly string[]).includes(skill.name)) continue;
     sections.push(`## Skill: ${skill.name}`);
     sections.push(skill.prompt);
     sections.push("");

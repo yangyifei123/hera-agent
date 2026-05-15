@@ -7,6 +7,8 @@ import type {
   EvolutionEntry,
 } from "../types.js";
 import { buildAgentPrompt } from "./hera.js";
+import { getDefaultSkills, getDefaultPermission } from "../helpers.js";
+import { heraLog } from "../logger.js";
 
 export class AgentRegistry {
   private agentsDir: string;
@@ -40,11 +42,7 @@ export class AgentRegistry {
       prompt: fullPrompt,
       temperature: 0.3,
       maxSteps: def.maxSteps ?? 30,
-      permission: {
-        edit: "allow" as const,
-        bash: "allow" as const,
-        webfetch: "allow" as const,
-      },
+      permission: getDefaultPermission(),
     };
     if (def.model) config.model = def.model;
 
@@ -55,7 +53,8 @@ export class AgentRegistry {
     try {
       await unlink(join(this.agentsDir, `${name}.md`));
       return true;
-    } catch {
+    } catch (err) {
+      heraLog("debug", `Failed to unregister agent: ${name}`, err);
       return false;
     }
   }
@@ -120,7 +119,8 @@ export class AgentRegistry {
     try {
       const files = await readdir(this.agentsDir);
       return files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, ""));
-    } catch {
+    } catch (err) {
+      heraLog("debug", `Failed to list registered agents in ${this.agentsDir}`, err);
       return [];
     }
   }
@@ -129,7 +129,8 @@ export class AgentRegistry {
     try {
       const content = await readFile(join(this.agentsDir, `${name}.md`), "utf-8");
       return this.parseMarkdownAgent(content);
-    } catch {
+    } catch (err) {
+      heraLog("debug", `Failed to read definition for agent: ${name}`, err);
       return null;
     }
   }
@@ -171,7 +172,7 @@ export class AgentRegistry {
         description: "",
         mode: "subagent",
         prompt: content,
-        skills: ["caveman", "init", "memory", "evolution"],
+        skills: getDefaultSkills(),
       };
     }
 
@@ -187,8 +188,8 @@ export class AgentRegistry {
       mode: (get("mode") as AgentMode) ?? "subagent",
       prompt: body.trim(),
       model: get("model"),
-      skills: ["caveman", "init", "memory", "evolution"],
-      maxSteps: get("maxSteps") ? parseInt(get("maxSteps")!) : 30,
+        skills: getDefaultSkills(),
+        maxSteps: get("maxSteps") ? parseInt(get("maxSteps")!) : 30,
       template: get("template") as any,
       createdAt: get("createdAt") ? parseInt(get("createdAt")!) : undefined,
       evolvedAt: get("evolvedAt") ? parseInt(get("evolvedAt")!) : undefined,

@@ -19,18 +19,50 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 - **Persistent Memory** — JSON-based memory that survives restarts
 - **25+ Management Tools** — Complete agent/skill/team lifecycle management
 - **Session Distillation** — Extract structured knowledge from conversations
+- **Auto-Memory** — Automatically extract insights from sessions
+- **Semi-Auto Evolution** — Proposes improvements based on session analysis
+- **Soft Delete + Backup** — Safe agent deletion with restore capability
+- **Functional CLI** — Command-line interface for all operations
+- **First-Run Onboarding** — Automatic setup with default agents and teams
 
 ## 📦 Installation
 
-### Method 1: From npm (Recommended)
+### Windows Installation
+
+```powershell
+# 1. Install Bun (if not already installed)
+powershell -c "irm bun.sh/install.ps1 | iex"
+
+# 2. Navigate to OpenCode config directory
+Set-Location "$env:USERPROFILE\.config\opencode"
+
+# 3. Install hera-agent
+bun add hera-agent
+
+# 4. Verify installation
+Get-Content "$env:USERPROFILE\.config\opencode\opencode.json" | Select-String "hera-agent"
+
+# 5. Test
+opencode agent list | Select-String "hera"
+```
+
+### Linux/macOS Installation
 
 ```bash
-# Using OpenCode plugin command
-opencode plugin hera-agent --global -f
+# 1. Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
 
-# Or manually with bun
+# 2. Navigate to OpenCode config directory
 cd ~/.config/opencode
+
+# 3. Install hera-agent
 bun add hera-agent
+
+# 4. Verify installation
+cat ~/.config/opencode/opencode.json | grep hera-agent
+
+# 5. Test
+opencode agent list | grep hera
 ```
 
 ### Method 2: From GitHub Release (ZIP)
@@ -87,7 +119,21 @@ After installation, verify `opencode.json` contains:
 }
 ```
 
-Then test:
+Then run the built-in diagnostic:
+
+```bash
+# Quick health check
+hera doctor
+
+# Should output:
+# ✓ opencode.json found
+# ✓ hera-agent in plugin list
+# ✓ dist/index.js exists
+# ✓ hera.json configured
+# ✓ All systems operational
+```
+
+Or test manually:
 
 ```bash
 # Check if Hera is loaded
@@ -101,6 +147,15 @@ opencode --agent hera
 ```
 
 **That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
+
+### Troubleshooting Installation
+
+| Problem | Solution |
+|---------|----------|
+| **Windows: PowerShell path issues** | Use `cmd /c` workaround: `cmd /c "cd %USERPROFILE%\.config\opencode && bun add hera-agent"` |
+| **Linux: Permission denied** | `chmod -R 755 ~/.config/opencode/node_modules/hera-agent/` |
+| **Bun not installed** | Windows: `powershell -c "irm bun.sh/install.ps1 \| iex"` · Linux/macOS: `curl -fsSL https://bun.sh/install \| bash` |
+| **General diagnosis** | Run `hera doctor` for automatic health check |
 
 ## 🔄 Update / Upgrade
 
@@ -246,11 +301,13 @@ cat hello.js && node hello.js
 ### Agent Management
 - `hera_create_agent` — Create agent (optionally from template)
 - `hera_list_agents` — List all created agents
-- `hera_delete_agent` — Remove an agent
+- `hera_delete_agent` — Remove an agent (with backup)
+- `hera_restore_agent` — Restore agent from backup
 - `hera_spawn_agent` — Spawn agent as real OpenCode session
 - `hera_verify_agent` — Verify agent registration
 - `hera_export_agent` — Export agent as JSON
 - `hera_import_agent` — Import agent from JSON
+- `hera_quickstart` — Guided wizard for first-time setup
 
 ### Skill Management
 - `hera_create_skill` — Create a reusable skill
@@ -264,6 +321,7 @@ cat hello.js && node hello.js
 - `hera_delete_team` — Remove a team
 - `hera_spawn_team` — Launch team task
 - `hera_team_message` — Send message between team members
+- `hera_quick_team` — Create team from template
 
 ### Memory & Evolution
 - `hera_remember` — Store information in persistent memory
@@ -275,6 +333,7 @@ cat hello.js && node hello.js
 
 ### System Management
 - `hera_status` — Show system status (agents, skills, teams, memory)
+- `hera_onboard` — Re-run onboarding manually
 
 ## Configuration
 
@@ -331,13 +390,49 @@ You can also configure via plugin options in `opencode.json`:
 
 **Note**: `hera.json` takes precedence over `opencode.json` plugin options.
 
+## CLI Usage
+
+Hera provides a functional CLI for all operations:
+
+```bash
+# List all agents
+hera list agents
+
+# Create an agent
+hera create agent my-coder --template coder
+
+# Delete an agent (with backup)
+hera delete agent my-coder
+
+# Restore from backup
+hera restore agent my-coder
+
+# List teams
+hera list teams
+
+# Show system status
+hera status
+
+# Get help
+hera --help
+```
+
 ## Architecture
 
 ```
 hera-agent/
 ├── src/
 │   ├── index.ts              # Plugin entry
-│   ├── types.ts              # Type definitions
+│   ├── cli.ts                # CLI interface
+│   ├── onboarding.ts         # First-run setup
+│   ├── constants.ts          # Extracted constants
+│   ├── helpers.ts            # Shared utilities
+│   ├── persistence.ts        # Unified persistence
+│   ├── logger.ts             # Debug logging
+│   ├── validation.ts         # Name validation
+│   ├── types.ts              # Core types
+│   ├── types/
+│   │   └── client.ts         # OpenCode client types
 │   ├── agents/
 │   │   ├── hera.ts           # Hera agent + templates
 │   │   └── registry.ts       # .md file persistence
@@ -349,18 +444,31 @@ hera-agent/
 │   │   ├── evolution.ts      # Self-improvement
 │   │   └── manager.ts        # Skill CRUD
 │   ├── tools/
-│   │   ├── index.ts          # All tools (17+)
-│   │   └── hera-tools.ts     # Backward compat entry
+│   │   ├── index.ts          # Tool registration
+│   │   ├── agent-tools.ts    # Agent domain
+│   │   ├── skill-tools.ts    # Skill domain
+│   │   ├── team-tools.ts     # Team domain
+│   │   ├── memory-tools.ts   # Memory domain
+│   │   ├── evolution-tools.ts # Evolution domain
+│   │   └── system-tools.ts   # System domain
 │   ├── team/
-│   │   └── manager.ts        # Team coordination
+│   │   ├── manager.ts        # Team coordination
+│   │   └── templates.ts      # Pre-defined templates
 │   ├── memory/
-│   │   └── store.ts          # JSON persistence
+│   │   ├── store.ts          # JSON persistence
+│   │   └── smart-extractor.ts # Auto-memory extraction
 │   └── distillation/
-│       └── engine.ts         # Knowledge extraction
-├── bin/hera.js               # CLI
+│       ├── engine.ts         # Knowledge extraction
+│       └── auto-evolve.ts    # Semi-automatic evolution
+├── bin/hera.js               # CLI entry
+├── dist/                     # Build output
 ├── package.json
-└── README.md
+├── README.md
+├── CLAUDE.md
+└── ARCHITECTURE.md
 ```
+
+For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Troubleshooting
 

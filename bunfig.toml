@@ -1,0 +1,16 @@
+# Bun test configuration for Hera agent
+
+[test]
+# Run tests from src directory
+root = "src"
+
+# Coverage configuration
+coverage = true
+coverageReporter = ["text"]
+coverageThreshold = { lines = 0.5, functions = 0.5, branches = 0.5 }
+
+# Test timeout
+timeout = 30000
+
+# Watch mode for development
+# watch = true

@@ -2,6 +2,12 @@
 
 import type { DistillationResult, SkillDefinition } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
+import {
+  MAX_DISTILL_DECISIONS,
+  MAX_DISTILL_PATTERNS,
+  MAX_SUMMARY_LENGTH,
+  MAX_SKILL_DESC_LENGTH,
+} from "../constants.js";
 
 export class DistillationEngine {
   private store: MemoryStore;
@@ -52,9 +58,10 @@ export class DistillationEngine {
   ): Promise<SkillDefinition> {
     const skill: SkillDefinition = {
       name,
-      description: `Auto-generated skill from session distillation: ${distillation.summary.slice(0, 100)}`,
+      description: `Auto-generated skill from session distillation: ${distillation.summary.slice(0, MAX_SKILL_DESC_LENGTH)}`,
       trigger: `When task involves: ${distillation.patternsLearned.join(", ")}`,
       prompt: this.buildSkillPrompt(distillation),
+      category: "user",
     };
 
     await this.store.save({
@@ -75,7 +82,7 @@ export class DistillationEngine {
     const assistantLines = lines.filter((l) => l.startsWith("assistant:"));
     const keyPoints = assistantLines.slice(0, 5).map((l) => {
       const content = l.replace(/^assistant:\s*/, "");
-      return content.length > 200 ? content.slice(0, 200) + "..." : content;
+      return content.length > MAX_SUMMARY_LENGTH ? content.slice(0, MAX_SUMMARY_LENGTH) + "..." : content;
     });
 
     return keyPoints.join(" | ");
@@ -84,25 +91,30 @@ export class DistillationEngine {
   private extractDecisions(text: string): string[] {
     const decisions: string[] = [];
     const patterns = [
+      // English decision patterns
       /(?:decided|decision|chose|chosen|selected|went with|resolved to)\s+(.+?)(?:\.|$)/gi,
       /(?:should|must|need to|will)\s+(?:use|implement|apply|follow)\s+(.+?)(?:\.|$)/gi,
+      // Chinese architectural decision patterns
+      /(?:决定采用|选用|选择|使用)\s*(.+?)(?:方案|架构|设计)?(?:[，。、；\n]|$)/g,
+      /(?:使用)(.+?)(?:架构|方案|模式|框架)(?:[，。、；\n]|$)/g,
     ];
 
     for (const pattern of patterns) {
       let match;
       while ((match = pattern.exec(text)) !== null) {
-        if (match[1] && match[1].length > 5 && match[1].length < 200) {
+        if (match[1] && match[1].length > 2 && match[1].length < 200) {
           decisions.push(match[1].trim());
         }
       }
     }
 
-    return [...new Set(decisions)].slice(0, 10);
+    return [...new Set(decisions)].slice(0, MAX_DISTILL_DECISIONS);
   }
 
   private extractPatterns(text: string): string[] {
     const patterns: string[] = [];
     const techPatterns = [
+      // English patterns
       /\b(useMemo|useEffect|useState|useCallback)\b/g,
       /\b(React|Vue|Angular|Svelte)\b/g,
       /\b(TypeScript|JavaScript|Python|Go|Rust)\b/g,
@@ -111,6 +123,12 @@ export class DistillationEngine {
       /\b(SQL|NoSQL|Redis|MongoDB)\b/g,
       /\b(testing|TDD|BDD|CI\/CD)\b/g,
       /\b(auth|JWT|OAuth|session)\b/g,
+      // Chinese patterns (no \b — CJK chars don't have word boundaries)
+      /前端|组件|响应式|框架/g,
+      /容器|编排|部署|微服务/g,
+      /数据库|查询|索引|缓存/g,
+      /认证|鉴权|令牌|登录/g,
+      /测试|单元测试|集成测试|自动化/g,
     ];
 
     for (const p of techPatterns) {
@@ -120,7 +138,7 @@ export class DistillationEngine {
       }
     }
 
-    return [...new Set(patterns)].slice(0, 20);
+    return [...new Set(patterns)].slice(0, MAX_DISTILL_PATTERNS);
   }
 
   private buildSkillPrompt(distillation: DistillationResult): string {

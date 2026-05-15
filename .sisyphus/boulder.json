@@ -1,0 +1,58 @@
+{
+  "active_plan": "E:\\AI_field\\hera-agent\\.sisyphus\\plans\\issue-4-install-fix.md",
+  "started_at": "2026-05-15T00:29:30.228Z",
+  "session_ids": [
+    "ses_1db23139effeYgS2kFT4psOSsn",
+    "ses_1d6f5f987ffeJQl5VCHlJ3D7cv",
+    "ses_1d6f5f84cffe7CI4jSMe0EuO2f",
+    "ses_1d6ef5364ffe5GfPUgLBwZ1RvQ",
+    "ses_1d6ef255bffewo96M7Oq7SOH42",
+    "ses_1d6a9fb5bffeMRtu0f57haqogA",
+    "ses_1d6a96759ffeSCCbPz7Oi7CtxB",
+    "ses_1d694e910ffeuK5yuV3NsUnv3q",
+    "ses_1d694c6d0ffetpfDUEPfeedAR4",
+    "ses_1d6804873ffeTTJpFRTSSUvuH4",
+    "ses_1d6801150ffeJyKQPMfs1qzB6q",
+    "ses_1d66ee534ffewPl1BFn6lFDoR4",
+    "ses_1d66e7d44ffetI8fUcsH7z4c5V",
+    "ses_1d66e2b51ffe7d1C05a2mLdUdT"
+  ],
+  "session_origins": {
+    "ses_1db23139effeYgS2kFT4psOSsn": "direct",
+    "ses_1d6f5f987ffeJQl5VCHlJ3D7cv": "appended",
+    "ses_1d6f5f84cffe7CI4jSMe0EuO2f": "appended",
+    "ses_1d6ef5364ffe5GfPUgLBwZ1RvQ": "appended",
+    "ses_1d6ef255bffewo96M7Oq7SOH42": "appended",
+    "ses_1d6a9fb5bffeMRtu0f57haqogA": "appended",
+    "ses_1d6a96759ffeSCCbPz7Oi7CtxB": "appended",
+    "ses_1d694e910ffeuK5yuV3NsUnv3q": "appended",
+    "ses_1d694c6d0ffetpfDUEPfeedAR4": "appended",
+    "ses_1d6804873ffeTTJpFRTSSUvuH4": "appended",
+    "ses_1d6801150ffeJyKQPMfs1qzB6q": "appended",
+    "ses_1d66ee534ffewPl1BFn6lFDoR4": "appended",
+    "ses_1d66e7d44ffetI8fUcsH7z4c5V": "appended",
+    "ses_1d66e2b51ffe7d1C05a2mLdUdT": "appended"
+  },
+  "plan_name": "issue-4-install-fix",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "重写 postinstall.mjs — 跨平台自动配置",
+      "session_id": "ses_1d6f5f84cffe7CI4jSMe0EuO2f",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T00:32:47.471Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "更新 README.md — 区分 Windows/Linux 安装指南",
+      "session_id": "ses_1d6ef255bffewo96M7Oq7SOH42",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T00:41:12.337Z"
+    }
+  }
+}

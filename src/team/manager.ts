@@ -1,6 +1,8 @@
 import type { TeamDefinition } from "../types.js";
+import type { OpenCodeClient } from "../types/client.js";
 import type { MemoryStore } from "../memory/store.js";
 import { randomUUID } from "node:crypto";
+import { TEAM_POLL_MAX_ATTEMPTS, TEAM_POLL_INTERVAL_MS } from "../constants.js";
 
 export interface TeamMessage {
   id: string;
@@ -24,9 +26,9 @@ export class TeamManager {
   private teams: Map<string, TeamDefinition> = new Map();
   private messageQueue: Map<string, TeamMessage[]> = new Map();
   private spawnedSessions: Map<string, SpawnedSession[]> = new Map();
-  private client: any;
+  private client: OpenCodeClient | undefined;
 
-  constructor(store: MemoryStore, client: any) {
+  constructor(store: MemoryStore, client: OpenCodeClient | undefined) {
     this.store = store;
     this.client = client;
   }
@@ -160,7 +162,7 @@ export class TeamManager {
   }
 
   private async pollSessionCompletion(sessionId: string): Promise<string> {
-    const maxAttempts = 120;
+    const maxAttempts = TEAM_POLL_MAX_ATTEMPTS;
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const statusResult = await this.client.session.status({ path: { id: sessionId } });
@@ -178,7 +180,7 @@ export class TeamManager {
       } catch {
         // continue
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, TEAM_POLL_INTERVAL_MS));
     }
     return "(timeout)";
   }
