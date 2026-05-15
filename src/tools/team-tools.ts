@@ -249,15 +249,15 @@ export function createTeamTools(ctx: PluginContext) {
         if (!team) return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
 
         const objectives = team.objectives ?? [];
-        const objIndex = objectives.findIndex((o: any) => o.id === args.objective_id);
+        const objIndex = objectives.findIndex((o) => o.id === args.objective_id);
         if (objIndex === -1) return `Error: Objective "${args.objective_id}" not found in team "${args.team_name}".`;
 
         try {
           const updatedObj = okrUpdateKeyResult(objectives[objIndex], args.kr_id, args.progress);
-          const newObjectives = objectives.map((o: any, i: number) => i === objIndex ? updatedObj : o);
+          const newObjectives = objectives.map((o, i) => i === objIndex ? updatedObj : o);
           await teamManager.createTeam({ ...team, objectives: newObjectives });
 
-          const kr = updatedObj.keyResults.find((k: any) => k.id === args.kr_id);
+          const kr = updatedObj.keyResults.find((k) => k.id === args.kr_id);
           const pct = kr && kr.target > 0 ? Math.round((kr.current / kr.target) * 100) : 0;
           return `Key result "${args.kr_id}" updated to ${args.progress} (${pct}%) under objective "${args.objective_id}" for team "${args.team_name}".`;
         } catch (err: any) {

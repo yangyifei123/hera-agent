@@ -76,6 +76,41 @@ export interface SkillMetadata {
 /** Backward-compatible union: accepts both v1 SkillDefinition and v3.0 SkillPackage */
 export type AnySkill = SkillDefinition | SkillPackage
 
+// v3.0 Team management types
+export interface OKRObjective {
+  id: string;
+  name: string;
+  keyResults: KeyResult[];
+  assignee?: string;
+  deadline?: number;
+}
+
+export interface KeyResult {
+  id: string;
+  description: string;
+  target: number;
+  current: number;
+  metric: string;
+}
+
+export interface TreeNode {
+  id: string;
+  agent: string;
+  role: "root" | "manager" | "worker";
+  children?: TreeNode[];
+  delegates?: string[];
+}
+
+export interface ControlPoint {
+  id: string;
+  name: string;
+  type: "checkpoint" | "gate" | "feedback";
+  condition: string;
+  action: "approve" | "reject" | "escalate";
+  reviewer?: string;
+  status?: "pending" | "passed" | "failed";
+}
+
 export interface AgentDefinition {
   name: string;
   description: string;
@@ -120,11 +155,11 @@ export interface TeamDefinition {
   sharedMemory?: string[];
   createdAt?: number;
   /** OKR objectives (used when management="okr") */
-  objectives?: any[];
+  objectives?: OKRObjective[];
   /** Tree hierarchy (used when management="tree") */
-  hierarchy?: any[];
+  hierarchy?: TreeNode[];
   /** Control points (used when management="control") */
-  controlPoints?: any[];
+  controlPoints?: ControlPoint[];
 }
 
 export interface TeamMember {
