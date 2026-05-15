@@ -1,11 +1,11 @@
 ﻿/**
  * PluginGenerator - Generates OpenCode plugin packages from AgentDefinition
- * 
- * Converts a Hera agent definition into a standalone OpenCode plugin
- * that can be installed via `bun add file://<path>`.
+ *
+ * Strategy: "Copy Hera's own skeleton" — the generated plugin uses the exact
+ * same Plugin → config hook pattern that Hera itself uses (verified working).
  */
 
-import type { AgentDefinition, SkillPackage } from "../types.js";
+import type { AgentDefinition } from "../types.js";
 import { heraLog } from "../logger.js";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -25,155 +25,176 @@ export interface PluginPackage {
   files: PluginFile[];
 }
 
-/** Capabilities that influence plugin generation */
-export interface AgentCapability {
-  name: string;
-  enabled: boolean;
-  config?: Record<string, unknown>;
-}
+// === Helper ===
 
-// === Template helpers ===
-
-function generatePackageJson(agent: AgentDefinition): PluginFile {
-  const pkg = {
-    name: `hera-agent-${agent.name}`,
-    version: "1.0.0",
-    description: agent.description || `OpenCode plugin for agent: ${agent.name}`,
-    type: "module",
-    main: "./src/index.ts",
-    exports: {
-      ".": {
-        import: "./src/index.ts",
-      },
-    },
-  };
-  return {
-    path: "package.json",
-    content: JSON.stringify(pkg, null, 2) + "\n",
-  };
-}
-
-function generatePluginIndex(agent: AgentDefinition, skills: SkillPackage[]): PluginFile {
-  const permission = agent.permission ?? { edit: "allow", bash: "allow", webfetch: "allow" };
-  const maxSteps = agent.maxSteps ?? 30;
-
-  const agentConfig = {
-    description: agent.description,
-    mode: agent.mode,
-    prompt: agent.prompt,
-    ...(agent.model ? { model: agent.model } : {}),
-    temperature: 0.3,
-    maxSteps,
-    permission,
-  };
-
-  const indexContent = [
-    `import type { Plugin } from "@opencode-ai/plugin";`,
-    ``,
-    `const AgentPlugin: Plugin = async (input) => {`,
-    `  return {`,
-    `    config: async (configInput) => {`,
-    `      configInput.agent["${agent.name}"] = ${JSON.stringify(agentConfig, null, 8).split("\n").join("\n      ")};`,
-    `    },`,
-    `    tool: async () => {`,
-    `      return {};`,
-    `    },`,
-    `  };`,
-    `};`,
-    ``,
-    `export default AgentPlugin;`,
-    ``,
-  ].join("\n");
-
-  return {
-    path: "src/index.ts",
-    content: indexContent,
-  };
-}
-
-function generateAgentMd(agent: AgentDefinition): PluginFile {
-  const frontmatter = [
-    "---",
-    `name: ${agent.name}`,
-    `description: ${agent.description}`,
-    `mode: ${agent.mode}`,
-    "---",
-    ``,
-  ].join("\n");
-
-  return {
-    path: "agent.md",
-    content: frontmatter + agent.prompt + "\n",
-  };
-}
-
-function generateSkillFiles(skills: SkillPackage[]): PluginFile[] {
-  return skills.map((skill) => ({
-    path: `skills/${skill.name}.json`,
-    content: JSON.stringify(skill, null, 2) + "\n",
-  }));
-}
-
-function generateDefaultsJson(agent: AgentDefinition): PluginFile {
-  const defaults = {
-    agent: {
-      name: agent.name,
-      mode: agent.mode,
-      model: agent.model ?? null,
-      maxSteps: agent.maxSteps ?? 30,
-    },
-    skills: agent.skills,
-  };
-  return {
-    path: "config/defaults.json",
-    content: JSON.stringify(defaults, null, 2) + "\n",
-  };
+function camelCase(name: string): string {
+  return name
+    .split("-")
+    .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
 }
 
 // === PluginGenerator class ===
 
 export class PluginGenerator {
+
+  /**
+   * Generate package.json — mirrors Hera's own package.json
+   */
+  generatePackageJson(agent: AgentDefinition): {
+    name: string;
+    version: string;
+    description: string;
+    type: string;
+    main: string;
+    types: string;
+    exports: Record<string, any>;
+    scripts: Record<string, string>;
+    dependencies: Record<string, string>;
+    files: string[];
+    license: string;
+  } {
+    return {
+      name: agent.name,
+      version: "1.0.0",
+      description: agent.description || `OpenCode agent plugin: ${agent.name}`,
+      type: "module",
+      main: "./dist/index.js",
+      types: "./dist/index.d.ts",
+      exports: {
+        ".": {
+          types: "./dist/index.d.ts",
+          import: "./dist/index.js",
+          default: "./dist/index.js",
+        },
+      },
+      scripts: {
+        build: `bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'`,
+      },
+      dependencies: {
+        "@opencode-ai/plugin": "^1.4.6",
+      },
+      files: ["dist", "INSTALL.md"],
+      license: "MIT",
+    };
+  }
+
+  /**
+   * Generate src/index.ts — uses the exact same Plugin → config hook pattern as Hera
+   */
+  generatePluginIndex(agent: AgentDefinition): string {
+    const agentConfig = {
+      description: agent.description,
+      mode: agent.mode,
+      prompt: agent.prompt,
+      ...(agent.model ? { model: agent.model } : {}),
+      temperature: 0.3,
+      maxSteps: agent.maxSteps ?? 30,
+      permission: {
+        edit: "allow" as const,
+        bash: "allow" as const,
+        webfetch: "allow" as const,
+      },
+    };
+
+    const code = `import type { Plugin } from "@opencode-ai/plugin";
+
+const ${camelCase(agent.name)}Plugin: Plugin = async (input) => {
+  return {
+    async config(input) {
+      // Register agent — same pattern as Hera's own config hook
+      input.agent = input.agent ?? {};
+      input.agent["${agent.name}"] = ${JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ")};
+    },
+    tool: {},
+  };
+};
+
+export default ${camelCase(agent.name)}Plugin;
+`;
+
+    return code;
+  }
+
+  /**
+   * Generate INSTALL.md — installation instructions for the generated plugin
+   */
+  generateInstallMd(agent: AgentDefinition, pluginDir: string): string {
+    const pluginName = agent.name;
+    const normalizedPath = pluginDir.replace(/\\/g, "/");
+
+    return `# Installing ${pluginName}
+
+This is a generated OpenCode agent plugin. Follow these steps to install it.
+
+## Step 1: Build the plugin
+
+\`\`\`bash
+cd ${normalizedPath}
+bun install
+bun run build
+\`\`\`
+
+## Step 2: Install into OpenCode
+
+\`\`\`bash
+cd ~/.config/opencode
+bun add file://${normalizedPath}
+\`\`\`
+
+## Step 3: Add to opencode.json
+
+Make sure your \`~/.config/opencode/opencode.json\` includes:
+
+\`\`\`json
+{
+  "plugin": ["${pluginName}"]
+}
+\`\`\`
+
+## Step 4: Verify
+
+\`\`\`bash
+opencode --agent ${pluginName} "Hello, are you working?"
+\`\`\`
+
+## Troubleshooting
+
+- If OpenCode doesn't find the plugin, run \`bun install\` in \`~/.config/opencode/\`
+- If the agent doesn't appear, check that \`"plugin"\` array in \`opencode.json\` includes \`"${pluginName}"\`
+- To uninstall: remove from \`opencode.json\` plugin array, then \`bun remove ${pluginName}\` in \`~/.config/opencode/\`
+`;
+  }
+
   /**
    * Generate a complete PluginPackage from an AgentDefinition.
-   * The returned package contains all files needed for a standalone plugin.
    */
-  generate(
-    agentDef: AgentDefinition,
-    capabilities: AgentCapability[],
-    skills: SkillPackage[] = []
-  ): PluginPackage {
+  generate(agentDef: AgentDefinition): PluginPackage {
     heraLog("debug", `Generating plugin package for agent: ${agentDef.name}`);
 
     const files: PluginFile[] = [];
 
-    // Core files
-    files.push(generatePackageJson(agentDef));
-    files.push(generatePluginIndex(agentDef, skills));
-    files.push(generateAgentMd(agentDef));
+    const pkgJson = this.generatePackageJson(agentDef);
+    files.push({
+      path: "package.json",
+      content: JSON.stringify(pkgJson, null, 2) + "\n",
+    });
 
-    // Skills
-    if (skills.length > 0) {
-      files.push(...generateSkillFiles(skills));
-    }
+    files.push({
+      path: "src/index.ts",
+      content: this.generatePluginIndex(agentDef),
+    });
 
-    // Default config
-    files.push(generateDefaultsJson(agentDef));
-
-    // Capability files (placeholder for future expansion)
-    const enabledCaps = capabilities.filter((c) => c.enabled);
-    if (enabledCaps.length > 0) {
-      const capContent = enabledCaps.map((c) => `- ${c.name}: enabled`).join("\n");
-      files.push({
-        path: "config/capabilities.md",
-        content: `# Capabilities\n\n${capContent}\n`,
-      });
-    }
+    files.push({
+      path: "INSTALL.md",
+      content: this.generateInstallMd(agentDef, `/path/to/${agentDef.name}`),
+    });
 
     const pkg: PluginPackage = {
-      name: `hera-agent-${agentDef.name}`,
+      name: agentDef.name,
       version: "1.0.0",
-      description: agentDef.description || `OpenCode plugin for agent: ${agentDef.name}`,
-      main: "./src/index.ts",
+      description: agentDef.description || `OpenCode agent plugin: ${agentDef.name}`,
+      main: "./dist/index.js",
       files,
     };
 
@@ -183,24 +204,20 @@ export class PluginGenerator {
 
   /**
    * Write the plugin package to disk at the given directory.
-   * Creates subdirectories as needed.
    */
   async writeToDisk(pkg: PluginPackage, outputDir: string): Promise<void> {
     heraLog("debug", `Writing plugin package to: ${outputDir}`);
 
-    // Collect all directories needed
     const dirs = new Set<string>();
     for (const file of pkg.files) {
       const dir = join(outputDir, file.path, "..");
       dirs.add(dir);
     }
 
-    // Create directories
     for (const dir of dirs) {
       await mkdir(dir, { recursive: true });
     }
 
-    // Write files
     for (const file of pkg.files) {
       const filePath = join(outputDir, file.path);
       await writeFile(filePath, file.content, "utf-8");
@@ -211,7 +228,6 @@ export class PluginGenerator {
 
   /**
    * Install a plugin by adding it to opencode.json.
-   * Reads {configRoot}/opencode.json, adds plugin entry, writes back.
    */
   async install(pluginPath: string, configRoot: string): Promise<void> {
     heraLog("debug", `Installing plugin from: ${pluginPath}`);
@@ -223,23 +239,18 @@ export class PluginGenerator {
       const raw = await readFile(opencodeJsonPath, "utf-8");
       opencodeConfig = JSON.parse(raw);
     } catch {
-      // opencode.json doesn't exist, create minimal config
       opencodeConfig = {};
     }
 
-    // Ensure plugin array exists
     if (!Array.isArray(opencodeConfig.plugin)) {
       opencodeConfig.plugin = [];
     }
 
     const pluginArray = opencodeConfig.plugin as string[];
-
-    // Normalize plugin path for the plugin array
     const pluginEntry = pluginPath.startsWith("file://")
       ? pluginPath
       : `file://${pluginPath}`;
 
-    // Avoid duplicates
     if (!pluginArray.includes(pluginEntry)) {
       pluginArray.push(pluginEntry);
     }
@@ -266,7 +277,6 @@ export class PluginGenerator {
       const raw = await readFile(opencodeJsonPath, "utf-8");
       opencodeConfig = JSON.parse(raw);
     } catch {
-      // Nothing to uninstall
       heraLog("debug", "opencode.json not found, nothing to uninstall");
       return;
     }
@@ -278,7 +288,6 @@ export class PluginGenerator {
     const pluginArray = opencodeConfig.plugin as string[];
     const before = pluginArray.length;
 
-    // Remove entries that match the plugin name or contain it
     opencodeConfig.plugin = pluginArray.filter(
       (entry) =>
         typeof entry === "string" &&

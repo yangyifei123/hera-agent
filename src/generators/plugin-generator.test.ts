@@ -1,388 +1,315 @@
-﻿import { describe, it, expect, beforeEach, mock, afterEach } from "bun:test";
+﻿import { describe, it, expect, beforeEach } from "bun:test";
 import { PluginGenerator } from "./plugin-generator.js";
-import type { AgentDefinition, SkillPackage, AgentCapability } from "../types.js";
+import type { AgentDefinition } from "../types.js";
 import { join } from "node:path";
-import { writeFile, readFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
-// --- Helpers ---
+// === Test fixtures ===
 
-function makeAgentDef(overrides?: Partial<AgentDefinition>): AgentDefinition {
+function makeTestAgent(overrides?: Partial<AgentDefinition>): AgentDefinition {
   return {
-    name: "test-agent",
-    description: "A test agent for plugin generation",
-    mode: "subagent",
-    prompt: "You are a test agent.",
-    skills: ["caveman", "init", "memory", "evolution"],
+    name: "test-coder",
+    description: "A coding assistant for testing",
+    mode: "all",
+    prompt: "You are a test coding assistant. Write clean, tested code.",
+    model: "anthropic/claude-sonnet-4-20250514",
+    skills: ["caveman", "memory"],
+    maxSteps: 30,
     createdAt: Date.now(),
     evolutionLog: [],
     ...overrides,
   };
 }
 
-function makeSkillPackage(overrides?: Partial<SkillPackage>): SkillPackage {
-  return {
-    name: "test-skill",
-    version: "1.0.0",
-    description: "A test skill",
-    trigger: { patterns: ["test"], keywords: ["test"] },
-    dependencies: [],
-    chains: [],
-    files: [],
-    config: {},
-    scripts: [],
-    prompt: "You have the test skill.",
-    metadata: {},
-    ...overrides,
-  };
-}
-
-function makeCapabilities(overrides?: Partial<AgentCapability>[]): AgentCapability[] {
-  return [
-    { name: "memory", enabled: true },
-    { name: "evolution", enabled: false },
-    ...(overrides ?? []),
-  ];
-}
-
 describe("PluginGenerator", () => {
-  let gen: PluginGenerator;
+  let generator: PluginGenerator;
   let tmpDir: string;
 
   beforeEach(async () => {
-    gen = new PluginGenerator();
-    tmpDir = join(process.env.TEMP || "/tmp", `hera-test-${Date.now()}`);
-    await mkdir(tmpDir, { recursive: true });
+    generator = new PluginGenerator();
+    tmpDir = await mkdtemp(join(tmpdir(), "hera-plugin-test-"));
   });
 
-  afterEach(async () => {
-    try {
-      await rm(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
-  });
+  async function cleanup() {
+    try { await rm(tmpDir, { recursive: true }); } catch {}
+  }
 
-  describe("generate", () => {
-    it("returns a PluginPackage with correct metadata", () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      expect(pkg.name).toBe("hera-agent-test-agent");
+  // ============================================================
+  // Phase 1.1: package.json generation
+  // ============================================================
+  describe("generatePackageJson", () => {
+    it("should produce package.json with correct name", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(pkg.name).toBe("test-coder");
       expect(pkg.version).toBe("1.0.0");
-      expect(pkg.description).toBe("A test agent for plugin generation");
-      expect(pkg.main).toBe("./src/index.ts");
     });
 
-    it("generates package.json file", () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      const packageJson = pkg.files.find((f) => f.path === "package.json");
-      expect(packageJson).toBeDefined();
-      const parsed = JSON.parse(packageJson!.content);
-      expect(parsed.name).toBe("hera-agent-test-agent");
-      expect(parsed.type).toBe("module");
-      expect(parsed.main).toBe("./src/index.ts");
-      expect(parsed.exports["."].import).toBe("./src/index.ts");
+    it("should include @opencode-ai/plugin as dependency (required at runtime)", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(pkg.dependencies).toBeDefined();
+      expect(pkg.dependencies!["@opencode-ai/plugin"]).toBeDefined();
     });
 
-    it("generates src/index.ts with plugin function", () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
+    it("should have correct main and exports for OpenCode to find", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(pkg.type).toBe("module");
+      expect(pkg.main).toBe("./dist/index.js");
+      expect(pkg.exports).toBeDefined();
+      expect((pkg.exports as any)["."].import).toBe("./dist/index.js");
+    });
 
+    it("should have a build script that externalizes @opencode-ai/plugin", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(pkg.scripts).toBeDefined();
+      expect(pkg.scripts!.build).toContain("bun build");
+      expect(pkg.scripts!.build).toContain("--external @opencode-ai/plugin");
+    });
+
+    it("should have files array pointing to dist", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(pkg.files).toBeDefined();
+      expect(pkg.files).toContain("dist");
+    });
+  });
+
+  // ============================================================
+  // Phase 1.2: src/index.ts generation — correct Plugin signature
+  // ============================================================
+  describe("generatePluginIndex", () => {
+    it("should export default a Plugin function", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("export default");
+      expect(code).toContain("Plugin");
+    });
+
+    it("should use the exact same config hook pattern as Hera", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("config");
+      expect(code).toContain('input.agent = input.agent ?? {}');
+      expect(code).toContain('input.agent["test-coder"]');
+    });
+
+    it("should set correct agent properties matching AgentConfig from SDK", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      // Properties appear as JSON keys in the generated code
+      expect(code).toContain('"description"');
+      expect(code).toContain('"mode"');
+      expect(code).toContain('"prompt"');
+      expect(code).toContain('"temperature"');
+      expect(code).toContain('"permission"');
+    });
+
+    it("should bake the full prompt into the generated code", () => {
+      const agent = makeTestAgent({
+        prompt: "You are a test agent.\n\n## Skill: caveman\nSpeak like caveman."
+      });
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("You are a test agent");
+    });
+
+    it("should not import SkillManager or any Hera internals", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).not.toContain("SkillManager");
+      expect(code).not.toContain("MemoryStore");
+      expect(code).not.toContain("AgentRegistry");
+      expect(code).not.toContain("TeamManager");
+    });
+
+    it("should return empty tool map", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("tool:");
+    });
+  });
+
+  // ============================================================
+  // Phase 1.3: INSTALL.md generation
+  // ============================================================
+  describe("generateInstallMd", () => {
+    it("should include bun add file:// command", () => {
+      const agent = makeTestAgent();
+      const md = generator.generateInstallMd(agent, "/path/to/test-coder");
+      expect(md).toContain("bun add");
+      expect(md).toContain("file://");
+    });
+
+    it("should include opencode.json plugin array step", () => {
+      const agent = makeTestAgent();
+      const md = generator.generateInstallMd(agent, "/path/to/test-coder");
+      expect(md).toContain("opencode.json");
+      expect(md).toContain("test-coder");
+    });
+
+    it("should include verification step", () => {
+      const agent = makeTestAgent();
+      const md = generator.generateInstallMd(agent, "/path/to/test-coder");
+      expect(md).toContain("--agent");
+    });
+  });
+
+  // ============================================================
+  // Phase 1.4: Full package generation + disk write
+  // ============================================================
+  describe("generate (full package)", () => {
+    it("should return a PluginPackage with all required files", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generate(agent);
+      expect(pkg.name).toBe("test-coder");
+      expect(pkg.version).toBe("1.0.0");
+      expect(pkg.files.length).toBeGreaterThanOrEqual(3);
+      const paths = pkg.files.map((f) => f.path);
+      expect(paths).toContain("package.json");
+      expect(paths).toContain("src/index.ts");
+      expect(paths).toContain("INSTALL.md");
+    });
+
+    it("should produce valid JSON in package.json file", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generate(agent);
+      const pkgFile = pkg.files.find((f) => f.path === "package.json");
+      expect(pkgFile).toBeDefined();
+      const parsed = JSON.parse(pkgFile!.content);
+      expect(parsed.name).toBe("test-coder");
+      expect(parsed.dependencies["@opencode-ai/plugin"]).toBeDefined();
+    });
+
+    it("should produce valid TypeScript in src/index.ts", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generate(agent);
       const indexFile = pkg.files.find((f) => f.path === "src/index.ts");
       expect(indexFile).toBeDefined();
-      expect(indexFile!.content).toContain('import type { Plugin } from "@opencode-ai/plugin"');
-      expect(indexFile!.content).toContain("const AgentPlugin: Plugin");
-      expect(indexFile!.content).toContain('configInput.agent["test-agent"]');
-      expect(indexFile!.content).toContain("export default AgentPlugin");
+      expect(indexFile!.content).toContain("export default");
+      expect(indexFile!.content).toContain("async");
+    });
+  });
+
+  // ============================================================
+  // Integration: generated code structural correctness
+  // ============================================================
+  describe("integration: generated plugin code structure", () => {
+    it("should produce code that follows the Plugin contract", async () => {
+      const agent = makeTestAgent({ name: "my-reviewer", mode: "subagent" });
+      const pkg = generator.generate(agent);
+      const outputDir = join(tmpDir, "my-reviewer");
+      await generator.writeToDisk(pkg, outputDir);
+
+      // Read back the generated src/index.ts
+      const indexContent = await readFile(join(outputDir, "src/index.ts"), "utf-8");
+
+      // Must contain the Plugin export signature
+      expect(indexContent).toContain("export default");
+      expect(indexContent).toContain("async (input)");
+
+      // Must contain config hook that registers the agent
+      expect(indexContent).toContain("async config(input)");
+      expect(indexContent).toContain('input.agent = input.agent ?? {}');
+      expect(indexContent).toContain('input.agent["my-reviewer"]');
+
+      // Must contain the agent config with all required fields
+      const agentConfig = JSON.parse(
+        indexContent.match(/input\.agent\["my-reviewer"\]\s*=\s*(\{[\s\S]*?\});/)?.[1] ?? "{}"
+      );
+      expect(agentConfig.description).toBe("A coding assistant for testing");
+      expect(agentConfig.mode).toBe("subagent");
+      expect(agentConfig.prompt).toBeDefined();
+      expect(agentConfig.temperature).toBeDefined();
+      expect(agentConfig.maxSteps).toBeDefined();
+      expect(agentConfig.permission).toBeDefined();
+      expect(agentConfig.permission.edit).toBe("allow");
+      expect(agentConfig.permission.bash).toBe("allow");
+
+      // Must NOT import any Hera internals
+      expect(indexContent).not.toContain("SkillManager");
+      expect(indexContent).not.toContain("hera");
+      expect(indexContent).not.toContain("memory-store");
+
+      await cleanup();
     });
 
-    it("generates src/index.ts with correct agent config", () => {
-      const agent = makeAgentDef({ mode: "all", model: "test-model" });
-      const pkg = gen.generate(agent, []);
+    it("should produce installable package.json that can be bun-added", async () => {
+      const agent = makeTestAgent({ name: "install-test" });
+      const pkg = generator.generate(agent);
+      const outputDir = join(tmpDir, "install-test");
+      await generator.writeToDisk(pkg, outputDir);
 
-      const indexFile = pkg.files.find((f) => f.path === "src/index.ts");
-      expect(indexFile!.content).toContain('"mode": "all"');
-      expect(indexFile!.content).toContain('"model": "test-model"');
+      // Read and verify the package.json
+      const pkgContent = await readFile(join(outputDir, "package.json"), "utf-8");
+      const parsed = JSON.parse(pkgContent);
+
+      // Required for OpenCode to load the plugin
+      expect(parsed.type).toBe("module");
+      expect(parsed.main).toBe("./dist/index.js");
+      expect(parsed.dependencies["@opencode-ai/plugin"]).toBeDefined();
+      expect(parsed.scripts.build).toBeDefined();
+
+      // Build script must externalize the plugin SDK
+      expect(parsed.scripts.build).toContain("--external @opencode-ai/plugin");
+      expect(parsed.scripts.build).toContain("--external @opencode-ai/sdk");
+
+      await cleanup();
     });
 
-    it("generates agent.md with frontmatter and prompt", () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      const agentMd = pkg.files.find((f) => f.path === "agent.md");
-      expect(agentMd).toBeDefined();
-      expect(agentMd!.content).toContain("---");
-      expect(agentMd!.content).toContain("name: test-agent");
-      expect(agentMd!.content).toContain("description: A test agent for plugin generation");
-      expect(agentMd!.content).toContain("mode: subagent");
-      expect(agentMd!.content).toContain("You are a test agent.");
+    it("should handle agents with no model (model is optional)", async () => {
+      const agent = makeTestAgent({ model: undefined });
+      const code = generator.generatePluginIndex(agent);
+      // model should NOT appear if undefined
+      expect(code).not.toContain('"model"');
     });
 
-    it("generates config/defaults.json", () => {
-      const agent = makeAgentDef({ maxSteps: 50 });
-      const pkg = gen.generate(agent, []);
-
-      const defaults = pkg.files.find((f) => f.path === "config/defaults.json");
-      expect(defaults).toBeDefined();
-      const parsed = JSON.parse(defaults!.content);
-      expect(parsed.agent.name).toBe("test-agent");
-      expect(parsed.agent.mode).toBe("subagent");
-      expect(parsed.agent.maxSteps).toBe(50);
-      expect(parsed.skills).toEqual(["caveman", "init", "memory", "evolution"]);
+    it("should handle agents with custom model", async () => {
+      const agent = makeTestAgent({ model: "cherry/glm-5" });
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain('"model"');
+      expect(code).toContain("cherry/glm-5");
     });
 
-    it("generates skill files when skills provided", () => {
-      const agent = makeAgentDef();
-      const skills = [makeSkillPackage({ name: "my-skill" })];
-      const pkg = gen.generate(agent, [], skills);
+    it("should generate valid INSTALL.md with correct paths", async () => {
+      const agent = makeTestAgent({ name: "path-test" });
+      const pkg = generator.generate(agent);
+      const outputDir = join(tmpDir, "path-test");
+      await generator.writeToDisk(pkg, outputDir);
 
-      const skillFile = pkg.files.find((f) => f.path === "skills/my-skill.json");
-      expect(skillFile).toBeDefined();
-      const parsed = JSON.parse(skillFile!.content);
-      expect(parsed.name).toBe("my-skill");
-      expect(parsed.version).toBe("1.0.0");
-    });
+      const installMd = await readFile(join(outputDir, "INSTALL.md"), "utf-8");
+      expect(installMd).toContain("path-test");
+      expect(installMd).toContain("bun install");
+      expect(installMd).toContain("bun run build");
+      expect(installMd).toContain("opencode.json");
 
-    it("generates multiple skill files", () => {
-      const agent = makeAgentDef();
-      const skills = [
-        makeSkillPackage({ name: "skill-a" }),
-        makeSkillPackage({ name: "skill-b" }),
-      ];
-      const pkg = gen.generate(agent, [], skills);
-
-      const skillFiles = pkg.files.filter((f) => f.path.startsWith("skills/"));
-      expect(skillFiles).toHaveLength(2);
-    });
-
-    it("generates capabilities.md when enabled capabilities exist", () => {
-      const agent = makeAgentDef();
-      const caps = [{ name: "memory", enabled: true }];
-      const pkg = gen.generate(agent, caps);
-
-      const capFile = pkg.files.find((f) => f.path === "config/capabilities.md");
-      expect(capFile).toBeDefined();
-      expect(capFile!.content).toContain("memory");
-    });
-
-    it("does not generate capabilities.md when all disabled", () => {
-      const agent = makeAgentDef();
-      const caps = [{ name: "memory", enabled: false }];
-      const pkg = gen.generate(agent, caps);
-
-      const capFile = pkg.files.find((f) => f.path === "config/capabilities.md");
-      expect(capFile).toBeUndefined();
-    });
-
-    it("includes at minimum 4 core files (package.json, index.ts, agent.md, defaults.json)", () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      const corePaths = ["package.json", "src/index.ts", "agent.md", "config/defaults.json"];
-      for (const p of corePaths) {
-        expect(pkg.files.some((f) => f.path === p)).toBe(true);
-      }
-    });
-
-    it("handles agent with no description", () => {
-      const agent = makeAgentDef({ description: "" });
-      const pkg = gen.generate(agent, []);
-
-      expect(pkg.description).toContain("test-agent");
-    });
-
-    it("handles agent with custom permission", () => {
-      const agent = makeAgentDef({
-        permission: { edit: "allow", bash: "deny", webfetch: "allow" },
-      });
-      const pkg = gen.generate(agent, []);
-
-      const indexFile = pkg.files.find((f) => f.path === "src/index.ts");
-      expect(indexFile!.content).toContain('"bash": "deny"');
+      await cleanup();
     });
   });
 
   describe("writeToDisk", () => {
-    it("writes all files to the output directory", async () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
+    it("should create all files on disk with correct structure", async () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generate(agent);
+      const outputDir = join(tmpDir, "test-coder");
+      await generator.writeToDisk(pkg, outputDir);
 
-      await gen.writeToDisk(pkg, tmpDir);
+      const pkgPath = join(outputDir, "package.json");
+      const pkgContent = await readFile(pkgPath, "utf-8");
+      const parsed = JSON.parse(pkgContent);
+      expect(parsed.name).toBe("test-coder");
 
-      const packageJson = JSON.parse(
-        await readFile(join(tmpDir, "package.json"), "utf-8")
-      );
-      expect(packageJson.name).toBe("hera-agent-test-agent");
-    });
+      const indexPath = join(outputDir, "src/index.ts");
+      const indexStat = await stat(indexPath);
+      expect(indexStat.isFile()).toBe(true);
 
-    it("writes index.ts to nested directory", async () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
+      const installPath = join(outputDir, "INSTALL.md");
+      const installStat = await stat(installPath);
+      expect(installStat.isFile()).toBe(true);
 
-      await gen.writeToDisk(pkg, tmpDir);
-
-      const content = await readFile(join(tmpDir, "src/index.ts"), "utf-8");
-      expect(content).toContain("AgentPlugin");
-    });
-
-    it("writes agent.md", async () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      await gen.writeToDisk(pkg, tmpDir);
-
-      const content = await readFile(join(tmpDir, "agent.md"), "utf-8");
-      expect(content).toContain("name: test-agent");
-    });
-
-    it("writes skill files to skills/ subdirectory", async () => {
-      const agent = makeAgentDef();
-      const skills = [makeSkillPackage({ name: "disk-skill" })];
-      const pkg = gen.generate(agent, [], skills);
-
-      await gen.writeToDisk(pkg, tmpDir);
-
-      const content = await readFile(join(tmpDir, "skills/disk-skill.json"), "utf-8");
-      expect(content).toContain("disk-skill");
-    });
-
-    it("creates config directory and writes defaults.json", async () => {
-      const agent = makeAgentDef();
-      const pkg = gen.generate(agent, []);
-
-      await gen.writeToDisk(pkg, tmpDir);
-
-      const content = await readFile(join(tmpDir, "config/defaults.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.agent.name).toBe("test-agent");
-    });
-  });
-
-  describe("install", () => {
-    it("creates opencode.json with plugin entry if file does not exist", async () => {
-      await gen.install("file:///path/to/plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.plugin).toContain("file:///path/to/plugin");
-    });
-
-    it("adds plugin entry to existing opencode.json", async () => {
-      // Create existing opencode.json
-      const existing = { plugin: ["existing-plugin"] };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      await gen.install("file:///new/plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.plugin).toContain("existing-plugin");
-      expect(parsed.plugin).toContain("file:///new/plugin");
-    });
-
-    it("does not add duplicate plugin entries", async () => {
-      const existing = { plugin: ["file:///dup/plugin"] };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      await gen.install("file:///dup/plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      const matches = (parsed.plugin as string[]).filter(
-        (p) => p === "file:///dup/plugin"
-      );
-      expect(matches).toHaveLength(1);
-    });
-
-    it("prepends file:// if missing from plugin path", async () => {
-      await gen.install("/local/path/to/plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.plugin).toContain("file:///local/path/to/plugin");
-    });
-
-    it("creates plugin array if opencode.json has no plugin key", async () => {
-      const existing = { someOtherKey: true };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      await gen.install("file:///new/plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(Array.isArray(parsed.plugin)).toBe(true);
-      expect(parsed.plugin).toContain("file:///new/plugin");
-    });
-  });
-
-  describe("uninstall", () => {
-    it("removes matching plugin entry from opencode.json", async () => {
-      const existing = {
-        plugin: ["hera-agent-test-agent", "other-plugin"],
-      };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      await gen.uninstall("hera-agent-test-agent", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.plugin).not.toContain("hera-agent-test-agent");
-      expect(parsed.plugin).toContain("other-plugin");
-    });
-
-    it("handles missing opencode.json gracefully", async () => {
-      // Should not throw
-      await gen.uninstall("nonexistent", tmpDir);
-    });
-
-    it("handles opencode.json without plugin array gracefully", async () => {
-      const existing = { someKey: "value" };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      // Should not throw
-      await gen.uninstall("anything", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      // Config should remain unchanged
-      expect(parsed.someKey).toBe("value");
-    });
-
-    it("does nothing if no matching entries found", async () => {
-      const existing = { plugin: ["other-plugin"] };
-      await writeFile(
-        join(tmpDir, "opencode.json"),
-        JSON.stringify(existing, null, 2),
-        "utf-8"
-      );
-
-      await gen.uninstall("nonexistent-plugin", tmpDir);
-
-      const content = await readFile(join(tmpDir, "opencode.json"), "utf-8");
-      const parsed = JSON.parse(content);
-      expect(parsed.plugin).toEqual(["other-plugin"]);
+      await cleanup();
     });
   });
 });

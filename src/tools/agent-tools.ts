@@ -138,42 +138,44 @@ export function createAgentTools(ctx: PluginContext) {
 
         // Plugin format: generate code plugin using PluginGenerator
         if (format === "plugin") {
-          const PluginGenerator = await loadPluginGenerator();
-          if (!PluginGenerator) {
+          const Mod = await loadPluginGenerator();
+          if (!Mod) {
             return `Error: Plugin generator not available. The plugin-generator module is required for format="plugin". Ensure the generators module is built.`;
           }
 
           try {
+            const generator = new Mod.PluginGenerator();
             const generatedDir = getGeneratedPluginsDir(paths.configRoot);
             await mkdir(generatedDir, { recursive: true });
             const pluginDir = join(generatedDir, args.name);
 
-            if (typeof PluginGenerator.generate === "function") {
-              await PluginGenerator.generate(pluginDir, agentDef);
-            } else if (typeof PluginGenerator === "function") {
-              // PluginGenerator is a class constructor or factory
-              const generator = new PluginGenerator(pluginDir);
-              await generator.generate(agentDef);
-            } else {
-              return `Error: PluginGenerator does not expose a generate method or constructor.`;
-            }
+            const pkg = generator.generate(agentDef);
+            await generator.writeToDisk(pkg, pluginDir);
 
             // Optionally auto-install
             if (args.auto_install === true) {
-              if (typeof PluginGenerator.install === "function") {
-                await PluginGenerator.install(pluginDir);
-              }
+              await generator.install(pluginDir, paths.configRoot);
               return [
                 `Agent "${args.name}" generated as plugin.`,
                 `Plugin directory: ${pluginDir}`,
                 `Auto-installed: true.`,
+                ``,
+                `Next steps:`,
+                `1. cd ${pluginDir} && bun install && bun run build`,
+                `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
               ].join("\n");
             }
 
             return [
               `Agent "${args.name}" generated as plugin.`,
               `Plugin directory: ${pluginDir}`,
-              `Tip: Run hera_install_agent to add to opencode.json.`,
+              ``,
+              `Next steps:`,
+              `1. cd ${pluginDir} && bun install && bun run build`,
+              `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
+              `3. Add "${args.name}" to opencode.json plugin array`,
+              ``,
+              `Or run: hera_install_agent agent_name="${args.name}"`,
             ].join("\n");
           } catch (err: any) {
             return `Error generating plugin for "${args.name}": ${err?.message ?? String(err)}`;
@@ -198,8 +200,8 @@ export function createAgentTools(ctx: PluginContext) {
         agent_name: z.string().describe("Agent name to install (must exist in hera-generated directory)"),
       },
       async execute(args) {
-        const PluginGenerator = await loadPluginGenerator();
-        if (!PluginGenerator) {
+        const Mod = await loadPluginGenerator();
+        if (!Mod) {
           return `Error: Plugin generator not available. The plugin-generator module is required for installation. Ensure the generators module is built.`;
         }
 
@@ -214,12 +216,9 @@ export function createAgentTools(ctx: PluginContext) {
         }
 
         try {
-          if (typeof PluginGenerator.install === "function") {
-            await PluginGenerator.install(pluginDir);
-          } else {
-            return `Error: PluginGenerator does not expose an install method.`;
-          }
-          return `Agent "${args.agent_name}" installed successfully.`;
+          const generator = new Mod.PluginGenerator();
+          await generator.install(pluginDir, paths.configRoot);
+          return `Agent "${args.agent_name}" installed successfully. Plugin added to opencode.json.`;
         } catch (err: any) {
           return `Error installing agent "${args.agent_name}": ${err?.message ?? String(err)}`;
         }
@@ -232,18 +231,15 @@ export function createAgentTools(ctx: PluginContext) {
         agent_name: z.string().describe("Agent name to uninstall"),
       },
       async execute(args) {
-        const PluginGenerator = await loadPluginGenerator();
-        if (!PluginGenerator) {
+        const Mod = await loadPluginGenerator();
+        if (!Mod) {
           return `Error: Plugin generator not available. The plugin-generator module is required for uninstallation. Ensure the generators module is built.`;
         }
 
         try {
-          if (typeof PluginGenerator.uninstall === "function") {
-            await PluginGenerator.uninstall(args.agent_name);
-          } else {
-            return `Error: PluginGenerator does not expose an uninstall method.`;
-          }
-          return `Agent "${args.agent_name}" uninstalled successfully.`;
+          const generator = new Mod.PluginGenerator();
+          await generator.uninstall(args.agent_name, paths.configRoot);
+          return `Agent "${args.agent_name}" uninstalled successfully. Plugin removed from opencode.json.`;
         } catch (err: any) {
           return `Error uninstalling agent "${args.agent_name}": ${err?.message ?? String(err)}`;
         }
