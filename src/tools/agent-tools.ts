@@ -70,13 +70,13 @@ export function findAvailableName(base: string, existing: Map<string, unknown>):
 }
 
 /**
- * Lazy-load PluginGenerator (created in T3.1).
- * Returns null if the module does not exist yet.
+ * Lazy-load the plugin-generator module so its cost is only paid when a
+ * caller asks for `format: "plugin"`. Returns the module object so the
+ * caller can do `new Mod.PluginGenerator(...)`.
  */
 async function loadPluginGenerator(): Promise<any | null> {
   try {
-    const mod = await import("../generators/plugin-generator.js");
-    return mod.PluginGenerator ?? mod;
+    return await import("../generators/plugin-generator.js");
   } catch {
     return null;
   }
