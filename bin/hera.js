@@ -4,9 +4,22 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const cmd = args[0] || "help";
+
+// Read version from package.json so CLI never drifts from npm metadata.
+function getVersion() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkgPath = path.join(here, "..", "package.json");
+    return JSON.parse(fs.readFileSync(pkgPath, "utf8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+const VERSION = getVersion();
 
 function getConfigRoot() {
   if (process.platform === "win32") {
@@ -36,7 +49,7 @@ function runCmd(command, options = {}) {
 switch (cmd) {
   case "version":
   case "-v":
-    console.log("hera-agent v2.0.0");
+    console.log(`hera-agent v${VERSION}`);
     break;
 
   case "install": {
@@ -260,42 +273,140 @@ Keep Data (reinstall later):
     break;
 
   case "list":
-    console.log("Hera Agent Factory — Registered Agents & Teams");
-    console.log("Run: opencode run --agent hera 'list all agents and teams'");
+  case "list-agents": {
+    const configRoot = getConfigRoot();
+    const agentsDir = path.join(configRoot, "agents", "hera");
+    if (!fs.existsSync(agentsDir)) {
+      console.log("No agents directory yet. Run Hera at least once to initialize.");
+      break;
+    }
+    const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md"));
+    if (files.length === 0) {
+      console.log("No agents created yet.");
+      break;
+    }
+    console.log("Agents:");
+    for (const f of files) {
+      const name = f.replace(/\.md$/, "");
+      const content = fs.readFileSync(path.join(agentsDir, f), "utf8");
+      const modeMatch = content.match(/^mode:\s*(\w+)/m);
+      const descMatch = content.match(/^description:\s*"([^"]+)"/m);
+      const mode = modeMatch ? modeMatch[1] : "?";
+      const desc = descMatch ? descMatch[1] : "";
+      console.log(`  ${name.padEnd(24)} ${mode.padEnd(10)} ${desc}`);
+    }
     break;
+  }
+
+  case "list-skills": {
+    const builtins = [
+      ["caveman", "Ultra-compressed communication"],
+      ["init", "Environment awareness"],
+      ["memory", "Autonomous memory management"],
+      ["evolution", "Self-improvement through reflection"],
+      ["skill-combo", "Dynamic skill composition"],
+      ["subagent", "Delegate to specialized agents"],
+      ["communicate", "Team coordination via messaging"],
+      ["auto-compact", "Context window discipline"],
+    ];
+    console.log("Built-in skills (always available):");
+    for (const [name, desc] of builtins) {
+      console.log(`  ${name.padEnd(14)} ${desc}`);
+    }
+    const userSkillsDir = path.join(getConfigRoot(), "hera-data", "skills");
+    if (fs.existsSync(userSkillsDir)) {
+      const entries = fs.readdirSync(userSkillsDir);
+      if (entries.length > 0) {
+        console.log("\nUser skills:");
+        for (const e of entries) {
+          console.log(`  ${e}`);
+        }
+      }
+    }
+    break;
+  }
+
+  case "list-templates": {
+    const tpls = [
+      ["general", "Versatile assistant"],
+      ["coder", "Coding expert"],
+      ["reviewer", "Code review specialist"],
+      ["researcher", "Research analyst"],
+      ["coordinator", "Team coordinator"],
+      ["architect", "System architect"],
+      ["debugger", "Bug fixing specialist"],
+      ["tester", "QA engineer"],
+      ["documenter", "Documentation writer"],
+      ["optimizer", "Performance optimizer"],
+    ];
+    console.log("Agent templates:");
+    for (const [name, desc] of tpls) {
+      console.log(`  ${name.padEnd(14)} ${desc}`);
+    }
+    break;
+  }
+
+  case "list-teams": {
+    const configRoot = getConfigRoot();
+    const memDir = path.join(configRoot, "hera-data", "memory", "teams");
+    if (!fs.existsSync(memDir)) {
+      console.log("No teams yet.");
+      break;
+    }
+    const files = fs.readdirSync(memDir).filter((f) => f.endsWith(".json"));
+    if (files.length === 0) {
+      console.log("No teams yet.");
+      break;
+    }
+    console.log("Teams:");
+    for (const f of files) {
+      try {
+        const memo = JSON.parse(fs.readFileSync(path.join(memDir, f), "utf8"));
+        const team = JSON.parse(memo.content);
+        const members = team.members.map((m) => m.agentName).join(", ");
+        console.log(`  ${team.name.padEnd(24)} ${team.coordination.padEnd(12)} ${members}`);
+      } catch {
+        // skip malformed
+      }
+    }
+    break;
+  }
 
   case "help":
   default:
     console.log(`
-Hera Agent Factory v2.0.0
+Hera Agent Factory v${VERSION}
 
 Commands:
-  hera install     Install hera-agent into OpenCode
-  hera doctor      Run health checks on Hera installation
-  hera update      Show update/upgrade instructions
-  hera uninstall   Show uninstall instructions
-  hera list        Show registered agents and teams
-  hera version     Show version
-  hera help        Show this help
+  hera install        Install hera-agent into OpenCode
+  hera doctor         Run health checks on Hera installation
+  hera update         Show update/upgrade instructions
+  hera uninstall      Show uninstall instructions
+  hera list           List registered agents (alias: list-agents)
+  hera list-skills    List built-in + user skills
+  hera list-templates List agent templates
+  hera list-teams     List registered teams
+  hera version        Show version
+  hera help           Show this help
 
 Usage:
   opencode --agent hera              Start Hera agent
   opencode --agent <agent-name>      Start a Hera-created agent
   opencode run --agent hera "..."    Run a single command
 
-Built-in Skills:
+Built-in Skills (8):
   caveman       Ultra-compressed communication (~75% token savings)
   init          Environment awareness and project detection
-  skill-combo   Dynamic skill composition
   memory        Autonomous memory management
   evolution     Self-improvement through reflection
+  skill-combo   Dynamic skill composition
+  subagent      Delegate to specialized agents
+  communicate   Team coordination via messaging
+  auto-compact  Context window discipline
 
-Agent Templates:
-  general       Versatile assistant
-  coder         Coding expert
-  reviewer      Code review specialist
-  researcher    Research analyst
-  coordinator   Team coordinator
+Agent Templates (10):
+  general, coder, reviewer, researcher, coordinator,
+  architect, debugger, tester, documenter, optimizer
 `);
     break;
 }

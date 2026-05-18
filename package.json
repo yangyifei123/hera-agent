@@ -1,6 +1,6 @@
 {
   "name": "hera-agent",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "Hera - Agent Factory: Creates agents with memory, distillation, skills, team collaboration, and self-evolution for OpenCode",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,7 +19,7 @@
     "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
     "postinstall": "node postinstall.mjs",
     "dev": "bun run --watch src/index.ts",
-    "test": "echo 'See TEST_REPORT.md for comprehensive test results'"
+    "test": "bun test"
   },
   "keywords": [
     "opencode",
