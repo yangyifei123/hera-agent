@@ -47,8 +47,24 @@ export async function runOnboarding(
     heraLog("warn", "Onboarding: Could not create quick-fixer agent (may already exist)", err);
   }
 
+  // Create the dev-team member agents BEFORE the team itself, so the team
+  // is not born referencing nonexistent agents (the "ghost team" bug).
+  const teamMembers: Array<{ name: string; template: "architect" | "coder" | "tester" }> = [
+    { name: "architect", template: "architect" },
+    { name: "senior-dev", template: "coder" },
+    { name: "qa-engineer", template: "tester" },
+  ];
+  for (const m of teamMembers) {
+    try {
+      const def = createAgentFromTemplate(m.template, m.name);
+      await agentRegistry.register(def, skills);
+      heraLog("info", `Onboarding: Created team member '${m.name}' (${m.template} template)`);
+    } catch (err) {
+      heraLog("warn", `Onboarding: Could not create team member '${m.name}' (may already exist)`, err);
+    }
+  }
+
   // Create default team: dev-team (sequential, members: architect, senior-dev, qa-engineer)
-  // These agents need to exist first — check if templates exist or use placeholders
   const devTeam: TeamDefinition = {
     name: "dev-team",
     description: "Full dev team: architect designs → senior-dev implements → qa-engineer tests. Sequential pipeline for feature development.",

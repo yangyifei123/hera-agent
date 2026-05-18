@@ -149,21 +149,42 @@ export function createAgentTools(ctx: PluginContext) {
             await mkdir(generatedDir, { recursive: true });
             const pluginDir = join(generatedDir, args.name);
 
-            const pkg = generator.generate(agentDef);
+            // Resolve agent's declared skills to SkillDefinitions so additional
+            // user skills are embedded into the generated plugin's prompt.
+            // Built-in skills (caveman/init/memory/evolution) are embedded by
+            // buildAgentPrompt regardless of what we pass here.
+            const skillMap = skillManager.getSkillMap();
+            const resolvedSkills = agentDef.skills
+              .map((n: string) => skillMap.get(n))
+              .filter(Boolean);
+
+            const pkg = generator.generate(agentDef, resolvedSkills);
             await generator.writeToDisk(pkg, pluginDir);
 
-            // Optionally auto-install
+            // Optionally auto-install: actually runs bun install/build/add
+            // and updates opencode.json. No manual user steps required.
             if (args.auto_install === true) {
-              await generator.install(pluginDir, paths.configRoot);
+              const result = await generator.installWithBuild(pluginDir, paths.configRoot);
+              if (result.ok) {
+                return [
+                  `Agent "${args.name}" generated and installed as plugin.`,
+                  `Plugin directory: ${pluginDir}`,
+                  `Auto-installed: build OK, opencode.json updated.`,
+                  ``,
+                  `Restart OpenCode to load the new plugin.`,
+                ].join("\n");
+              }
+              // Build/install failed — surface which step and why
+              const failedStep = result.steps.find((s: any) => !s.ok);
               return [
-                `Agent "${args.name}" generated as plugin.`,
+                `Agent "${args.name}" generated but auto-install failed at step: ${failedStep?.name ?? "unknown"}.`,
                 `Plugin directory: ${pluginDir}`,
-                `Auto-installed: true.`,
+                failedStep?.stderr ? `Error: ${failedStep.stderr.slice(0, 500)}` : "",
                 ``,
-                `Next steps:`,
+                `Manual fallback:`,
                 `1. cd ${pluginDir} && bun install && bun run build`,
                 `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
-              ].join("\n");
+              ].filter(Boolean).join("\n");
             }
 
             return [

@@ -1,6 +1,6 @@
 ﻿import { describe, it, expect, beforeEach } from "bun:test";
 import { PluginGenerator } from "./plugin-generator.js";
-import type { AgentDefinition } from "../types.js";
+import type { AgentDefinition, SkillDefinition } from "../types.js";
 import { join } from "node:path";
 import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -228,10 +228,14 @@ describe("PluginGenerator", () => {
       expect(agentConfig.permission.edit).toBe("allow");
       expect(agentConfig.permission.bash).toBe("allow");
 
-      // Must NOT import any Hera internals
+      // Must NOT import any Hera internals (the string "hera" may legitimately
+      // appear inside the embedded skill prompts, e.g. "hera_remember" — what
+      // matters is no `import` from hera modules or use of internal classes)
       expect(indexContent).not.toContain("SkillManager");
-      expect(indexContent).not.toContain("hera");
-      expect(indexContent).not.toContain("memory-store");
+      expect(indexContent).not.toContain("MemoryStore");
+      expect(indexContent).not.toContain("AgentRegistry");
+      expect(indexContent).not.toContain("TeamManager");
+      expect(indexContent).not.toMatch(/from\s+["'][^"']*hera[^"']*["']/);
 
       await cleanup();
     });
@@ -286,6 +290,220 @@ describe("PluginGenerator", () => {
       expect(installMd).toContain("opencode.json");
 
       await cleanup();
+    });
+  });
+
+  // ============================================================
+  // Phase P0: Full prompt assembly — skills + evolution embedding
+  // (parity with md mode via buildAgentPrompt)
+  // ============================================================
+  describe("full prompt assembly (P0)", () => {
+    it("should embed built-in caveman skill content into generated prompt", () => {
+      const agent = makeTestAgent({ prompt: "BASE_PROMPT_MARKER" });
+      const code = generator.generatePluginIndex(agent);
+      // The generated agent prompt must contain caveman skill prompt content
+      expect(code).toContain("Caveman Mode");
+      expect(code).toContain("BASE_PROMPT_MARKER");
+    });
+
+    it("should embed built-in memory skill content into generated prompt", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("Autonomous Knowledge Persistence");
+    });
+
+    it("should embed built-in init skill content into generated prompt", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      // Init skill prompt mentions context gathering
+      expect(code.toLowerCase()).toContain("init");
+    });
+
+    it("should embed built-in evolution skill content into generated prompt", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code.toLowerCase()).toContain("evolution");
+    });
+
+    it("should embed additional user skills when provided", () => {
+      const agent = makeTestAgent({ skills: ["caveman", "memory", "my-custom-skill"] });
+      const userSkill: SkillDefinition = {
+        name: "my-custom-skill",
+        description: "test",
+        prompt: "CUSTOM_SKILL_BODY_MARKER",
+      };
+      const code = generator.generatePluginIndex(agent, [userSkill]);
+      expect(code).toContain("CUSTOM_SKILL_BODY_MARKER");
+      expect(code).toContain("my-custom-skill");
+    });
+
+    it("should bake evolution log directives into generated prompt", () => {
+      const agent = makeTestAgent({
+        evolutionLog: [
+          { timestamp: 1700000000000, directive: "EVO_DIRECTIVE_ONE" },
+          { timestamp: 1700000001000, directive: "EVO_DIRECTIVE_TWO" },
+        ],
+      });
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("Evolved Directives");
+      expect(code).toContain("EVO_DIRECTIVE_ONE");
+      expect(code).toContain("EVO_DIRECTIVE_TWO");
+    });
+
+    it("should NOT embed evolution directives that are rolledBack", () => {
+      const agent = makeTestAgent({
+        evolutionLog: [
+          { timestamp: 1700000000000, directive: "ACTIVE_DIRECTIVE" },
+          { timestamp: 1700000001000, directive: "ROLLED_BACK_DIRECTIVE", rolledBack: true },
+        ],
+      });
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("ACTIVE_DIRECTIVE");
+      expect(code).not.toContain("ROLLED_BACK_DIRECTIVE");
+    });
+
+    it("generate() should accept resolvedSkills and embed them", () => {
+      const agent = makeTestAgent({ skills: ["caveman", "extra-skill"] });
+      const extraSkill: SkillDefinition = {
+        name: "extra-skill",
+        description: "test",
+        prompt: "EXTRA_SKILL_BODY",
+      };
+      const pkg = generator.generate(agent, [extraSkill]);
+      const indexFile = pkg.files.find((f) => f.path === "src/index.ts");
+      expect(indexFile).toBeDefined();
+      expect(indexFile!.content).toContain("EXTRA_SKILL_BODY");
+    });
+
+    it("should include tsconfig.json so the generated plugin can be built standalone", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generate(agent);
+      const tsconfigFile = pkg.files.find((f) => f.path === "tsconfig.json");
+      expect(tsconfigFile).toBeDefined();
+      // Must be valid JSON
+      const parsed = JSON.parse(tsconfigFile!.content);
+      expect(parsed.compilerOptions).toBeDefined();
+    });
+  });
+
+  // ============================================================
+  // Phase P0-2: Memory tools injected into generated plugin
+  // ============================================================
+  describe("memory tools injection (P0-2)", () => {
+    it("should register hera_remember tool in generated plugin", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("hera_remember");
+      // Must use tool() factory from @opencode-ai/plugin
+      expect(code).toContain('import { tool }');
+    });
+
+    it("should register hera_recall tool in generated plugin", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("hera_recall");
+    });
+
+    it("tool map must NOT be empty `{}` — at least memory tools registered", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).not.toMatch(/tool:\s*\{\s*\}/);
+    });
+
+    it("should resolve memory dir via env (HERA_DIR) or default user-home path", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      // Path resolution must consult HERA_DIR / USERPROFILE / HOME so the
+      // generated plugin shares the same memory dir as Hera itself.
+      expect(code).toContain("HERA_DIR");
+      expect(code).toMatch(/USERPROFILE|HOME/);
+      expect(code).toContain("hera-data");
+      expect(code).toContain("memory");
+    });
+
+    it("memory tool implementation should be inline (no hera-agent runtime dep)", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      // Must NOT import MemoryStore from hera-agent
+      expect(code).not.toMatch(/from\s+["'][^"']*hera-agent[^"']*["']/);
+      expect(code).not.toContain("MemoryStore");
+      // Must use node:fs/promises directly
+      expect(code).toMatch(/from\s+["']node:fs\/promises["']/);
+    });
+
+    it("hera_remember tool should accept content and category args", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("content");
+      expect(code).toContain("category");
+    });
+  });
+
+  // ============================================================
+  // Phase P0-4: installWithBuild — runs bun install/build/add
+  // ============================================================
+  describe("installWithBuild (P0-4)", () => {
+    it("should run bun install, bun run build, bun add in the right cwds", async () => {
+      const calls: Array<{ cmd: string; args: string[]; cwd: string }> = [];
+      const runner = async (cmd: string, args: string[], cwd: string) => {
+        calls.push({ cmd, args, cwd });
+        return { ok: true, stdout: "", stderr: "" };
+      };
+      const gen = new PluginGenerator(runner);
+      const pluginDir = join(tmpDir, "plugins", "my-agent");
+      const configRoot = join(tmpDir, "opencode");
+
+      const result = await gen.installWithBuild(pluginDir, configRoot);
+
+      expect(result.ok).toBe(true);
+      expect(calls.length).toBe(3);
+
+      // Step 1: bun install in pluginDir
+      expect(calls[0].cmd).toBe("bun");
+      expect(calls[0].args).toContain("install");
+      expect(calls[0].cwd).toBe(pluginDir);
+
+      // Step 2: bun run build in pluginDir
+      expect(calls[1].cmd).toBe("bun");
+      expect(calls[1].args).toEqual(["run", "build"]);
+      expect(calls[1].cwd).toBe(pluginDir);
+
+      // Step 3: bun add file://pluginDir in configRoot
+      expect(calls[2].cmd).toBe("bun");
+      expect(calls[2].args[0]).toBe("add");
+      expect(calls[2].args[1]).toContain("file://");
+      expect(calls[2].args[1]).toContain("my-agent");
+      expect(calls[2].cwd).toBe(configRoot);
+    });
+
+    it("should stop and report failure if any step fails", async () => {
+      const calls: Array<{ cmd: string; args: string[]; cwd: string }> = [];
+      const runner = async (cmd: string, args: string[], cwd: string) => {
+        calls.push({ cmd, args, cwd });
+        if (args.includes("build")) {
+          return { ok: false, stdout: "", stderr: "type error in src/index.ts" };
+        }
+        return { ok: true, stdout: "", stderr: "" };
+      };
+      const gen = new PluginGenerator(runner);
+      const result = await gen.installWithBuild(join(tmpDir, "p"), join(tmpDir, "c"));
+
+      expect(result.ok).toBe(false);
+      // install ran, build ran (failed), add did NOT run
+      expect(calls.length).toBe(2);
+      const buildStep = result.steps.find((s) => s.name === "build");
+      expect(buildStep?.ok).toBe(false);
+      expect(buildStep?.stderr).toContain("type error");
+    });
+
+    it("should return steps array with stdout/stderr for each step", async () => {
+      const runner = async () => ({ ok: true, stdout: "ok", stderr: "" });
+      const gen = new PluginGenerator(runner);
+      const result = await gen.installWithBuild(join(tmpDir, "p"), join(tmpDir, "c"));
+      expect(result.steps.length).toBe(3);
+      expect(result.steps[0].name).toBe("install");
+      expect(result.steps[1].name).toBe("build");
+      expect(result.steps[2].name).toBe("add");
     });
   });
 
