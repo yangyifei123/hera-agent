@@ -6,11 +6,12 @@ import { persistAgent } from "../persistence.js";
 import { validateAgentNameWithConflict } from "../validation.js";
 import { SkillAnalyzer, SkillDecomposer, CapabilityMapper } from "../skills/analyzer.js";
 import type { AnalysisResult, DecomposedSkill } from "../skills/analyzer.js";
+import { upgradeSkillsToTeam } from "./skill-to-team.js";
 
 const z = tool.schema;
 
 export function createSkillTools(ctx: PluginContext) {
-  const { skillManager, store, agentRegistry, registeredAgents } = ctx;
+  const { skillManager, store, agentRegistry, registeredAgents, teamManager } = ctx;
 
   return {
     hera_create_skill: tool({
@@ -238,6 +239,45 @@ export function createSkillTools(ctx: PluginContext) {
         resultLines.push(`Skills [${validSkills.join(", ")}] upgraded to agent "${args.agent_name}" (${mode}). Persisted to ${fileWritten}.`);
 
         return resultLines.join("\n");
+      },
+    }),
+
+    hera_upgrade_to_team: tool({
+      description: "Upgrade multiple skills into a coordinated team — each skill becomes its own member agent, and a team is created with the chosen coordination mode. Use this when skills are better kept separate (specialists) rather than merged into one agent.",
+      args: {
+        team_name: z.string().describe("Name for the new team"),
+        description: z.string().describe("Team purpose"),
+        skill_names: z.array(z.string()).describe("Skills to upgrade — each becomes one member agent"),
+        coordination: z.enum(["parallel", "sequential", "adaptive"]).describe("How the team coordinates"),
+        management: z.enum(["simple", "okr", "tree", "control"]).optional().describe("Management style (default: simple)"),
+        member_mode: z.enum(["primary", "subagent", "all"]).optional().describe("Agent mode for every member (default: subagent)"),
+      },
+      async execute(args) {
+        const result = await upgradeSkillsToTeam({
+          skillNames: args.skill_names,
+          teamName: args.team_name,
+          description: args.description,
+          coordination: args.coordination,
+          management: args.management,
+          memberMode: args.member_mode,
+          skillManager,
+          teamManager,
+          agentRegistry,
+          store,
+          registeredAgents,
+        });
+
+        if (!result.ok) {
+          return `Error: ${result.error ?? "Failed to upgrade skills to team."}`;
+        }
+
+        return [
+          `Team "${args.team_name}" created with ${result.createdAgents.length} member agents (${args.coordination}).`,
+          `Members: ${result.createdAgents.join(", ")}.`,
+          ``,
+          `Each member is now available via @${result.createdAgents[0]} (etc.) or in the team via hera_spawn_team team_name="${args.team_name}".`,
+          `To export the team as a plugin: hera_export_team team_name="${args.team_name}" auto_install=true.`,
+        ].join("\n");
       },
     }),
   };

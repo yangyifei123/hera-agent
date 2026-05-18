@@ -17,6 +17,10 @@ import { getCavemanPrompt } from "../skills/caveman.js";
 import { getInitPrompt } from "../skills/init.js";
 import { getMemoryPrompt } from "../skills/memory.js";
 import { getEvolutionPrompt, buildEvolutionBlock } from "../skills/evolution.js";
+import { getSkillComboPrompt } from "../skills/skill-combo.js";
+import { getSubagentPrompt } from "../skills/subagent.js";
+import { getCommunicatePrompt } from "../skills/communicate.js";
+import { getAutoCompactPrompt } from "../skills/auto-compact.js";
 
 export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
   general: {
@@ -281,6 +285,22 @@ export function buildAgentPrompt(
 
   sections.push("## Built-in Skill: Evolution");
   sections.push(getEvolutionPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Skill-Combo");
+  sections.push(getSkillComboPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Subagent");
+  sections.push(getSubagentPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Communicate");
+  sections.push(getCommunicatePrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Auto-Compact");
+  sections.push(getAutoCompactPrompt());
   sections.push("");
 
   // Embed additional user skills

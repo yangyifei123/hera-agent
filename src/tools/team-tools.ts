@@ -1,9 +1,11 @@
 import { tool } from "@opencode-ai/plugin";
-import type { PluginContext } from "../types.js";
+import type { PluginContext, AgentDefinition } from "../types.js";
 import { MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
 import { TEAM_TEMPLATES, type TeamTemplateName } from "../team/templates.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { persistAgent } from "../persistence.js";
+import { join } from "node:path";
+import { mkdir } from "node:fs/promises";
 import {
   createObjective as okrCreateObjective,
   createKeyResult,
@@ -25,7 +27,7 @@ import {
 const z = tool.schema;
 
 export function createTeamTools(ctx: PluginContext) {
-  const { teamManager, store, registeredAgents, client, skillManager, agentRegistry } = ctx;
+  const { teamManager, store, registeredAgents, client, skillManager, agentRegistry, paths } = ctx;
 
   return {
     hera_create_team: tool({
@@ -295,6 +297,96 @@ export function createTeamTools(ctx: PluginContext) {
           return `Control point "${args.control_point}" (${cp.type}) added to team "${args.team_name}". ID: ${cp.id}`;
         } catch (err: any) {
           return `Error: ${err?.message ?? String(err)}`;
+        }
+      },
+    }),
+
+    hera_export_team: tool({
+      description: "Export an existing team as a standalone OpenCode plugin. Generates a package that registers all member agents under one plugin, sharing Hera's memory pool. Set auto_install to skip manual build/add steps.",
+      args: {
+        team_name: z.string().describe("Team name to export"),
+        auto_install: z.boolean().optional().describe("When true, run bun install/build/add automatically"),
+      },
+      async execute(args) {
+        const team = teamManager.getTeam(args.team_name);
+        if (!team) {
+          return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
+        }
+
+        // Resolve member agent definitions — prefer the in-memory map, fall
+        // back to reading the .md from disk.
+        const memberDefs: AgentDefinition[] = [];
+        const missing: string[] = [];
+        for (const m of team.members) {
+          const def =
+            registeredAgents.get(m.agentName) ??
+            (await agentRegistry.readDefinition(m.agentName));
+          if (def) memberDefs.push(def);
+          else missing.push(m.agentName);
+        }
+        if (missing.length > 0) {
+          return `Error: Member agent(s) missing from registry/disk: ${missing.join(", ")}. Create them first.`;
+        }
+
+        let TeamGenMod: any;
+        try {
+          TeamGenMod = await import("../generators/team-plugin-generator.js");
+        } catch (err: any) {
+          return `Error: TeamPluginGenerator unavailable: ${err?.message ?? String(err)}`;
+        }
+
+        const generator = new TeamGenMod.TeamPluginGenerator();
+        const generatedDir = join(paths.configRoot, "agents", "hera-generated");
+        await mkdir(generatedDir, { recursive: true });
+        const pluginDir = join(generatedDir, `${args.team_name}-team`);
+
+        // Resolve skills for prompt embedding (additional user skills only;
+        // built-ins are always embedded by buildAgentPrompt).
+        const skillMap = skillManager.getSkillMap();
+        const skillNames = new Set<string>();
+        for (const def of memberDefs) for (const s of def.skills) skillNames.add(s);
+        const resolvedSkills = Array.from(skillNames)
+          .map((n) => skillMap.get(n))
+          .filter(Boolean);
+
+        try {
+          const pkg = generator.generate(team, memberDefs, resolvedSkills);
+          await generator.writeToDisk(pkg, pluginDir);
+
+          if (args.auto_install === true) {
+            const result = await generator.installWithBuild(pluginDir, paths.configRoot);
+            if (result.ok) {
+              return [
+                `Team "${args.team_name}" exported and installed as plugin.`,
+                `Plugin directory: ${pluginDir}`,
+                `Members registered: ${memberDefs.map((d) => d.name).join(", ")}.`,
+                ``,
+                `Restart OpenCode to load the new plugin.`,
+              ].join("\n");
+            }
+            const failed = result.steps.find((s: any) => !s.ok);
+            return [
+              `Team "${args.team_name}" exported but auto-install failed at step: ${failed?.name ?? "unknown"}.`,
+              `Plugin directory: ${pluginDir}`,
+              failed?.stderr ? `Error: ${failed.stderr.slice(0, 500)}` : "",
+              ``,
+              `Manual fallback:`,
+              `1. cd ${pluginDir} && bun install && bun run build`,
+              `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
+            ].filter(Boolean).join("\n");
+          }
+
+          return [
+            `Team "${args.team_name}" exported as plugin.`,
+            `Plugin directory: ${pluginDir}`,
+            `Members: ${memberDefs.map((d) => d.name).join(", ")}.`,
+            ``,
+            `Next steps:`,
+            `1. cd ${pluginDir} && bun install && bun run build`,
+            `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
+          ].join("\n");
+        } catch (err: any) {
+          return `Error generating team plugin for "${args.team_name}": ${err?.message ?? String(err)}`;
         }
       },
     }),

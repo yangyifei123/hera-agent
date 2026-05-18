@@ -30,7 +30,16 @@ export const DEFAULT_MEMORY_LIMIT = 1000;
 // === Default Skills ===
 
 /** Default skills inherited by all agents */
-export const DEFAULT_SKILLS = ["caveman", "init", "memory", "evolution"] as const;
+export const DEFAULT_SKILLS = [
+  "caveman",
+  "init",
+  "memory",
+  "evolution",
+  "skill-combo",
+  "subagent",
+  "communicate",
+  "auto-compact",
+] as const;
 
 // === Default Permissions ===
 

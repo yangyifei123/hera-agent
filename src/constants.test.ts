@@ -57,15 +57,19 @@ describe("Constants", () => {
   });
 
   describe("Default Skills", () => {
-    test("DEFAULT_SKILLS contains 4 core skills", () => {
-      expect(DEFAULT_SKILLS).toHaveLength(4);
+    test("DEFAULT_SKILLS contains 8 core skills", () => {
+      expect(DEFAULT_SKILLS).toHaveLength(8);
     });
 
-    test("DEFAULT_SKILLS contains caveman, init, memory, evolution", () => {
+    test("DEFAULT_SKILLS contains all 8 builtin skill names", () => {
       expect(DEFAULT_SKILLS).toContain("caveman");
       expect(DEFAULT_SKILLS).toContain("init");
       expect(DEFAULT_SKILLS).toContain("memory");
       expect(DEFAULT_SKILLS).toContain("evolution");
+      expect(DEFAULT_SKILLS).toContain("skill-combo");
+      expect(DEFAULT_SKILLS).toContain("subagent");
+      expect(DEFAULT_SKILLS).toContain("communicate");
+      expect(DEFAULT_SKILLS).toContain("auto-compact");
     });
 
     test("DEFAULT_SKILLS is readonly (as const)", () => {

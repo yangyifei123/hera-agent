@@ -3,19 +3,24 @@ import { getDefaultSkills, getDefaultPermission, buildSkillPromptEmbedding } fro
 import type { SkillDefinition } from "./types.js";
 
 describe("getDefaultSkills", () => {
+  const EXPECTED_DEFAULTS = [
+    "caveman", "init", "memory", "evolution",
+    "skill-combo", "subagent", "communicate", "auto-compact",
+  ];
+
   it("returns default skills without additional", () => {
     const result = getDefaultSkills();
-    expect(result).toEqual(["caveman", "init", "memory", "evolution"]);
+    expect(result).toEqual(EXPECTED_DEFAULTS);
   });
 
   it("returns default skills with additional skills", () => {
-    const result = getDefaultSkills(["skill-combo", "custom-skill"]);
-    expect(result).toEqual(["caveman", "init", "memory", "evolution", "skill-combo", "custom-skill"]);
+    const result = getDefaultSkills(["custom-skill", "another-skill"]);
+    expect(result).toEqual([...EXPECTED_DEFAULTS, "custom-skill", "another-skill"]);
   });
 
   it("deduplicates when additional overlaps with defaults", () => {
     const result = getDefaultSkills(["caveman", "new-skill"]);
-    expect(result).toEqual(["caveman", "init", "memory", "evolution", "new-skill"]);
+    expect(result).toEqual([...EXPECTED_DEFAULTS, "new-skill"]);
     // caveman should appear exactly once
     expect(result.filter((s) => s === "caveman")).toHaveLength(1);
   });
@@ -30,7 +35,7 @@ describe("getDefaultSkills", () => {
 
   it("handles empty additional array", () => {
     const result = getDefaultSkills([]);
-    expect(result).toEqual(["caveman", "init", "memory", "evolution"]);
+    expect(result).toEqual(EXPECTED_DEFAULTS);
   });
 });
 
