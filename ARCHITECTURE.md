@@ -55,17 +55,32 @@ graph TD
 | **Auto-Evolve** | `src/evolution/auto-evolve.ts` | Semi-automatic evolution |
 | **Team Templates** | `src/team/templates.ts` | Pre-defined team templates |
 | **Onboarding** | `src/onboarding.ts` | First-run setup |
-| **CLI** | `src/cli.ts` | Command-line interface |
+| **CLI** | `bin/hera.js` | Command-line interface (Node, reads disk directly) |
+
+### New Modules (v2.2+)
+
+| Module | File | Responsibility |
+|--------|------|---------------|
+| **Subagent skill** | `src/skills/subagent.ts` | Delegate to specialized agents via hera_spawn_agent |
+| **Communicate skill** | `src/skills/communicate.ts` | Team coordination via hera_team_message |
+| **Auto-compact skill** | `src/skills/auto-compact.ts` | Context window discipline + memory persistence |
+| **Plugin Generator** | `src/generators/plugin-generator.ts` | Generate single-agent OpenCode plugin (full skill embedding, memory tools, evolution log, auto-build) |
+| **Team Plugin Generator** | `src/generators/team-plugin-generator.ts` | Generate plugin registering a whole team of agents |
+| **Skill→Team Upgrade** | `src/tools/skill-to-team.ts` | Convert N skills into N member agents + a coordinating team |
+| **OKR Manager** | `src/team/okr-manager.ts` | OKR-style team management |
+| **Tree Manager** | `src/team/tree-manager.ts` | Hierarchy team management |
+| **Control Manager** | `src/team/control-manager.ts` | Control-point team management |
+| **Test Harness** | `src/tools/test-harness.ts` | Shared PluginContext factory for tool integration tests |
 
 ### Tool Domains (Split from Monolith)
 
 | Domain | File | Tools |
 |--------|------|-------|
-| **Agent** | `src/tools/agent-tools.ts` | create, list, delete, spawn, verify, export, import, restore, quickstart |
-| **Skill** | `src/tools/skill-tools.ts` | create, list, delete, upgrade |
-| **Team** | `src/tools/team-tools.ts` | create, list, delete, spawn, message, quick_team |
+| **Agent** | `src/tools/agent-tools.ts` | create_agent (md/plugin), install_agent, uninstall_agent, list, delete, spawn, verify, export, import, restore, quickstart |
+| **Skill** | `src/tools/skill-tools.ts` | create_skill, list, delete, analyze, decompose, upgrade_to_agent, **upgrade_to_team** |
+| **Team** | `src/tools/team-tools.ts` | create, list, delete, spawn, message, quick_team, add_objective, update_key_result, add_control_point, get_team_progress, **export_team** |
 | **Memory** | `src/tools/memory-tools.ts` | remember, recall |
-| **Evolution** | `src/tools/evolution-tools.ts` | evolve, list_evolutions, rollback |
+| **Evolution** | `src/tools/evolution-tools.ts` | evolve, list_evolutions, rollback, distill_session, propose_evolution |
 | **System** | `src/tools/system-tools.ts` | status, onboard |
 
 ## Data Flow
@@ -178,7 +193,6 @@ For clarity in documentation, modes are referred to as:
 hera-agent/
 ├── src/
 │   ├── index.ts              # Plugin entry
-│   ├── cli.ts                # CLI interface
 │   ├── onboarding.ts         # First-run setup
 │   ├── constants.ts          # Extracted constants
 │   ├── helpers.ts            # Shared utilities
@@ -194,10 +208,17 @@ hera-agent/
 │   ├── skills/
 │   │   ├── caveman.ts        # Ultra-compressed communication
 │   │   ├── init.ts           # Environment awareness
-│   │   ├── skill-combo.ts    # Skill composition
 │   │   ├── memory.ts         # Autonomous memory
 │   │   ├── evolution.ts      # Self-improvement
+│   │   ├── skill-combo.ts    # Skill composition
+│   │   ├── subagent.ts       # Delegate to specialized agents
+│   │   ├── communicate.ts    # Team coordination via messaging
+│   │   ├── auto-compact.ts   # Context window discipline
+│   │   ├── analyzer.ts       # Skill capability analysis
 │   │   └── manager.ts        # Skill CRUD
+│   ├── generators/
+│   │   ├── plugin-generator.ts       # Single-agent plugin export
+│   │   └── team-plugin-generator.ts  # Team plugin export
 │   ├── tools/
 │   │   ├── index.ts          # Tool registration
 │   │   ├── agent-tools.ts    # Agent domain
@@ -205,15 +226,21 @@ hera-agent/
 │   │   ├── team-tools.ts     # Team domain
 │   │   ├── memory-tools.ts   # Memory domain
 │   │   ├── evolution-tools.ts # Evolution domain
-│   │   └── system-tools.ts   # System domain
+│   │   ├── system-tools.ts   # System domain
+│   │   ├── skill-to-team.ts  # Skill→Team upgrade helper
+│   │   └── test-harness.ts   # Shared PluginContext factory for tests
 │   ├── team/
 │   │   ├── manager.ts        # Team coordination
-│   │   └── templates.ts      # Pre-defined templates
+│   │   ├── templates.ts      # Pre-defined team templates
+│   │   ├── okr-manager.ts    # OKR-style management
+│   │   ├── tree-manager.ts   # Hierarchy management
+│   │   └── control-manager.ts # Control-point management
 │   ├── memory/
 │   │   ├── store.ts          # JSON persistence
 │   │   └── smart-extractor.ts # Auto-memory extraction
-│   └── distillation/
-│       ├── engine.ts         # Knowledge extraction
+│   ├── distillation/
+│   │   └── engine.ts         # Knowledge extraction
+│   └── evolution/
 │       └── auto-evolve.ts    # Semi-automatic evolution
 ├── bin/
 │   └── hera.js               # CLI entry
@@ -228,9 +255,10 @@ hera-agent/
 
 ## Performance Characteristics
 
-- **Build Time**: ~20ms (27 modules)
-- **Bundle Size**: ~92 KB
-- **Test Runtime**: ~240ms (201 tests)
+- **Build Time**: ~25ms (36 modules)
+- **Bundle Size**: ~168 KB
+- **Test Runtime**: ~9s (429 tests, includes E2E build verification)
+- **Line coverage**: ~93%
 - **Memory Footprint**: Minimal (lazy-loaded modules)
 - **Startup Time**: <100ms (plugin initialization)
 

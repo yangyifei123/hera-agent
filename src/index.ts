@@ -19,6 +19,15 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const configRoot = resolveConfigRoot(directory);
 
+  // Ensure configRoot exists before any file operation — covers fresh
+  // installs where ~/.config/opencode hasn't been created yet.
+  try {
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(configRoot, { recursive: true });
+  } catch (err) {
+    heraLog("warn", `Could not create config root ${configRoot}`, err);
+  }
+
   // Auto-initialize hera.json on first load
   const heraConfigPath = join(configRoot, "hera.json");
   let config = (options ?? {}) as HeraConfig;

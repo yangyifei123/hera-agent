@@ -39,7 +39,7 @@ hera doctor
 bun test
 ```
 
-The CLI binary (`bin/hera.js` → `src/cli.ts`) is invoked as `hera <command>` after install; it reads disk state directly (does **not** go through the plugin runtime).
+The CLI binary `bin/hera.js` is invoked as `hera <command>` after install; it reads disk state directly (does **not** go through the plugin runtime). Commands include `install`, `doctor`, `list`, `list-skills`, `list-templates`, `list-teams`, `update`, `uninstall`, `version`, `help`.
 
 ## Architecture
 
@@ -73,7 +73,7 @@ The codebase was split out of a monolith. Key seams:
 - **`src/logger.ts`** — `heraLog(level, msg, ...)`. Use this instead of `console.*` so output respects `HERA_DEBUG`.
 - **`src/validation.ts`** — Agent name validation; call before any file operation that uses the name as a path segment.
 - **`src/onboarding.ts`** — First-run setup gated by `.onboarded` flag in `hera-data/`.
-- **`src/cli.ts`** — Standalone CLI; reads disk state directly, bypasses the plugin runtime.
+- **`bin/hera.js`** — Standalone CLI (Node-based); reads disk state directly, bypasses the plugin runtime. Reads its version string from `package.json` so the CLI never drifts from npm metadata.
 
 ### Triple persistence for agents
 
@@ -107,7 +107,7 @@ Only non-`rolledBack` evolution entries are included. Rollback is a soft flag, n
 
 ### Path resolution
 
-`resolveConfigRoot()` in `src/index.ts` and `getConfigRoot()` in `src/cli.ts` are the only places that compute the config root. The CLI also honors `HERA_DIR` as an override. On Windows, paths under `USERPROFILE` are used; everywhere else, `$HOME`. Don't replicate this logic elsewhere — import or refactor.
+`resolveConfigRoot()` in `src/index.ts` and `getConfigRoot()` in `bin/hera.js` are the only places that compute the config root. The CLI also honors `HERA_DIR` as an override. On Windows, paths under `USERPROFILE` are used; everywhere else, `$HOME`. Don't replicate this logic elsewhere — import or refactor.
 
 ## Cross-Platform Notes
 

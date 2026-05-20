@@ -2,28 +2,32 @@
 
 > Named after the Greek goddess of creation. Hera creates agents, skills, and teams that self-evolve.
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.0.0)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.2.0)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Plugin-orange.svg)](https://github.com/opencode-ai/opencode)
 
-Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts as an **agent factory**. It creates autonomous agents with persistent memory, distills conversations into reusable skills, and organizes agents into collaborative teams. Every agent inherits 5 built-in skills and can self-evolve over time.
+Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts as an **agent factory**. It creates autonomous agents with persistent memory, distills conversations into reusable skills, and organizes agents into collaborative teams. Every agent inherits 8 built-in skills and can self-evolve over time. Both agents and teams can be exported as standalone OpenCode plugins.
 
 ## ✨ Features
 
 - **Agent Factory** — Create agents from 10 templates or custom prompts
-- **Zero-Config Setup** — Auto-creates configuration on first load
-- **5 Built-in Skills** — caveman, init, skill-combo, memory, evolution (inherited by all agents)
-- **Skill → Agent Upgrade** — Promote one or more skills into a full agent
+- **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone OpenCode plugins (auto-installable)
+- **Team Plugin Export** — Export an entire team as one plugin (`hera_export_team`) registering all member agents at once
+- **8 Built-in Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent in both md and plugin form)
+- **Skill → Agent Upgrade** — Promote one or more skills into a single full agent (`hera_upgrade_to_agent`)
+- **Skill → Team Upgrade** — Promote N skills into N specialist agents + a coordinating team (`hera_upgrade_to_team`)
 - **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
+- **Team Management Modes** — Simple, OKR, hierarchy (tree), or control-point management
 - **Self-Evolution** — Agents reflect on performance and append improvement directives
-- **Persistent Memory** — JSON-based memory that survives restarts
-- **25+ Management Tools** — Complete agent/skill/team lifecycle management
+- **Persistent Memory** — JSON-based memory store, shared between Hera and every generated plugin
+- **34 Management Tools** — Complete agent/skill/team lifecycle management
 - **Session Distillation** — Extract structured knowledge from conversations
 - **Auto-Memory** — Automatically extract insights from sessions
 - **Semi-Auto Evolution** — Proposes improvements based on session analysis
 - **Soft Delete + Backup** — Safe agent deletion with restore capability
-- **Functional CLI** — Command-line interface for all operations
-- **First-Run Onboarding** — Automatic setup with default agents and teams
+- **Functional CLI** — `hera doctor`, `hera list[-agents|-skills|-templates|-teams]`, install/uninstall, version, help
+- **First-Run Onboarding** — Automatic setup with default agents (quick-fixer, architect, senior-dev, qa-engineer) and `dev-team`
+- **Zero-config plugin auto-install** — `auto_install=true` runs bun install/build/add end-to-end; no manual user steps
 
 ## 📦 Installation
 
@@ -544,4 +548,4 @@ Thanks to the [OpenCode](https://github.com/opencode-ai/opencode) team for the e
 
 ---
 
-**Current Version**: v2.0.0 | **License**: MIT | **Status**: Production Ready ✅
+**Current Version**: v2.2.0 | **License**: MIT | **Status**: Production Ready ✅
