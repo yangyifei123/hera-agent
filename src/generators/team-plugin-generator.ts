@@ -10,11 +10,7 @@
  * of one.
  */
 
-import type {
-  TeamDefinition,
-  AgentDefinition,
-  SkillDefinition,
-} from "../types.js";
+import type { TeamDefinition, AgentDefinition, SkillDefinition } from "../types.js";
 import {
   PluginGenerator,
   type PluginPackage,
@@ -247,9 +243,7 @@ export class TeamPluginGenerator {
         },
       };
 
-      const configJson = JSON.stringify(agentConfig, null, 6)
-        .split("\n")
-        .join("\n      ");
+      const configJson = JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ");
 
       agentBlocks.push(`      input.agent["${member.name}"] = ${configJson};`);
     }
@@ -275,9 +269,7 @@ export default ${pluginVar};
   generateInstallMd(team: TeamDefinition, pluginDir: string): string {
     const name = teamPluginName(team.name);
     const normalized = pluginDir.replace(/\\/g, "/");
-    const memberList = team.members
-      .map((m) => `- @${m.agentName} — ${m.role}`)
-      .join("\n");
+    const memberList = team.members.map((m) => `- @${m.agentName} — ${m.role}`).join("\n");
 
     return `# Installing ${name}
 
@@ -366,10 +358,7 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
     return this.inner.uninstall(name, configRoot);
   }
 
-  async installWithBuild(
-    pluginDir: string,
-    configRoot: string
-  ): Promise<BuildInstallResult> {
+  async installWithBuild(pluginDir: string, configRoot: string): Promise<BuildInstallResult> {
     return this.inner.installWithBuild(pluginDir, configRoot);
   }
 }

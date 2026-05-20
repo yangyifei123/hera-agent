@@ -88,7 +88,13 @@ export class TeamManager {
     switch (team.coordination) {
       case "parallel": {
         const promises = team.members.map(async (member) => {
-          const session = await this.spawnMemberSession(member.agentName, taskPrompt, parentSessionId, directory, hasClient);
+          const session = await this.spawnMemberSession(
+            member.agentName,
+            taskPrompt,
+            parentSessionId,
+            directory,
+            hasClient
+          );
           sessions.push(session);
         });
         await Promise.all(promises);
@@ -97,7 +103,13 @@ export class TeamManager {
       case "sequential": {
         let accumulated = taskPrompt;
         for (const member of team.members) {
-          const session = await this.spawnMemberSession(member.agentName, accumulated, parentSessionId, directory, hasClient);
+          const session = await this.spawnMemberSession(
+            member.agentName,
+            accumulated,
+            parentSessionId,
+            directory,
+            hasClient
+          );
           if (hasClient) {
             const result = await this.pollSessionCompletion(session.sessionId);
             session.status = "completed";
@@ -111,7 +123,13 @@ export class TeamManager {
       case "adaptive": {
         if (team.members.length === 0) break;
         const planner = team.members[0];
-        const planSession = await this.spawnMemberSession(planner.agentName, taskPrompt, parentSessionId, directory, hasClient);
+        const planSession = await this.spawnMemberSession(
+          planner.agentName,
+          taskPrompt,
+          parentSessionId,
+          directory,
+          hasClient
+        );
         let plan = taskPrompt;
         if (hasClient && team.members.length > 1) {
           const planResult = await this.pollSessionCompletion(planSession.sessionId);
@@ -122,7 +140,13 @@ export class TeamManager {
         sessions.push(planSession);
         if (team.members.length > 1) {
           const promises = team.members.slice(1).map(async (member) => {
-            const session = await this.spawnMemberSession(member.agentName, plan, parentSessionId, directory, hasClient);
+            const session = await this.spawnMemberSession(
+              member.agentName,
+              plan,
+              parentSessionId,
+              directory,
+              hasClient
+            );
             sessions.push(session);
           });
           await Promise.all(promises);
@@ -157,7 +181,12 @@ export class TeamManager {
       });
       return { agentName, sessionId, status: "running" };
     } catch (err: any) {
-      return { agentName, sessionId: `error-${randomUUID().slice(0, 8)}`, status: "error", result: err?.message ?? String(err) };
+      return {
+        agentName,
+        sessionId: `error-${randomUUID().slice(0, 8)}`,
+        status: "error",
+        result: err?.message ?? String(err),
+      };
     }
   }
 
@@ -192,7 +221,15 @@ export class TeamManager {
     content: string,
     kind: TeamMessage["kind"] = "message"
   ): TeamMessage {
-    const msg: TeamMessage = { id: randomUUID(), from, to, teamName, content, timestamp: Date.now(), kind };
+    const msg: TeamMessage = {
+      id: randomUUID(),
+      from,
+      to,
+      teamName,
+      content,
+      timestamp: Date.now(),
+      kind,
+    };
     const queue = this.messageQueue.get(teamName) ?? [];
     queue.push(msg);
     this.messageQueue.set(teamName, queue);
@@ -209,9 +246,10 @@ export class TeamManager {
     if (!team) return "";
     const members = team.members.map((m) => `- **${m.agentName}** (${m.role})`).join("\n");
     const sessions = this.spawnedSessions.get(teamName) ?? [];
-    const sessionInfo = sessions.length > 0
-      ? `\nActive Sessions:\n${sessions.map((s) => `- ${s.agentName}: ${s.status} (${s.sessionId})`).join("\n")}`
-      : "";
+    const sessionInfo =
+      sessions.length > 0
+        ? `\nActive Sessions:\n${sessions.map((s) => `- ${s.agentName}: ${s.status} (${s.sessionId})`).join("\n")}`
+        : "";
     return [
       `## Team: ${team.name}`,
       `Description: ${team.description}`,

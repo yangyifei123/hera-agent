@@ -60,19 +60,39 @@ export async function runOnboarding(
       await agentRegistry.register(def, skills);
       heraLog("info", `Onboarding: Created team member '${m.name}' (${m.template} template)`);
     } catch (err) {
-      heraLog("warn", `Onboarding: Could not create team member '${m.name}' (may already exist)`, err);
+      heraLog(
+        "warn",
+        `Onboarding: Could not create team member '${m.name}' (may already exist)`,
+        err
+      );
     }
   }
 
   // Create default team: dev-team (sequential, members: architect, senior-dev, qa-engineer)
   const devTeam: TeamDefinition = {
     name: "dev-team",
-    description: "Full dev team: architect designs → senior-dev implements → qa-engineer tests. Sequential pipeline for feature development.",
+    description:
+      "Full dev team: architect designs → senior-dev implements → qa-engineer tests. Sequential pipeline for feature development.",
     coordination: "sequential",
     members: [
-      { agentName: "architect", role: "architect", subscriptions: ["message", "task", "result"], backendType: "in-process" },
-      { agentName: "senior-dev", role: "developer", subscriptions: ["message", "task", "result"], backendType: "in-process" },
-      { agentName: "qa-engineer", role: "tester", subscriptions: ["message", "task", "result"], backendType: "in-process" },
+      {
+        agentName: "architect",
+        role: "architect",
+        subscriptions: ["message", "task", "result"],
+        backendType: "in-process",
+      },
+      {
+        agentName: "senior-dev",
+        role: "developer",
+        subscriptions: ["message", "task", "result"],
+        backendType: "in-process",
+      },
+      {
+        agentName: "qa-engineer",
+        role: "tester",
+        subscriptions: ["message", "task", "result"],
+        backendType: "in-process",
+      },
     ],
     createdAt: Date.now(),
   };

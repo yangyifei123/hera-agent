@@ -5,7 +5,18 @@ export type AgentMode = "primary" | "subagent" | "all";
 
 export interface HeraMemory {
   id: string;
-  type: "session" | "skill" | "agent" | "team" | "distillation" | "decision" | "fix" | "pattern" | "preference" | "context" | "skill-package";
+  type:
+    | "session"
+    | "skill"
+    | "agent"
+    | "team"
+    | "distillation"
+    | "decision"
+    | "fix"
+    | "pattern"
+    | "preference"
+    | "context"
+    | "skill-package";
   content: string;
   timestamp: number;
   metadata?: Record<string, unknown>;
@@ -74,7 +85,7 @@ export interface SkillMetadata {
 }
 
 /** Backward-compatible union: accepts both v1 SkillDefinition and v3.0 SkillPackage */
-export type AnySkill = SkillDefinition | SkillPackage
+export type AnySkill = SkillDefinition | SkillPackage;
 
 // v3.0 Team management types
 export interface OKRObjective {
@@ -135,7 +146,17 @@ export interface EvolutionEntry {
   rolledBack: boolean;
 }
 
-export type AgentTemplateName = "general" | "coder" | "reviewer" | "researcher" | "coordinator" | "architect" | "debugger" | "tester" | "documenter" | "optimizer";
+export type AgentTemplateName =
+  | "general"
+  | "coder"
+  | "reviewer"
+  | "researcher"
+  | "coordinator"
+  | "architect"
+  | "debugger"
+  | "tester"
+  | "documenter"
+  | "optimizer";
 
 export interface AgentTemplate {
   name: AgentTemplateName;

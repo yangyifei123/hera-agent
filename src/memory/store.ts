@@ -13,7 +13,18 @@ export class MemoryStore {
   }
 
   async init(): Promise<void> {
-    for (const sub of ["sessions", "skills", "agents", "teams", "distillations", "decisions", "fixes", "patterns", "preferences", "contexts"]) {
+    for (const sub of [
+      "sessions",
+      "skills",
+      "agents",
+      "teams",
+      "distillations",
+      "decisions",
+      "fixes",
+      "patterns",
+      "preferences",
+      "contexts",
+    ]) {
       await mkdir(join(this.dir, sub), { recursive: true });
     }
   }
@@ -79,20 +90,26 @@ export class MemoryStore {
     }
   }
 
-  async search(query: string, type?: HeraMemory["type"], options?: { since?: number; limit?: number }): Promise<HeraMemory[]> {
+  async search(
+    query: string,
+    type?: HeraMemory["type"],
+    options?: { since?: number; limit?: number }
+  ): Promise<HeraMemory[]> {
     let all = await this.list(type);
     if (options?.since != null) {
       all = all.filter((m) => m.timestamp >= options.since!);
     }
     const lower = query.toLowerCase();
     const wordBoundaryRe = new RegExp(`\\b${escapeRegex(lower)}`, "i");
-    return all.filter(
-      (m) =>
-        wordBoundaryRe.test(m.content) ||
-        wordBoundaryRe.test(m.id) ||
-        m.content.toLowerCase().includes(lower) ||
-        m.id.toLowerCase().includes(lower)
-    ).slice(0, options?.limit);
+    return all
+      .filter(
+        (m) =>
+          wordBoundaryRe.test(m.content) ||
+          wordBoundaryRe.test(m.id) ||
+          m.content.toLowerCase().includes(lower) ||
+          m.id.toLowerCase().includes(lower)
+      )
+      .slice(0, options?.limit);
   }
 }
 

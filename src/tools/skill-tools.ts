@@ -48,12 +48,15 @@ export function createSkillTools(ctx: PluginContext) {
       args: { name: z.string().describe("Skill name") },
       async execute(args) {
         const ok = await skillManager.deleteSkill(args.name);
-        return ok ? `Skill "${args.name}" deleted.` : `Cannot delete "${args.name}". Built-in skills (caveman, init, skill-combo, memory, evolution) cannot be deleted. Create a custom skill with hera_create_skill instead.`;
+        return ok
+          ? `Skill "${args.name}" deleted.`
+          : `Cannot delete "${args.name}". Built-in skills (caveman, init, skill-combo, memory, evolution) cannot be deleted. Create a custom skill with hera_create_skill instead.`;
       },
     }),
 
     hera_analyze_skill: tool({
-      description: "Analyze a skill to understand its capabilities, complexity, and get recommendations for agent conversion.",
+      description:
+        "Analyze a skill to understand its capabilities, complexity, and get recommendations for agent conversion.",
       args: {
         skill_name: z.string().describe("Name of the skill to analyze"),
       },
@@ -79,7 +82,9 @@ export function createSkillTools(ctx: PluginContext) {
         if (analysis.capabilities.length > 0) {
           lines.push("### Capabilities");
           for (const cap of analysis.capabilities) {
-            lines.push(`- **${cap.name}** (confidence: ${(cap.confidence * 100).toFixed(0)}%) — evidence: ${cap.evidence}`);
+            lines.push(
+              `- **${cap.name}** (confidence: ${(cap.confidence * 100).toFixed(0)}%) — evidence: ${cap.evidence}`
+            );
           }
           lines.push("");
         }
@@ -94,7 +99,8 @@ export function createSkillTools(ctx: PluginContext) {
     }),
 
     hera_decompose_skill: tool({
-      description: "Decompose a complex skill into smaller, atomic sub-skills. Useful before upgrading to agent.",
+      description:
+        "Decompose a complex skill into smaller, atomic sub-skills. Useful before upgrading to agent.",
       args: {
         skill_name: z.string().describe("Name of the skill to decompose"),
       },
@@ -125,18 +131,24 @@ export function createSkillTools(ctx: PluginContext) {
           lines.push("");
         }
 
-        lines.push("Use `hera_create_skill` to persist each sub-skill, then `hera_upgrade_to_agent` to create agents.");
+        lines.push(
+          "Use `hera_create_skill` to persist each sub-skill, then `hera_upgrade_to_agent` to create agents."
+        );
         return lines.join("\n");
       },
     }),
 
     hera_upgrade_to_agent: tool({
-      description: "Upgrade one or more skills into a full agent. Analyzes skill capabilities to suggest optimal agent configuration.",
+      description:
+        "Upgrade one or more skills into a full agent. Analyzes skill capabilities to suggest optimal agent configuration.",
       args: {
         agent_name: z.string().describe("Name for the new agent"),
         description: z.string().describe("Agent description"),
         skill_names: z.array(z.string()).describe("Skills to upgrade"),
-        mode: z.enum(["primary", "subagent", "all"]).optional().describe("Agent mode (auto-detected if omitted)"),
+        mode: z
+          .enum(["primary", "subagent", "all"])
+          .optional()
+          .describe("Agent mode (auto-detected if omitted)"),
         model: z.string().optional().describe("Model override"),
       },
       async execute(args) {
@@ -167,14 +179,16 @@ export function createSkillTools(ctx: PluginContext) {
 
           analysisLines.push(`--- Analysis: ${skill.name} ---`);
           analysisLines.push(`  Complexity: ${analysis.complexity}`);
-          analysisLines.push(`  Capabilities: ${analysis.capabilities.map((c) => `${c.name} (${(c.confidence * 100).toFixed(0)}%)`).join(", ") || "none"}`);
+          analysisLines.push(
+            `  Capabilities: ${analysis.capabilities.map((c) => `${c.name} (${(c.confidence * 100).toFixed(0)}%)`).join(", ") || "none"}`
+          );
           analysisLines.push(`  Recommendations: ${analysis.recommendations.join("; ")}`);
 
           // Use CapabilityMapper for agent configuration suggestions
           if (analysis.capabilities.length > 0) {
             const mapping = CapabilityMapper.mapToAgentCapabilities(
               analysis.capabilities,
-              analysis.complexity,
+              analysis.complexity
             );
             if (!detectedMode) detectedMode = mapping.mode;
             if (!detectedMaxSteps || mapping.maxSteps > detectedMaxSteps) {
@@ -191,7 +205,9 @@ export function createSkillTools(ctx: PluginContext) {
 
           // Suggest decomposition for complex skills
           if (analysis.complexity === "complex") {
-            analysisLines.push(`  Note: Skill is complex. Consider running hera_decompose_skill first.`);
+            analysisLines.push(
+              `  Note: Skill is complex. Consider running hera_decompose_skill first.`
+            );
           }
         }
 
@@ -200,8 +216,12 @@ export function createSkillTools(ctx: PluginContext) {
         }
 
         // --- Agent Generation Phase ---
-        const agentPrompt = skillManager.upgradeSkillsToAgentPrompt(args.agent_name, validSkills, args.description);
-        const mode = (args.mode ?? detectedMode) as AgentDefinition["mode"] ?? "all";
+        const agentPrompt = skillManager.upgradeSkillsToAgentPrompt(
+          args.agent_name,
+          validSkills,
+          args.description
+        );
+        const mode = ((args.mode ?? detectedMode) as AgentDefinition["mode"]) ?? "all";
         const maxSteps = detectedMaxSteps ?? DEFAULT_CHILD_MAX_STEPS;
 
         const agentDef: AgentDefinition = {
@@ -217,7 +237,13 @@ export function createSkillTools(ctx: PluginContext) {
           evolutionLog: [],
         };
         const skillsMap = skillManager.getSkillMap();
-        const { fileWritten } = await persistAgent(agentDef, skillsMap, registeredAgents, agentRegistry, store);
+        const { fileWritten } = await persistAgent(
+          agentDef,
+          skillsMap,
+          registeredAgents,
+          agentRegistry,
+          store
+        );
 
         // --- Build response with analysis + result ---
         const resultLines: string[] = [];
@@ -236,21 +262,34 @@ export function createSkillTools(ctx: PluginContext) {
           resultLines.push("");
         }
 
-        resultLines.push(`Skills [${validSkills.join(", ")}] upgraded to agent "${args.agent_name}" (${mode}). Persisted to ${fileWritten}.`);
+        resultLines.push(
+          `Skills [${validSkills.join(", ")}] upgraded to agent "${args.agent_name}" (${mode}). Persisted to ${fileWritten}.`
+        );
 
         return resultLines.join("\n");
       },
     }),
 
     hera_upgrade_to_team: tool({
-      description: "Upgrade multiple skills into a coordinated team — each skill becomes its own member agent, and a team is created with the chosen coordination mode. Use this when skills are better kept separate (specialists) rather than merged into one agent.",
+      description:
+        "Upgrade multiple skills into a coordinated team — each skill becomes its own member agent, and a team is created with the chosen coordination mode. Use this when skills are better kept separate (specialists) rather than merged into one agent.",
       args: {
         team_name: z.string().describe("Name for the new team"),
         description: z.string().describe("Team purpose"),
-        skill_names: z.array(z.string()).describe("Skills to upgrade — each becomes one member agent"),
-        coordination: z.enum(["parallel", "sequential", "adaptive"]).describe("How the team coordinates"),
-        management: z.enum(["simple", "okr", "tree", "control"]).optional().describe("Management style (default: simple)"),
-        member_mode: z.enum(["primary", "subagent", "all"]).optional().describe("Agent mode for every member (default: subagent)"),
+        skill_names: z
+          .array(z.string())
+          .describe("Skills to upgrade — each becomes one member agent"),
+        coordination: z
+          .enum(["parallel", "sequential", "adaptive"])
+          .describe("How the team coordinates"),
+        management: z
+          .enum(["simple", "okr", "tree", "control"])
+          .optional()
+          .describe("Management style (default: simple)"),
+        member_mode: z
+          .enum(["primary", "subagent", "all"])
+          .optional()
+          .describe("Agent mode for every member (default: subagent)"),
       },
       async execute(args) {
         const result = await upgradeSkillsToTeam({

@@ -35,7 +35,7 @@ export const TEAM_TEMPLATES = {
     ],
     coordination: "sequential" as const,
   },
-  "research": {
+  research: {
     description: "Research team: researcher → writer",
     members: [
       { role: "researcher", template: "researcher" as AgentTemplateName },

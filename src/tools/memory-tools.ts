@@ -13,7 +13,20 @@ export function createMemoryTools(ctx: PluginContext) {
       description: "Store information in Hera's persistent memory.",
       args: {
         content: z.string().describe("Information to remember"),
-        category: z.enum(["session", "skill", "agent", "team", "distillation", "preference", "decision", "pattern", "fix", "context"]).describe("Category"),
+        category: z
+          .enum([
+            "session",
+            "skill",
+            "agent",
+            "team",
+            "distillation",
+            "preference",
+            "decision",
+            "pattern",
+            "fix",
+            "context",
+          ])
+          .describe("Category"),
       },
       async execute(args) {
         await store.save({
@@ -30,9 +43,26 @@ export function createMemoryTools(ctx: PluginContext) {
       description: "Search Hera's persistent memory.",
       args: {
         query: z.string().describe("Search query"),
-        category: z.enum(["session", "skill", "agent", "team", "distillation", "preference", "decision", "pattern", "fix", "context"]).optional().describe("Filter"),
+        category: z
+          .enum([
+            "session",
+            "skill",
+            "agent",
+            "team",
+            "distillation",
+            "preference",
+            "decision",
+            "pattern",
+            "fix",
+            "context",
+          ])
+          .optional()
+          .describe("Filter"),
         limit: z.number().optional().describe("Max results to return (default 10, max 50)"),
-        since: z.number().optional().describe("Only return memories from this Unix timestamp onward"),
+        since: z
+          .number()
+          .optional()
+          .describe("Only return memories from this Unix timestamp onward"),
       },
       async execute(args) {
         const effectiveLimit = args.limit != null ? Math.min(args.limit, 50) : MAX_RECALL_RESULTS;
@@ -41,7 +71,10 @@ export function createMemoryTools(ctx: PluginContext) {
           since: args.since,
         });
         if (results.length === 0) return "No matching memories found.";
-        return results.slice(0, effectiveLimit).map((m) => `[${m.type}] ${m.content.slice(0, MAX_RESULT_PREVIEW_LENGTH)}`).join("\n---\n");
+        return results
+          .slice(0, effectiveLimit)
+          .map((m) => `[${m.type}] ${m.content.slice(0, MAX_RESULT_PREVIEW_LENGTH)}`)
+          .join("\n---\n");
       },
     }),
   };

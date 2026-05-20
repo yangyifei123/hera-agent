@@ -30,9 +30,7 @@ export class DistillationEngine {
       patternsLearned: [],
     };
 
-    const conversationText = messages
-      .map((m) => `${m.role}: ${m.content}`)
-      .join("\n\n");
+    const conversationText = messages.map((m) => `${m.role}: ${m.content}`).join("\n\n");
 
     result.summary = this.generateSummary(conversationText);
     result.keyDecisions = this.extractDecisions(conversationText);
@@ -52,10 +50,7 @@ export class DistillationEngine {
   /**
    * Convert distilled knowledge into a usable skill
    */
-  async distillToSkill(
-    name: string,
-    distillation: DistillationResult
-  ): Promise<SkillDefinition> {
+  async distillToSkill(name: string, distillation: DistillationResult): Promise<SkillDefinition> {
     const skill: SkillDefinition = {
       name,
       description: `Auto-generated skill from session distillation: ${distillation.summary.slice(0, MAX_SKILL_DESC_LENGTH)}`,
@@ -82,7 +77,9 @@ export class DistillationEngine {
     const assistantLines = lines.filter((l) => l.startsWith("assistant:"));
     const keyPoints = assistantLines.slice(0, 5).map((l) => {
       const content = l.replace(/^assistant:\s*/, "");
-      return content.length > MAX_SUMMARY_LENGTH ? content.slice(0, MAX_SUMMARY_LENGTH) + "..." : content;
+      return content.length > MAX_SUMMARY_LENGTH
+        ? content.slice(0, MAX_SUMMARY_LENGTH) + "..."
+        : content;
     });
 
     return keyPoints.join(" | ");

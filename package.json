@@ -19,7 +19,12 @@
     "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
     "postinstall": "node postinstall.mjs",
     "dev": "bun run --watch src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [
     "opencode",
@@ -38,8 +43,15 @@
     "@opencode-ai/plugin": "^1.4.6"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
-    "@types/bun": "^1.2.0"
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.4",
+    "@typescript-eslint/parser": "^8.59.4",
+    "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.3",
+    "typescript": "^5.7.0"
   },
   "files": [
     "dist",

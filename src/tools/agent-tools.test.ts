@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { suggestTemplate, suggestMode, slugifyName, findAvailableName, createAgentTools } from "../tools/agent-tools.js";
+import {
+  suggestTemplate,
+  suggestMode,
+  slugifyName,
+  findAvailableName,
+  createAgentTools,
+} from "../tools/agent-tools.js";
 import { makeTestHarness, type TestHarness } from "./test-harness.js";
 
 describe("suggestTemplate", () => {
@@ -162,12 +168,15 @@ describe("createAgentTools (integration)", () => {
 
   describe("hera_create_agent (md mode)", () => {
     it("creates an agent .md file and registers it in-memory", async () => {
-      const result = await tools.hera_create_agent.execute({
-        name: "test-coder",
-        description: "Test coder",
-        prompt: "You write tests.",
-        mode: "subagent",
-      } as any, {} as any);
+      const result = await tools.hera_create_agent.execute(
+        {
+          name: "test-coder",
+          description: "Test coder",
+          prompt: "You write tests.",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
 
       expect(String(result)).toContain('"test-coder" created');
       expect(harness.ctx.registeredAgents.has("test-coder")).toBe(true);
@@ -183,33 +192,51 @@ describe("createAgentTools (integration)", () => {
     });
 
     it("rejects invalid agent names", async () => {
-      const result = await tools.hera_create_agent.execute({
-        name: "BAD NAME",
-        description: "x",
-        prompt: "x",
-        mode: "all",
-      } as any, {} as any);
+      const result = await tools.hera_create_agent.execute(
+        {
+          name: "BAD NAME",
+          description: "x",
+          prompt: "x",
+          mode: "all",
+        } as any,
+        {} as any
+      );
       expect(String(result)).toContain("Error");
     });
 
     it("rejects duplicate agent names with a useful suggestion", async () => {
-      await tools.hera_create_agent.execute({
-        name: "dup", description: "first", prompt: "x", mode: "subagent",
-      } as any, {} as any);
-      const result = await tools.hera_create_agent.execute({
-        name: "dup", description: "second", prompt: "x", mode: "subagent",
-      } as any, {} as any);
+      await tools.hera_create_agent.execute(
+        {
+          name: "dup",
+          description: "first",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
+      const result = await tools.hera_create_agent.execute(
+        {
+          name: "dup",
+          description: "second",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
       expect(String(result)).toContain("Error");
     });
 
     it("applies a template when one is requested", async () => {
-      const result = await tools.hera_create_agent.execute({
-        name: "audit-bot",
-        description: "Audits security",
-        prompt: "",
-        mode: "subagent",
-        template: "reviewer",
-      } as any, {} as any);
+      const result = await tools.hera_create_agent.execute(
+        {
+          name: "audit-bot",
+          description: "Audits security",
+          prompt: "",
+          mode: "subagent",
+          template: "reviewer",
+        } as any,
+        {} as any
+      );
       expect(String(result)).toContain("audit-bot");
       const def = harness.ctx.registeredAgents.get("audit-bot");
       expect(def?.template).toBe("reviewer");
@@ -218,16 +245,24 @@ describe("createAgentTools (integration)", () => {
 
   describe("hera_create_agent (plugin mode)", () => {
     it("writes a plugin package to agents/hera-generated", async () => {
-      const result = await tools.hera_create_agent.execute({
-        name: "plugin-bot",
-        description: "Plugin form",
-        prompt: "You are a plugin bot.",
-        mode: "subagent",
-        format: "plugin",
-      } as any, {} as any);
+      const result = await tools.hera_create_agent.execute(
+        {
+          name: "plugin-bot",
+          description: "Plugin form",
+          prompt: "You are a plugin bot.",
+          mode: "subagent",
+          format: "plugin",
+        } as any,
+        {} as any
+      );
 
       expect(String(result)).toContain("plugin-bot");
-      const generatedDir = join(harness.ctx.paths.configRoot, "agents", "hera-generated", "plugin-bot");
+      const generatedDir = join(
+        harness.ctx.paths.configRoot,
+        "agents",
+        "hera-generated",
+        "plugin-bot"
+      );
       const entries = await readdir(generatedDir);
       expect(entries).toContain("package.json");
       expect(entries).toContain("tsconfig.json");
@@ -247,21 +282,39 @@ describe("createAgentTools (integration)", () => {
     });
 
     it("lists created agents with metadata", async () => {
-      await tools.hera_create_agent.execute({
-        name: "alpha", description: "Alpha agent", prompt: "x", mode: "subagent",
-      } as any, {} as any);
+      await tools.hera_create_agent.execute(
+        {
+          name: "alpha",
+          description: "Alpha agent",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
       const result = await tools.hera_list_agents.execute({} as any, {} as any);
       expect(String(result)).toContain("alpha");
       expect(String(result)).toContain("Alpha agent");
     });
 
     it("filters by mode", async () => {
-      await tools.hera_create_agent.execute({
-        name: "alpha", description: "x", prompt: "x", mode: "subagent",
-      } as any, {} as any);
-      await tools.hera_create_agent.execute({
-        name: "beta", description: "x", prompt: "x", mode: "primary",
-      } as any, {} as any);
+      await tools.hera_create_agent.execute(
+        {
+          name: "alpha",
+          description: "x",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
+      await tools.hera_create_agent.execute(
+        {
+          name: "beta",
+          description: "x",
+          prompt: "x",
+          mode: "primary",
+        } as any,
+        {} as any
+      );
       const result = await tools.hera_list_agents.execute({ mode: "primary" } as any, {} as any);
       expect(String(result)).toContain("beta");
       expect(String(result)).not.toContain("- **alpha**");
@@ -270,9 +323,15 @@ describe("createAgentTools (integration)", () => {
 
   describe("hera_delete_agent", () => {
     it("removes an agent from registry + disk", async () => {
-      await tools.hera_create_agent.execute({
-        name: "gonna-die", description: "x", prompt: "x", mode: "subagent",
-      } as any, {} as any);
+      await tools.hera_create_agent.execute(
+        {
+          name: "gonna-die",
+          description: "x",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
       expect(harness.ctx.registeredAgents.has("gonna-die")).toBe(true);
 
       await tools.hera_delete_agent.execute({ name: "gonna-die" } as any, {} as any);
@@ -285,9 +344,15 @@ describe("createAgentTools (integration)", () => {
 
   describe("hera_verify_agent", () => {
     it("reports details for a registered agent", async () => {
-      await tools.hera_create_agent.execute({
-        name: "verified", description: "Audit me", prompt: "x", mode: "all",
-      } as any, {} as any);
+      await tools.hera_create_agent.execute(
+        {
+          name: "verified",
+          description: "Audit me",
+          prompt: "x",
+          mode: "all",
+        } as any,
+        {} as any
+      );
       const result = await tools.hera_verify_agent.execute({ name: "verified" } as any, {} as any);
       expect(String(result)).toContain("verified");
     });

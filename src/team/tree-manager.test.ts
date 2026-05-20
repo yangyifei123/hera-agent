@@ -16,9 +16,7 @@ describe("tree-manager", () => {
     });
 
     it("should make first member root", () => {
-      const tree = buildHierarchy([
-        { agentName: "lead", role: "architect" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "lead", role: "architect" }]);
       expect(tree).toHaveLength(1);
       expect(tree[0].agent).toBe("lead");
       expect(tree[0].role).toBe("root");
@@ -66,9 +64,7 @@ describe("tree-manager", () => {
 
   describe("findNode", () => {
     it("should find root node", () => {
-      const tree = buildHierarchy([
-        { agentName: "lead", role: "arch" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "lead", role: "arch" }]);
       const found = findNode(tree, "lead");
       expect(found).toBeDefined();
       expect(found!.agent).toBe("lead");
@@ -85,9 +81,7 @@ describe("tree-manager", () => {
     });
 
     it("should return undefined for missing agent", () => {
-      const tree = buildHierarchy([
-        { agentName: "lead", role: "arch" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "lead", role: "arch" }]);
       expect(findNode(tree, "ghost")).toBeUndefined();
     });
   });
@@ -104,9 +98,7 @@ describe("tree-manager", () => {
     });
 
     it("should return empty array for leaf node", () => {
-      const tree = buildHierarchy([
-        { agentName: "solo", role: "dev" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "solo", role: "dev" }]);
       expect(getDelegates(tree[0])).toEqual([]);
     });
   });
@@ -123,18 +115,12 @@ describe("tree-manager", () => {
     });
 
     it("should throw for missing agent", () => {
-      const tree = buildHierarchy([
-        { agentName: "lead", role: "arch" },
-      ]);
-      expect(() => assignTask(tree, "task", "ghost")).toThrow(
-        'Agent "ghost" not found',
-      );
+      const tree = buildHierarchy([{ agentName: "lead", role: "arch" }]);
+      expect(() => assignTask(tree, "task", "ghost")).toThrow('Agent "ghost" not found');
     });
 
     it("should assign task to root", () => {
-      const tree = buildHierarchy([
-        { agentName: "lead", role: "arch" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "lead", role: "arch" }]);
       const result = assignTask(tree, "Plan sprint", "lead");
       expect(result.node.role).toBe("root");
     });
@@ -153,18 +139,14 @@ describe("tree-manager", () => {
     });
 
     it("should return single element for root", () => {
-      const tree = buildHierarchy([
-        { agentName: "root", role: "lead" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "root", role: "lead" }]);
       const chain = getChainToRoot(tree, "root");
       expect(chain).toHaveLength(1);
       expect(chain[0].role).toBe("root");
     });
 
     it("should return empty for missing agent", () => {
-      const tree = buildHierarchy([
-        { agentName: "root", role: "lead" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "root", role: "lead" }]);
       expect(getChainToRoot(tree, "ghost")).toEqual([]);
     });
   });
@@ -187,9 +169,7 @@ describe("tree-manager", () => {
 
   describe("formatTree", () => {
     it("should format single node tree", () => {
-      const tree = buildHierarchy([
-        { agentName: "solo", role: "lead" },
-      ]);
+      const tree = buildHierarchy([{ agentName: "solo", role: "lead" }]);
       const formatted = formatTree(tree);
       expect(formatted).toContain("solo");
       expect(formatted).toContain("root");

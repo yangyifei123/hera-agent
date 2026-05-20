@@ -182,11 +182,20 @@ export async function restoreAgent(
     const content = await readFile(backupFilePath, "utf-8");
     const def = JSON.parse(content) as AgentDefinition;
     if (!def.name || !def.description || !def.mode || !def.prompt) {
-      return { success: false, message: `Backup file "${backupFilePath}" contains invalid agent definition.` };
+      return {
+        success: false,
+        message: `Backup file "${backupFilePath}" contains invalid agent definition.`,
+      };
     }
 
-    const skillsMap = await agentRegistry.listSkillMap?.() ?? new Map<string, SkillDefinition>();
-    const { fileWritten } = await persistAgent(def, skillsMap, registeredAgents, agentRegistry, store);
+    const skillsMap = (await agentRegistry.listSkillMap?.()) ?? new Map<string, SkillDefinition>();
+    const { fileWritten } = await persistAgent(
+      def,
+      skillsMap,
+      registeredAgents,
+      agentRegistry,
+      store
+    );
     return {
       success: true,
       message: `Agent "${def.name}" restored from backup. Persisted to ${fileWritten}.`,

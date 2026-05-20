@@ -107,7 +107,10 @@ describe("control-manager", () => {
     });
 
     it("should not re-evaluate non-pending points", () => {
-      const cp = { ...createControlPoint("Done", "gate", "x==1", "approve"), status: "passed" as const };
+      const cp = {
+        ...createControlPoint("Done", "gate", "x==1", "approve"),
+        status: "passed" as const,
+      };
       const result = evaluateControlPoint(cp, { x: 999 });
       // Should remain passed (not re-evaluated)
       expect(result.status).toBe("passed");
@@ -141,7 +144,10 @@ describe("control-manager", () => {
 
   describe("getPendingPoints", () => {
     it("should return only pending points", () => {
-      const p1 = { ...createControlPoint("P1", "checkpoint", "x", "approve"), status: "pending" as const };
+      const p1 = {
+        ...createControlPoint("P1", "checkpoint", "x", "approve"),
+        status: "pending" as const,
+      };
       const p2 = { ...createControlPoint("P2", "gate", "y", "reject"), status: "passed" as const };
       const pending = getPendingPoints([p1, p2]);
       expect(pending).toHaveLength(1);
@@ -151,7 +157,10 @@ describe("control-manager", () => {
 
   describe("getFailedPoints", () => {
     it("should return only failed points", () => {
-      const p1 = { ...createControlPoint("P1", "checkpoint", "x", "approve"), status: "failed" as const };
+      const p1 = {
+        ...createControlPoint("P1", "checkpoint", "x", "approve"),
+        status: "failed" as const,
+      };
       const p2 = { ...createControlPoint("P2", "gate", "y", "reject"), status: "pending" as const };
       const failed = getFailedPoints([p1, p2]);
       expect(failed).toHaveLength(1);
@@ -161,7 +170,10 @@ describe("control-manager", () => {
 
   describe("formatControlPoint", () => {
     it("should include status icon and details", () => {
-      const cp = { ...createControlPoint("Review", "gate", "coverage>80", "approve"), status: "passed" as const };
+      const cp = {
+        ...createControlPoint("Review", "gate", "coverage>80", "approve"),
+        status: "passed" as const,
+      };
       const formatted = formatControlPoint(cp);
       expect(formatted).toContain("✅");
       expect(formatted).toContain("Review");

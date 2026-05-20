@@ -69,7 +69,9 @@ export async function makeTestHarness(): Promise<TestHarness> {
     ctx,
     tmp,
     cleanup: async () => {
-      try { await rm(tmp, { recursive: true }); } catch {}
+      try {
+        await rm(tmp, { recursive: true });
+      } catch {}
     },
   };
 }

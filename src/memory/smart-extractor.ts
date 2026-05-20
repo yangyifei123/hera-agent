@@ -34,18 +34,18 @@ export function extractMemories(
 
   // Decision patterns (English + Chinese)
   const decisionPatterns = [
-    /(?:decided to|chose|will use|选择|决定使用|决定采用)\s*(.+?)(?:[\.。，、；\n]|$)/gi,
-    /(?:should|must|need to)\s+(?:use|implement|apply)\s+(.+?)(?:[\.。，、；\n]|$)/gi,
+    /(?:decided to|chose|will use|选择|决定使用|决定采用)\s*(.+?)(?:[.。，、；\n]|$)/gi,
+    /(?:should|must|need to)\s+(?:use|implement|apply)\s+(.+?)(?:[.。，、；\n]|$)/gi,
   ];
 
   // Fix patterns (English + Chinese)
   const fixPatterns = [
-    /(?:fixed|resolved|bug was|修复了|解决了|修正了)\s*(.+?)(?:[\.。，、；\n]|$)/gi,
+    /(?:fixed|resolved|bug was|修复了|解决了|修正了)\s*(.+?)(?:[.。，、；\n]|$)/gi,
   ];
 
   // Pattern/habit patterns (English + Chinese)
   const patternPatterns = [
-    /(?:always use|never do|绝不|必须|总是使用)\s*(.+?)(?:[\.。，、；\n]|$)/gi,
+    /(?:always use|never do|绝不|必须|总是使用)\s*(.+?)(?:[.。，、；\n]|$)/gi,
   ];
 
   // Extract decisions

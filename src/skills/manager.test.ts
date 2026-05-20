@@ -249,10 +249,7 @@ describe("SkillManager", () => {
           createdAt: 1000,
         })
       );
-      require("fs").writeFileSync(
-        join(skillDir, "SKILL.md"),
-        "Pre-existing prompt"
-      );
+      require("fs").writeFileSync(join(skillDir, "SKILL.md"), "Pre-existing prompt");
 
       // Create a new manager instance that should pick up the package
       const newManager = new SkillManager(store, SKILLS_DIR);

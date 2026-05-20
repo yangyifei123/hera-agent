@@ -1,11 +1,6 @@
 import { writeFile, mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  AgentDefinition,
-  AgentMode,
-  SkillDefinition,
-  EvolutionEntry,
-} from "../types.js";
+import type { AgentDefinition, AgentMode, SkillDefinition, EvolutionEntry } from "../types.js";
 import { buildAgentPrompt } from "./hera.js";
 import { getDefaultSkills, getDefaultPermission } from "../helpers.js";
 import { heraLog } from "../logger.js";
@@ -188,8 +183,8 @@ export class AgentRegistry {
       mode: (get("mode") as AgentMode) ?? "subagent",
       prompt: body.trim(),
       model: get("model"),
-        skills: getDefaultSkills(),
-        maxSteps: get("maxSteps") ? parseInt(get("maxSteps")!) : 30,
+      skills: getDefaultSkills(),
+      maxSteps: get("maxSteps") ? parseInt(get("maxSteps")!) : 30,
       template: get("template") as any,
       createdAt: get("createdAt") ? parseInt(get("createdAt")!) : undefined,
       evolvedAt: get("evolvedAt") ? parseInt(get("evolvedAt")!) : undefined,
@@ -197,10 +192,7 @@ export class AgentRegistry {
     };
   }
 
-  private injectEvolutionBlock(
-    content: string,
-    entries: EvolutionEntry[]
-  ): string {
+  private injectEvolutionBlock(content: string, entries: EvolutionEntry[]): string {
     const active = entries.filter((e) => !e.rolledBack);
     if (active.length === 0) return content;
 
@@ -208,10 +200,7 @@ export class AgentRegistry {
       "",
       "## Evolved Directives",
       "",
-      ...active.map(
-        (e, i) =>
-          `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`
-      ),
+      ...active.map((e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`),
       "",
     ].join("\n");
 
@@ -221,10 +210,8 @@ export class AgentRegistry {
     if (idx !== -1) {
       // Find next ## heading after the block
       const afterMarker = content.indexOf("\n## ", idx + marker.length);
-      const before =
-        afterMarker !== -1 ? content.slice(0, idx) : content.slice(0, idx);
-      const after =
-        afterMarker !== -1 ? content.slice(afterMarker) : "";
+      const before = afterMarker !== -1 ? content.slice(0, idx) : content.slice(0, idx);
+      const after = afterMarker !== -1 ? content.slice(afterMarker) : "";
       return before + block + after;
     }
     return content + block;

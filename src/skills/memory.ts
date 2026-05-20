@@ -3,7 +3,8 @@ import type { SkillDefinition } from "../types.js";
 export const MEMORY_SKILL: SkillDefinition = {
   name: "memory",
   description: "Autonomous memory management. Agent decides what to remember and when to recall.",
-  trigger: "ACTIVE every session. Automatically stores important facts and recalls relevant context.",
+  trigger:
+    "ACTIVE every session. Automatically stores important facts and recalls relevant context.",
   category: "builtin",
   prompt: `# Memory — Autonomous Knowledge Persistence
 

@@ -111,15 +111,27 @@ const KEYWORD_REGEX = new RegExp(
     .sort((a, b) => b.length - a.length)
     .map(escapeRegex)
     .join("|")})\\b`,
-  "gi",
+  "gi"
 );
 
 /** Contradiction pattern pairs. */
 const CONTRADICTION_PAIRS: Array<[RegExp, RegExp, string]> = [
-  [/\buse (?:TypeScript|ts)\b/i, /\buse (?:JavaScript|js)\b/i, "Language preference conflict (TypeScript vs JavaScript)"],
-  [/\buse (?:SQL|relational)\b/i, /\buse (?:NoSQL|MongoDB|document)\b/i, "Database paradigm conflict (SQL vs NoSQL)"],
+  [
+    /\buse (?:TypeScript|ts)\b/i,
+    /\buse (?:JavaScript|js)\b/i,
+    "Language preference conflict (TypeScript vs JavaScript)",
+  ],
+  [
+    /\buse (?:SQL|relational)\b/i,
+    /\buse (?:NoSQL|MongoDB|document)\b/i,
+    "Database paradigm conflict (SQL vs NoSQL)",
+  ],
   [/\buse (?:React)\b/i, /\buse (?:Vue|Svelte|Angular)\b/i, "Frontend framework conflict"],
-  [/\buse (?:class)\b/i, /\buse (?:functional|hooks)\b/i, "Programming paradigm conflict (OOP vs functional)"],
+  [
+    /\buse (?:class)\b/i,
+    /\buse (?:functional|hooks)\b/i,
+    "Programming paradigm conflict (OOP vs functional)",
+  ],
   [/\balways\b.*\buse\b/i, /\bnever\b.*\buse\b/i, "Contradictory directives (always vs never)"],
   [/\bprefer\b.*\bimport\b/i, /\bprefer\b.*\brequire\b/i, "Module system conflict (ESM vs CJS)"],
 ];
@@ -257,7 +269,7 @@ export class SkillAnalyzer {
   private generateRecommendations(
     skill: SkillPackage,
     capabilities: string[],
-    dependencies: string[],
+    dependencies: string[]
   ): string[] {
     const recs: string[] = [];
 
@@ -321,11 +333,17 @@ export class SkillAnalyzer {
     return relevant.length > 0 ? relevant.join("\n\n") : prompt;
   }
 
-  private filterFilesForCapability(files: SkillPackage["files"], _capability: string): SkillPackage["files"] {
+  private filterFilesForCapability(
+    files: SkillPackage["files"],
+    _capability: string
+  ): SkillPackage["files"] {
     return files.filter((f) => f.type === "config" || f.type === "reference");
   }
 
-  private filterScriptsForCapability(scripts: SkillPackage["scripts"], _capability: string): SkillPackage["scripts"] {
+  private filterScriptsForCapability(
+    scripts: SkillPackage["scripts"],
+    _capability: string
+  ): SkillPackage["scripts"] {
     return scripts.length > 0 ? [scripts[0]] : [];
   }
 }

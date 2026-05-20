@@ -107,7 +107,10 @@ describe("DistillationEngine", () => {
     it("handles Chinese content in summary", async () => {
       const result = await engine.distillSession("test-cn-summary", [
         { role: "user", content: "帮我实现用户登录功能" },
-        { role: "assistant", content: "好的，我来实现基于JWT认证的用户登录功能，包含密码加密和令牌管理。" },
+        {
+          role: "assistant",
+          content: "好的，我来实现基于JWT认证的用户登录功能，包含密码加密和令牌管理。",
+        },
       ]);
       expect(result.summary).toBeTruthy();
       // Should contain Chinese characters
@@ -117,7 +120,10 @@ describe("DistillationEngine", () => {
     it("handles mixed English and Chinese content", async () => {
       const result = await engine.distillSession("test-mixed", [
         { role: "user", content: "Implement React前端 with TypeScript" },
-        { role: "assistant", content: "Using React组件 with TypeScript类型 for responsive响应式 design." },
+        {
+          role: "assistant",
+          content: "Using React组件 with TypeScript类型 for responsive响应式 design.",
+        },
       ]);
       expect(result.summary).toBeTruthy();
     });

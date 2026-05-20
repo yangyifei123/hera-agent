@@ -32,7 +32,11 @@ describe("PluginGenerator", () => {
   });
 
   async function cleanup() {
-    try { await rm(tmpDir, { recursive: true }); } catch {}
+    try {
+      await rm(tmpDir, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 
   // ============================================================
@@ -93,7 +97,7 @@ describe("PluginGenerator", () => {
       const agent = makeTestAgent();
       const code = generator.generatePluginIndex(agent);
       expect(code).toContain("config");
-      expect(code).toContain('input.agent = input.agent ?? {}');
+      expect(code).toContain("input.agent = input.agent ?? {}");
       expect(code).toContain('input.agent["test-coder"]');
     });
 
@@ -110,7 +114,7 @@ describe("PluginGenerator", () => {
 
     it("should bake the full prompt into the generated code", () => {
       const agent = makeTestAgent({
-        prompt: "You are a test agent.\n\n## Skill: caveman\nSpeak like caveman."
+        prompt: "You are a test agent.\n\n## Skill: caveman\nSpeak like caveman.",
       });
       const code = generator.generatePluginIndex(agent);
       expect(code).toContain("You are a test agent");
@@ -212,7 +216,7 @@ describe("PluginGenerator", () => {
 
       // Must contain config hook that registers the agent
       expect(indexContent).toContain("async config(input)");
-      expect(indexContent).toContain('input.agent = input.agent ?? {}');
+      expect(indexContent).toContain("input.agent = input.agent ?? {}");
       expect(indexContent).toContain('input.agent["my-reviewer"]');
 
       // Must contain the agent config with all required fields
@@ -395,7 +399,7 @@ describe("PluginGenerator", () => {
       const code = generator.generatePluginIndex(agent);
       expect(code).toContain("hera_remember");
       // Must use tool() factory from @opencode-ai/plugin
-      expect(code).toContain('import { tool }');
+      expect(code).toContain("import { tool }");
     });
 
     it("should register hera_recall tool in generated plugin", () => {

@@ -97,7 +97,9 @@ Repeat this process for each feature branch. If conditions change, switch strate
       description: "Full stack engineer",
     });
     const result = SkillAnalyzer.analyze(skill);
-    expect(result.recommendations.some((r) => r.includes("concerns") || r.includes("Decomposition"))).toBe(true);
+    expect(
+      result.recommendations.some((r) => r.includes("concerns") || r.includes("Decomposition"))
+    ).toBe(true);
   });
 
   it("generates recommendation for very short prompt", () => {
@@ -107,7 +109,9 @@ Repeat this process for each feature branch. If conditions change, switch strate
       description: "Greeting bot",
     });
     const result = SkillAnalyzer.analyze(skill);
-    expect(result.recommendations.some((r) => r.includes("short") || r.includes("expanding"))).toBe(true);
+    expect(result.recommendations.some((r) => r.includes("short") || r.includes("expanding"))).toBe(
+      true
+    );
   });
 
   it("reports promptLength", () => {
@@ -137,12 +141,16 @@ Repeat this process for each feature branch. If conditions change, switch strate
 
 describe("CapabilityMapper", () => {
   it("maps coding to all mode", () => {
-    const mode = CapabilityMapper.mapToAgentMode([{ name: "coding", confidence: 0.8, evidence: "code" }]);
+    const mode = CapabilityMapper.mapToAgentMode([
+      { name: "coding", confidence: 0.8, evidence: "code" },
+    ]);
     expect(mode).toBe("all");
   });
 
   it("maps review to subagent mode when no autonomous capabilities", () => {
-    const mode = CapabilityMapper.mapToAgentMode([{ name: "review", confidence: 0.8, evidence: "review" }]);
+    const mode = CapabilityMapper.mapToAgentMode([
+      { name: "review", confidence: 0.8, evidence: "review" },
+    ]);
     expect(mode).toBe("subagent");
   });
 
@@ -164,13 +172,17 @@ describe("CapabilityMapper", () => {
   });
 
   it("maps coding capability to edit + bash tools", () => {
-    const tools = CapabilityMapper.mapToTools([{ name: "coding", confidence: 0.8, evidence: "code" }]);
+    const tools = CapabilityMapper.mapToTools([
+      { name: "coding", confidence: 0.8, evidence: "code" },
+    ]);
     expect(tools.edit).toBe(true);
     expect(tools.bash).toBe(true);
   });
 
   it("maps research capability to webfetch", () => {
-    const tools = CapabilityMapper.mapToTools([{ name: "research", confidence: 0.8, evidence: "research" }]);
+    const tools = CapabilityMapper.mapToTools([
+      { name: "research", confidence: 0.8, evidence: "research" },
+    ]);
     expect(tools.webfetch).toBe(true);
   });
 
@@ -207,7 +219,8 @@ describe("SkillDecomposer", () => {
 
   it("splits multi-capability skill into sub-skills", () => {
     const skill = makeSkill({
-      prompt: "## Code\nImplement features.\n\n## Test\nWrite test cases.\n\n## Review\nCheck code quality.",
+      prompt:
+        "## Code\nImplement features.\n\n## Test\nWrite test cases.\n\n## Review\nCheck code quality.",
       trigger: "develop",
       description: "Full dev skill",
     });

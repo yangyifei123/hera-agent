@@ -84,6 +84,8 @@ describe("new builtin skills — integration", () => {
   });
 
   async function cleanup() {
-    try { await rm(tmp, { recursive: true }); } catch {}
+    try {
+      await rm(tmp, { recursive: true });
+    } catch {}
   }
 });

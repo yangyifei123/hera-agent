@@ -43,17 +43,13 @@ describe("code-review template", () => {
   });
 
   test("has reviewer", () => {
-    const reviewer = TEAM_TEMPLATES["code-review"].members.find(
-      (m) => m.role === "reviewer"
-    );
+    const reviewer = TEAM_TEMPLATES["code-review"].members.find((m) => m.role === "reviewer");
     expect(reviewer).toBeDefined();
     expect(reviewer!.template).toBe("reviewer");
   });
 
   test("has bug-hunter", () => {
-    const hunter = TEAM_TEMPLATES["code-review"].members.find(
-      (m) => m.role === "bug-hunter"
-    );
+    const hunter = TEAM_TEMPLATES["code-review"].members.find((m) => m.role === "bug-hunter");
     expect(hunter).toBeDefined();
     expect(hunter!.template).toBe("debugger");
   });

@@ -77,7 +77,9 @@ describe("upgradeSkillsToTeam (integration)", () => {
   });
 
   afterEach(async () => {
-    try { await rm(tmp, { recursive: true }); } catch {}
+    try {
+      await rm(tmp, { recursive: true });
+    } catch {}
   });
 
   it("creates one agent per skill and registers the team", async () => {
@@ -106,9 +108,10 @@ describe("upgradeSkillsToTeam (integration)", () => {
     expect(team).toBeDefined();
     expect(team!.members).toHaveLength(2);
     expect(team!.coordination).toBe("parallel");
-    expect(team!.members.map((m) => m.agentName).sort()).toEqual(
-      ["audit-team-perf", "audit-team-security"]
-    );
+    expect(team!.members.map((m) => m.agentName).sort()).toEqual([
+      "audit-team-perf",
+      "audit-team-security",
+    ]);
   });
 
   it("fails if any skill is missing — does not create partial team", async () => {

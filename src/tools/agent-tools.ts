@@ -94,7 +94,8 @@ export function createAgentTools(ctx: PluginContext) {
 
   return {
     hera_create_agent: tool({
-      description: "Create a new agent that persists across restarts. Optionally use a template (general, coder, reviewer, researcher, coordinator). Set format to 'plugin' to generate a code plugin instead of a .md file.",
+      description:
+        "Create a new agent that persists across restarts. Optionally use a template (general, coder, reviewer, researcher, coordinator). Set format to 'plugin' to generate a code plugin instead of a .md file.",
       args: {
         name: z.string().describe("Unique agent name (lowercase, hyphens OK)"),
         description: z.string().describe("What this agent does"),
@@ -102,10 +103,34 @@ export function createAgentTools(ctx: PluginContext) {
         mode: z.enum(["primary", "subagent", "all"]).describe("Agent mode"),
         model: z.string().optional().describe("Model override"),
         skills: z.array(z.string()).optional().describe("Additional skills to embed"),
-        template: z.enum(["general", "coder", "reviewer", "researcher", "coordinator", "architect", "debugger", "tester", "documenter", "optimizer"]).optional().describe("Agent template to use"),
+        template: z
+          .enum([
+            "general",
+            "coder",
+            "reviewer",
+            "researcher",
+            "coordinator",
+            "architect",
+            "debugger",
+            "tester",
+            "documenter",
+            "optimizer",
+          ])
+          .optional()
+          .describe("Agent template to use"),
         max_steps: z.number().optional().describe("Maximum agentic steps"),
-        format: z.enum(["md", "plugin"]).optional().describe("Output format: 'md' creates a .md file (default), 'plugin' generates a code plugin"),
-        auto_install: z.boolean().optional().describe("When format is 'plugin', auto-install after generation (adds to opencode.json)"),
+        format: z
+          .enum(["md", "plugin"])
+          .optional()
+          .describe(
+            "Output format: 'md' creates a .md file (default), 'plugin' generates a code plugin"
+          ),
+        auto_install: z
+          .boolean()
+          .optional()
+          .describe(
+            "When format is 'plugin', auto-install after generation (adds to opencode.json)"
+          ),
       },
       async execute(args) {
         // Validate agent name
@@ -118,7 +143,12 @@ export function createAgentTools(ctx: PluginContext) {
 
         let agentDef: AgentDefinition;
         if (args.template) {
-          agentDef = createAgentFromTemplate(args.template as AgentTemplateName, args.name, args.prompt, args.model);
+          agentDef = createAgentFromTemplate(
+            args.template as AgentTemplateName,
+            args.name,
+            args.prompt,
+            args.model
+          );
           agentDef.description = args.description;
         } else {
           agentDef = {
@@ -184,7 +214,9 @@ export function createAgentTools(ctx: PluginContext) {
                 `Manual fallback:`,
                 `1. cd ${pluginDir} && bun install && bun run build`,
                 `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
-              ].filter(Boolean).join("\n");
+              ]
+                .filter(Boolean)
+                .join("\n");
             }
 
             return [
@@ -205,7 +237,13 @@ export function createAgentTools(ctx: PluginContext) {
 
         // Default md format: existing behavior
         const skillsMap = skillManager.getSkillMap();
-        const { fileWritten } = await persistAgent(agentDef, skillsMap, registeredAgents, agentRegistry, store);
+        const { fileWritten } = await persistAgent(
+          agentDef,
+          skillsMap,
+          registeredAgents,
+          agentRegistry,
+          store
+        );
         return [
           `Agent "${args.name}" created and registered.`,
           `Mode: ${agentDef.mode}. Skills: ${agentDef.skills.join(", ")}.`,
@@ -216,9 +254,12 @@ export function createAgentTools(ctx: PluginContext) {
     }),
 
     hera_install_agent: tool({
-      description: "Install a generated agent plugin by adding it to opencode.json. The plugin must already exist in the hera-generated directory.",
+      description:
+        "Install a generated agent plugin by adding it to opencode.json. The plugin must already exist in the hera-generated directory.",
       args: {
-        agent_name: z.string().describe("Agent name to install (must exist in hera-generated directory)"),
+        agent_name: z
+          .string()
+          .describe("Agent name to install (must exist in hera-generated directory)"),
       },
       async execute(args) {
         const Mod = await loadPluginGenerator();
@@ -247,7 +288,8 @@ export function createAgentTools(ctx: PluginContext) {
     }),
 
     hera_uninstall_agent: tool({
-      description: "Uninstall a generated agent plugin by removing it from opencode.json. The plugin files are kept on disk.",
+      description:
+        "Uninstall a generated agent plugin by removing it from opencode.json. The plugin files are kept on disk.",
       args: {
         agent_name: z.string().describe("Agent name to uninstall"),
       },
@@ -268,7 +310,8 @@ export function createAgentTools(ctx: PluginContext) {
     }),
 
     hera_list_agents: tool({
-      description: "List all agents created by Hera. Optionally filter by mode, template, or skill.",
+      description:
+        "List all agents created by Hera. Optionally filter by mode, template, or skill.",
       args: {
         mode: z.enum(["primary", "subagent", "all"]).optional().describe("Filter by agent mode"),
         template: z.string().optional().describe("Filter by template name"),
@@ -279,13 +322,22 @@ export function createAgentTools(ctx: PluginContext) {
         const memAgents = Array.from(registeredAgents.keys());
         const all = [...new Set([...diskAgents, ...memAgents])];
         if (all.length === 0) return "No agents created yet. Use hera_create_agent to create one.";
-        let lines = await Promise.all(all.map(async (name) => {
-          const def = registeredAgents.get(name) ?? await agentRegistry.readDefinition(name);
-          if (!def) return { line: `- **${name}**: (definition not found)`, def: null as AgentDefinition | null };
-          const onDisk = diskAgents.includes(name) ? "persisted" : "session-only";
-          const tpl = def.template ? ` [template: ${def.template}]` : "";
-          return { line: `- **${name}**: ${def.description} [${def.mode}]${tpl} Skills: ${def.skills.join(", ")} (${onDisk})`, def };
-        }));
+        let lines = await Promise.all(
+          all.map(async (name) => {
+            const def = registeredAgents.get(name) ?? (await agentRegistry.readDefinition(name));
+            if (!def)
+              return {
+                line: `- **${name}**: (definition not found)`,
+                def: null as AgentDefinition | null,
+              };
+            const onDisk = diskAgents.includes(name) ? "persisted" : "session-only";
+            const tpl = def.template ? ` [template: ${def.template}]` : "";
+            return {
+              line: `- **${name}**: ${def.description} [${def.mode}]${tpl} Skills: ${def.skills.join(", ")} (${onDisk})`,
+              def,
+            };
+          })
+        );
         // Apply filters
         if (args.mode || args.template || args.skill) {
           lines = lines.filter((entry) => {
@@ -318,8 +370,10 @@ export function createAgentTools(ctx: PluginContext) {
       },
       async execute(args, ctx) {
         const hasClient = client && typeof client.session?.create === "function";
-        if (!hasClient) return `Error: Session API not available. This feature requires an active OpenCode session. Try running within an OpenCode session or check your plugin installation.`;
-        if (!registeredAgents.has(args.agent_name)) return `Error: Agent "${args.agent_name}" not found. Use hera_list_agents to see available agents, or create it with hera_create_agent.`;
+        if (!hasClient)
+          return `Error: Session API not available. This feature requires an active OpenCode session. Try running within an OpenCode session or check your plugin installation.`;
+        if (!registeredAgents.has(args.agent_name))
+          return `Error: Agent "${args.agent_name}" not found. Use hera_list_agents to see available agents, or create it with hera_create_agent.`;
         try {
           const createResult = await client.session.create({
             body: { parentID: ctx.sessionID, title: `Hera spawn → @${args.agent_name}` },
@@ -344,7 +398,8 @@ export function createAgentTools(ctx: PluginContext) {
       },
       async execute(args) {
         const def = registeredAgents.get(args.name);
-        if (!def) return `Error: Agent "${args.name}" not registered. Use hera_list_agents to see available agents. If missing, create it with hera_create_agent.`;
+        if (!def)
+          return `Error: Agent "${args.name}" not registered. Use hera_list_agents to see available agents. If missing, create it with hera_create_agent.`;
 
         const diskAgents = await agentRegistry.listRegistered();
         const onDisk = diskAgents.includes(args.name);
@@ -361,7 +416,7 @@ export function createAgentTools(ctx: PluginContext) {
         ];
 
         if (def.evolutionLog && def.evolutionLog.length > 0) {
-          const active = def.evolutionLog.filter(e => !e.rolledBack);
+          const active = def.evolutionLog.filter((e) => !e.rolledBack);
           lines.push(`**Evolutions**: ${active.length} active`);
         }
 
@@ -381,7 +436,8 @@ export function createAgentTools(ctx: PluginContext) {
       },
       async execute(args) {
         const def = registeredAgents.get(args.name);
-        if (!def) return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents, or create it with hera_create_agent.`;
+        if (!def)
+          return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents, or create it with hera_create_agent.`;
 
         return JSON.stringify(def, null, 2);
       },
@@ -400,7 +456,13 @@ export function createAgentTools(ctx: PluginContext) {
           }
 
           const skillsMap = skillManager.getSkillMap();
-          const { fileWritten } = await persistAgent(def, skillsMap, registeredAgents, agentRegistry, store);
+          const { fileWritten } = await persistAgent(
+            def,
+            skillsMap,
+            registeredAgents,
+            agentRegistry,
+            store
+          );
 
           return `Agent "${def.name}" imported successfully. Persisted to ${fileWritten}.`;
         } catch (err: any) {
@@ -410,9 +472,12 @@ export function createAgentTools(ctx: PluginContext) {
     }),
 
     hera_quickstart: tool({
-      description: "One-command agent creation with automatic template suggestion. Analyzes purpose text to pick the best template, name, and mode.",
+      description:
+        "One-command agent creation with automatic template suggestion. Analyzes purpose text to pick the best template, name, and mode.",
       args: {
-        purpose: z.string().describe("What the agent should do (e.g., 'review code', 'write tests')"),
+        purpose: z
+          .string()
+          .describe("What the agent should do (e.g., 'review code', 'write tests')"),
       },
       async execute(args) {
         const template = suggestTemplate(args.purpose);
@@ -428,11 +493,18 @@ export function createAgentTools(ctx: PluginContext) {
 
         const agentDef = createAgentFromTemplate(template, name, undefined, undefined);
         const skillsMap = skillManager.getSkillMap();
-        const { fileWritten } = await persistAgent(agentDef, skillsMap, registeredAgents, agentRegistry, store);
+        const { fileWritten } = await persistAgent(
+          agentDef,
+          skillsMap,
+          registeredAgents,
+          agentRegistry,
+          store
+        );
 
-        const usageLine = mode === "subagent"
-          ? `Use @${name} in your prompt to invoke this agent.`
-          : `Use opencode --agent ${name} or @${name} to start.`;
+        const usageLine =
+          mode === "subagent"
+            ? `Use @${name} in your prompt to invoke this agent.`
+            : `Use opencode --agent ${name} or @${name} to start.`;
 
         return [
           `Agent "${name}" created via quickstart.`,

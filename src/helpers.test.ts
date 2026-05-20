@@ -4,8 +4,14 @@ import type { SkillDefinition } from "./types.js";
 
 describe("getDefaultSkills", () => {
   const EXPECTED_DEFAULTS = [
-    "caveman", "init", "memory", "evolution",
-    "skill-combo", "subagent", "communicate", "auto-compact",
+    "caveman",
+    "init",
+    "memory",
+    "evolution",
+    "skill-combo",
+    "subagent",
+    "communicate",
+    "auto-compact",
   ];
 
   it("returns default skills without additional", () => {
@@ -60,8 +66,20 @@ describe("getDefaultPermission", () => {
 
 describe("buildSkillPromptEmbedding", () => {
   const mockSkills: SkillDefinition[] = [
-    { name: "caveman", description: "Compressed comms", trigger: "always", prompt: "Be brief.", category: "builtin" },
-    { name: "custom", description: "Custom skill", trigger: "on demand", prompt: "Do custom thing.", category: "user" },
+    {
+      name: "caveman",
+      description: "Compressed comms",
+      trigger: "always",
+      prompt: "Be brief.",
+      category: "builtin",
+    },
+    {
+      name: "custom",
+      description: "Custom skill",
+      trigger: "on demand",
+      prompt: "Do custom thing.",
+      category: "user",
+    },
   ];
 
   it("builds markdown sections for each skill", () => {

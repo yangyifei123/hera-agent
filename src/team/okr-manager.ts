@@ -23,7 +23,7 @@ export function createObjective(
   name: string,
   keyResults: KeyResult[],
   assignee?: string,
-  deadline?: number,
+  deadline?: number
 ): OKRObjective {
   return {
     id: `obj-${randomUUID().slice(0, 8)}`,
@@ -41,7 +41,7 @@ export function createKeyResult(
   description: string,
   target: number,
   metric: string,
-  current: number = 0,
+  current: number = 0
 ): KeyResult {
   return {
     id: `kr-${randomUUID().slice(0, 8)}`,
@@ -58,14 +58,14 @@ export function createKeyResult(
 export function updateKeyResult(
   objective: OKRObjective,
   krId: string,
-  progress: number,
+  progress: number
 ): OKRObjective {
   const krIndex = objective.keyResults.findIndex((kr) => kr.id === krId);
   if (krIndex === -1) {
     throw new Error(`Key result "${krId}" not found in objective "${objective.name}".`);
   }
   const updatedKeyResults = objective.keyResults.map((kr, i) =>
-    i === krIndex ? { ...kr, current: Math.min(progress, kr.target) } : kr,
+    i === krIndex ? { ...kr, current: Math.min(progress, kr.target) } : kr
   );
   return { ...objective, keyResults: updatedKeyResults };
 }
@@ -97,12 +97,10 @@ export function calculateTeamProgress(objectives: OKRObjective[]): number {
  */
 export function formatObjective(obj: OKRObjective): string {
   const progress = calculateProgress(obj);
-  const krLines = obj.keyResults.map(
-    (kr) => {
-      const pct = kr.target === 0 ? 0 : Math.round((kr.current / kr.target) * 100);
-      return `  - ${kr.description}: ${kr.current}/${kr.target} ${kr.metric} (${pct}%)`;
-    },
-  );
+  const krLines = obj.keyResults.map((kr) => {
+    const pct = kr.target === 0 ? 0 : Math.round((kr.current / kr.target) * 100);
+    return `  - ${kr.description}: ${kr.current}/${kr.target} ${kr.metric} (${pct}%)`;
+  });
   return [
     `**${obj.name}** (${progress}%)${obj.assignee ? ` → ${obj.assignee}` : ""}`,
     ...krLines,

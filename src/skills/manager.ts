@@ -267,22 +267,14 @@ export class SkillManager {
       intensity: pkg.intensity,
       createdAt: pkg.createdAt ?? Date.now(),
     };
-    await writeFile(
-      join(skillDir, "SKILL.json"),
-      JSON.stringify(metadata, null, 2),
-      "utf-8"
-    );
+    await writeFile(join(skillDir, "SKILL.json"), JSON.stringify(metadata, null, 2), "utf-8");
 
     // SKILL.md (core prompt)
     await writeFile(join(skillDir, "SKILL.md"), pkg.prompt, "utf-8");
 
     // config.json (optional)
     if (pkg.config && Object.keys(pkg.config).length > 0) {
-      await writeFile(
-        join(skillDir, "config.json"),
-        JSON.stringify(pkg.config, null, 2),
-        "utf-8"
-      );
+      await writeFile(join(skillDir, "config.json"), JSON.stringify(pkg.config, null, 2), "utf-8");
     }
 
     // Additional files (scripts, templates, references)
@@ -296,7 +288,10 @@ export class SkillManager {
     }
   }
 
-  private async readPackageFromDisk(name: string, skillDir: string): Promise<SkillPackage | undefined> {
+  private async readPackageFromDisk(
+    name: string,
+    skillDir: string
+  ): Promise<SkillPackage | undefined> {
     const metadataJson = await readFile(join(skillDir, "SKILL.json"), "utf-8").catch(() => null);
     if (!metadataJson) return undefined;
 
@@ -312,14 +307,19 @@ export class SkillManager {
     const configJson = await readFile(join(skillDir, "config.json"), "utf-8").catch(() => null);
     let config: Record<string, unknown> | undefined;
     if (configJson) {
-      try { config = JSON.parse(configJson); } catch { /* ignore */ }
+      try {
+        config = JSON.parse(configJson);
+      } catch {
+        /* ignore */
+      }
     }
 
     const allPaths = await collectFilePaths(skillDir, skillDir).catch(() => []);
     const extraFiles: SkillFile[] = [];
     for (const p of allPaths) {
       const normalized = normalizePath(p);
-      if (AUTO_GENERATED_FILES.some((f) => normalized === f || normalized.startsWith(f + "/"))) continue;
+      if (AUTO_GENERATED_FILES.some((f) => normalized === f || normalized.startsWith(f + "/")))
+        continue;
       const content = await readFile(join(skillDir, p), "utf-8").catch(() => "");
       if (content !== undefined) {
         extraFiles.push({ path: normalized, content });

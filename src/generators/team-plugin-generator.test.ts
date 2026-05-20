@@ -139,7 +139,9 @@ describe("TeamPluginGenerator", () => {
       const tsconfigRaw = await readFile(join(out, "tsconfig.json"), "utf-8");
       JSON.parse(tsconfigRaw);
 
-      try { await rm(tmp, { recursive: true }); } catch {}
+      try {
+        await rm(tmp, { recursive: true });
+      } catch {}
     });
   });
 

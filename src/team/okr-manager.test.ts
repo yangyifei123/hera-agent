@@ -64,7 +64,7 @@ describe("okr-manager", () => {
     it("should throw on missing key result ID", () => {
       const obj = createObjective("Test", [createKeyResult("KR", 10, "x")]);
       expect(() => updateKeyResult(obj, "nonexistent", 5)).toThrow(
-        'Key result "nonexistent" not found',
+        'Key result "nonexistent" not found'
       );
     });
   });
@@ -102,12 +102,8 @@ describe("okr-manager", () => {
     });
 
     it("should average across all objectives", () => {
-      const obj1 = createObjective("Obj1", [
-        createKeyResult("KR1", 100, "%", 100),
-      ]); // 100%
-      const obj2 = createObjective("Obj2", [
-        createKeyResult("KR2", 100, "%", 50),
-      ]); // 50%
+      const obj1 = createObjective("Obj1", [createKeyResult("KR1", 100, "%", 100)]); // 100%
+      const obj2 = createObjective("Obj2", [createKeyResult("KR2", 100, "%", 50)]); // 50%
       // (100 + 50) / 2 = 75
       expect(calculateTeamProgress([obj1, obj2])).toBe(75);
     });
@@ -130,9 +126,7 @@ describe("okr-manager", () => {
     });
 
     it("should show overall progress percentage", () => {
-      const obj = createObjective("Goal", [
-        createKeyResult("KR", 10, "items", 5),
-      ]);
+      const obj = createObjective("Goal", [createKeyResult("KR", 10, "items", 5)]);
       const formatted = formatTeamProgress([obj]);
       expect(formatted).toContain("Overall Progress:");
       expect(formatted).toContain("50%");

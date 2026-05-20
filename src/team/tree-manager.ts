@@ -17,9 +17,7 @@ export interface TaskAssignment {
  * Build a tree hierarchy from flat member list.
  * First member becomes root, subsequent members become children.
  */
-export function buildHierarchy(
-  members: { agentName: string; role: string }[],
-): TreeNode[] {
+export function buildHierarchy(members: { agentName: string; role: string }[]): TreeNode[] {
   if (members.length === 0) return [];
 
   const nodes: TreeNode[] = members.map((m, i) => ({
@@ -41,10 +39,7 @@ export function buildHierarchy(
 /**
  * Find a node by agent name in the tree (recursive DFS).
  */
-export function findNode(
-  tree: TreeNode[],
-  agentName: string,
-): TreeNode | undefined {
+export function findNode(tree: TreeNode[], agentName: string): TreeNode | undefined {
   for (const node of tree) {
     if (node.agent === agentName) return node;
     if (node.children) {
@@ -66,11 +61,7 @@ export function getDelegates(node: TreeNode): string[] {
 /**
  * Assign a task to a specific node. Returns assignment record.
  */
-export function assignTask(
-  tree: TreeNode[],
-  task: string,
-  agentName: string,
-): TaskAssignment {
+export function assignTask(tree: TreeNode[], task: string, agentName: string): TaskAssignment {
   const node = findNode(tree, agentName);
   if (!node) {
     throw new Error(`Agent "${agentName}" not found in tree hierarchy.`);
@@ -81,10 +72,7 @@ export function assignTask(
 /**
  * Get the full chain from root to a given agent.
  */
-export function getChainToRoot(
-  tree: TreeNode[],
-  agentName: string,
-): TreeNode[] {
+export function getChainToRoot(tree: TreeNode[], agentName: string): TreeNode[] {
   const path: TreeNode[] = [];
 
   function dfs(nodes: TreeNode[], target: string): boolean {

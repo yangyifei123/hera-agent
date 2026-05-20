@@ -6,7 +6,8 @@ export const CAVEMAN_SKILL: SkillDefinition = {
   name: "caveman",
   description:
     "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy. Supports intensity levels: lite, full (default), ultra, wenyan-lite, wenyan-full, wenyan-ultra.",
-  trigger: "ACTIVE EVERY RESPONSE by default. Invoke with /caveman. Stop with 'stop caveman' or 'normal mode'.",
+  trigger:
+    "ACTIVE EVERY RESPONSE by default. Invoke with /caveman. Stop with 'stop caveman' or 'normal mode'.",
   intensity: "full",
   prompt: `# Caveman Mode — Auto-Activation
 

@@ -18,7 +18,7 @@ export function createControlPoint(
   type: ControlPoint["type"],
   condition: string,
   action: ControlPoint["action"],
-  reviewer?: string,
+  reviewer?: string
 ): ControlPoint {
   return {
     id: `cp-${randomUUID().slice(0, 8)}`,
@@ -34,10 +34,7 @@ export function createControlPoint(
 /**
  * Add a control point to the list. Returns new array (immutable).
  */
-export function addControlPoint(
-  points: ControlPoint[],
-  point: ControlPoint,
-): ControlPoint[] {
+export function addControlPoint(points: ControlPoint[], point: ControlPoint): ControlPoint[] {
   const exists = points.some((p) => p.name === point.name && p.type === point.type);
   if (exists) {
     throw new Error(`Control point "${point.name}" (${point.type}) already exists.`);
@@ -48,10 +45,7 @@ export function addControlPoint(
 /**
  * Remove a control point by ID. Returns new array (immutable).
  */
-export function removeControlPoint(
-  points: ControlPoint[],
-  pointId: string,
-): ControlPoint[] {
+export function removeControlPoint(points: ControlPoint[], pointId: string): ControlPoint[] {
   return points.filter((p) => p.id !== pointId);
 }
 
@@ -61,7 +55,7 @@ export function removeControlPoint(
  */
 export function evaluateControlPoint(
   point: ControlPoint,
-  context: Record<string, unknown>,
+  context: Record<string, unknown>
 ): ControlPoint {
   if (point.status !== "pending") return point;
 
@@ -79,10 +73,7 @@ export function evaluateControlPoint(
 /**
  * Escalate a control point to another agent.
  */
-export function escalate(
-  point: ControlPoint,
-  toAgent: string,
-): ControlPoint {
+export function escalate(point: ControlPoint, toAgent: string): ControlPoint {
   return {
     ...point,
     action: "escalate",

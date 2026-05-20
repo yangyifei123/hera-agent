@@ -2,7 +2,8 @@ import type { SkillDefinition, EvolutionEntry } from "../types.js";
 
 export const EVOLUTION_SKILL: SkillDefinition = {
   name: "evolution",
-  description: "Self-evolution capability. Agent reflects on performance and self-improves over time.",
+  description:
+    "Self-evolution capability. Agent reflects on performance and self-improves over time.",
   trigger: "After completing significant tasks. Reflects on what went well and what could improve.",
   category: "builtin",
   prompt: `# Evolution — Self-Improvement Through Reflection
@@ -52,11 +53,6 @@ export function buildEvolutionBlock(entries: EvolutionEntry[]): string {
   if (entries.length === 0) return "";
   const lines = entries
     .filter((e) => !e.rolledBack)
-    .map(
-      (e, i) =>
-        `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`
-    );
-  return lines.length > 0
-    ? `## Evolved Directives\n\n${lines.join("\n")}`
-    : "";
+    .map((e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`);
+  return lines.length > 0 ? `## Evolved Directives\n\n${lines.join("\n")}` : "";
 }

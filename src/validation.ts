@@ -89,9 +89,7 @@ export function validateAgentNameWithConflict(
   if (!baseResult.valid) return baseResult;
 
   // Check for conflicts
-  const nameSet = existingNames instanceof Map
-    ? existingNames.keys()
-    : existingNames.values();
+  const nameSet = existingNames instanceof Map ? existingNames.keys() : existingNames.values();
 
   const hasExisting = Array.from(nameSet).includes(name);
   if (hasExisting) {

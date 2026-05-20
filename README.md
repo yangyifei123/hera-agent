@@ -152,6 +152,74 @@ opencode --agent hera
 
 **That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
 
+## 🚀 Quick Start
+
+After installation, verify core functionality with these quick tests:
+
+### 1. Basic Agent Test
+
+```bash
+# Start Hera and ask a simple question
+opencode --agent hera
+
+# In the chat:
+> "What is your name and version?"
+# Expected: Hera should respond with its name and current version
+```
+
+### 2. Skill System Test
+
+```bash
+# List available skills
+hera skill list
+
+# Expected output:
+# Built-in Skills:
+#   - code-review
+#   - debug-assistant
+#   - test-generator
+#   ...
+```
+
+### 3. Team Collaboration Test
+
+```bash
+# Create a simple team
+hera team create my-test-team
+
+# Add Hera to the team
+hera team add my-test-team hera
+
+# List teams
+hera team list
+
+# Expected: Should show my-test-team with hera as member
+```
+
+### 4. Health Check
+
+```bash
+# Run comprehensive diagnostic
+hera doctor
+
+# Expected output:
+# ✓ opencode.json found
+# ✓ hera-agent in plugin list
+# ✓ dist/index.js exists
+# ✓ hera.json configured
+# ✓ All systems operational
+```
+
+### 5. Quick Functionality Checklist
+
+- [ ] Agent responds to basic questions
+- [ ] `hera skill list` shows built-in skills
+- [ ] `hera team create` works without errors
+- [ ] `hera doctor` reports all systems operational
+- [ ] No error messages in OpenCode console
+
+If all checks pass, you're ready to use Hera in production.
+
 ### Troubleshooting Installation
 
 | Problem | Solution |

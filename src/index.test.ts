@@ -65,8 +65,10 @@ describe("auto_evolve config wiring", () => {
     const outputOn = { context: [] as string[] };
 
     // Replicate compacting hook logic
-    const baseMsg = "Hera Session Context: Distill key decisions, patterns, and skills before compaction. Recall relevant memories.";
-    const evolveMsg = "Reflect on this session's failures and propose evolution directives if needed. Use hera_evolve_agent to suggest improvements.";
+    const baseMsg =
+      "Hera Session Context: Distill key decisions, patterns, and skills before compaction. Recall relevant memories.";
+    const evolveMsg =
+      "Reflect on this session's failures and propose evolution directives if needed. Use hera_evolve_agent to suggest improvements.";
 
     outputOff.context.push(baseMsg);
     outputOn.context.push(baseMsg);
@@ -104,13 +106,15 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   afterEach(async () => {
     process.env.HOME = savedHome;
     process.env.USERPROFILE = savedUserProfile;
-    try { await rm(tmp, { recursive: true }); } catch {}
+    try {
+      await rm(tmp, { recursive: true });
+    } catch {}
   });
 
   it("initializes and returns four hooks", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     expect(typeof hooks.config).toBe("function");
     expect(hooks.tool).toBeDefined();
@@ -121,7 +125,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("auto-creates hera.json on first load", async () => {
     await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const heraJsonPath = join(tmp, ".config", "opencode", "hera.json");
     const content = await readFile(heraJsonPath, "utf-8");
@@ -133,7 +137,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("config hook injects the Hera agent under input.agent.hera", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
@@ -146,7 +150,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("config hook injects every persisted child agent", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
@@ -160,7 +164,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("config hook honors disabled_agents from hera.json", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      { disabled_agents: ["quick-fixer"] } as any,
+      { disabled_agents: ["quick-fixer"] } as any
     );
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
@@ -172,7 +176,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("tool hook exposes the full tool surface (hera_create_agent, hera_export_team, etc.)", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const tools = hooks.tool as Record<string, unknown>;
     expect(tools.hera_create_agent).toBeDefined();
@@ -188,7 +192,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("system.transform hook appends sections to the Hera system prompt", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const input: any = { agent: "hera" };
     const output: any = { system: [] };
@@ -203,7 +207,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("system.transform hook skips when not the Hera agent", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const input: any = { agent: "someone-else" };
     const output: any = { system: [] };
@@ -214,7 +218,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("session.compacting hook always emits the distillation directive", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined,
+      undefined
     );
     const output: any = { context: [] };
     await (hooks["experimental.session.compacting"] as any)({}, output);
@@ -225,7 +229,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   it("session.compacting hook emits evolution directive when auto_evolve is on", async () => {
     const hooks = await HeraPlugin(
       { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      { auto_evolve: true } as any,
+      { auto_evolve: true } as any
     );
     const output: any = { context: [] };
     await (hooks["experimental.session.compacting"] as any)({}, output);

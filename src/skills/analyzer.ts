@@ -68,12 +68,18 @@ export class SkillAnalyzer {
     const text = `${skill.prompt} ${skill.description} ${skill.trigger}`.toLowerCase();
 
     const patterns: Array<{ keywords: string[]; name: string }> = [
-      { keywords: ["code", "implement", "develop", "program", "build", "write code"], name: "coding" },
+      {
+        keywords: ["code", "implement", "develop", "program", "build", "write code"],
+        name: "coding",
+      },
       { keywords: ["review", "audit", "check", "inspect", "lint"], name: "review" },
       { keywords: ["test", "verify", "validate", "qa", "assert"], name: "testing" },
       { keywords: ["debug", "fix", "diagnose", "troubleshoot", "trace"], name: "debugging" },
       { keywords: ["document", "explain", "describe", "readme", "docs"], name: "documentation" },
-      { keywords: ["optimize", "performance", "speed", "refactor", "improve"], name: "optimization" },
+      {
+        keywords: ["optimize", "performance", "speed", "refactor", "improve"],
+        name: "optimization",
+      },
       { keywords: ["research", "investigate", "find", "search", "analyze data"], name: "research" },
       { keywords: ["design", "architect", "plan", "structure", "model"], name: "architecture" },
       { keywords: ["deploy", "release", "ci/cd", "pipeline", "publish"], name: "deployment" },
@@ -97,7 +103,10 @@ export class SkillAnalyzer {
   /**
    * Assess overall complexity of a skill.
    */
-  private static assessComplexity(skill: SkillDefinition, capabilities: Capability[]): ComplexityLevel {
+  private static assessComplexity(
+    skill: SkillDefinition,
+    capabilities: Capability[]
+  ): ComplexityLevel {
     let score = 0;
 
     // Prompt length contributes
@@ -110,9 +119,20 @@ export class SkillAnalyzer {
 
     // Check for multi-step indicators
     const multiStepIndicators = [
-      "step", "first", "then", "next", "after", "finally",
-      "phase", "stage", "iterate", "loop", "repeat",
-      "pipeline", "workflow", "sequence",
+      "step",
+      "first",
+      "then",
+      "next",
+      "after",
+      "finally",
+      "phase",
+      "stage",
+      "iterate",
+      "loop",
+      "repeat",
+      "pipeline",
+      "workflow",
+      "sequence",
     ];
     const lowerPrompt = skill.prompt.toLowerCase();
     const stepMatches = multiStepIndicators.filter((ind) => lowerPrompt.includes(ind));
@@ -135,7 +155,7 @@ export class SkillAnalyzer {
   private static generateRecommendations(
     skill: SkillDefinition,
     complexity: ComplexityLevel,
-    capabilities: Capability[],
+    capabilities: Capability[]
   ): string[] {
     const recs: string[] = [];
 
@@ -144,11 +164,15 @@ export class SkillAnalyzer {
     }
 
     if (capabilities.length === 0) {
-      recs.push("No clear capabilities detected. Consider adding more specific instructions to the prompt.");
+      recs.push(
+        "No clear capabilities detected. Consider adding more specific instructions to the prompt."
+      );
     }
 
     if (capabilities.length > 4) {
-      recs.push("Skill covers many concerns. Decomposition recommended for cleaner agent behavior.");
+      recs.push(
+        "Skill covers many concerns. Decomposition recommended for cleaner agent behavior."
+      );
     }
 
     const highConfidence = capabilities.filter((c) => c.confidence >= 0.7);
@@ -197,8 +221,10 @@ export class SkillDecomposer {
     const sections = SkillDecomposer.splitPromptIntoSections(skill.prompt);
 
     for (const cap of capabilities) {
-      const matchingSection = sections.find((s) =>
-        s.toLowerCase().includes(cap.name) || s.toLowerCase().includes(cap.evidence.split(", ")[0])
+      const matchingSection = sections.find(
+        (s) =>
+          s.toLowerCase().includes(cap.name) ||
+          s.toLowerCase().includes(cap.evidence.split(", ")[0])
       );
 
       result.push({
@@ -238,7 +264,9 @@ export class SkillDecomposer {
       ``,
       `Original skill context:`,
       skill.prompt.slice(0, 500),
-      cap.confidence < 0.7 ? "\nNote: This capability had low detection confidence. Verify relevance." : "",
+      cap.confidence < 0.7
+        ? "\nNote: This capability had low detection confidence. Verify relevance."
+        : "",
     ].join("\n");
   }
 }
@@ -276,9 +304,12 @@ export class CapabilityMapper {
    */
   static mapToMaxSteps(complexity: ComplexityLevel): number {
     switch (complexity) {
-      case "simple": return 15;
-      case "moderate": return 25;
-      case "complex": return 40;
+      case "simple":
+        return 15;
+      case "moderate":
+        return 25;
+      case "complex":
+        return 40;
     }
   }
 
@@ -319,7 +350,10 @@ export class CapabilityMapper {
   /**
    * Full capability mapping: returns mode, tools, and maxSteps together.
    */
-  static mapToAgentCapabilities(capabilities: Capability[], complexity: ComplexityLevel): {
+  static mapToAgentCapabilities(
+    capabilities: Capability[],
+    complexity: ComplexityLevel
+  ): {
     mode: AgentMode;
     tools: Record<string, boolean>;
     maxSteps: number;

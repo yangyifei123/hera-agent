@@ -5,13 +5,8 @@ import type {
   AgentDefinition,
   AgentTemplateName,
   AgentTemplate,
-  EvolutionEntry,
 } from "../types.js";
-import {
-  DEFAULT_HERA_MAX_STEPS,
-  DEFAULT_CHILD_MAX_STEPS,
-  DEFAULT_SKILLS,
-} from "../constants.js";
+import { DEFAULT_HERA_MAX_STEPS, DEFAULT_CHILD_MAX_STEPS, DEFAULT_SKILLS } from "../constants.js";
 import { getDefaultPermission } from "../helpers.js";
 import { getCavemanPrompt } from "../skills/caveman.js";
 import { getInitPrompt } from "../skills/init.js";
@@ -30,7 +25,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "all",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a versatile AI assistant.`,
         `Adapt your approach to the task at hand.`,
         `Be concise, accurate, and helpful.`,
@@ -43,7 +39,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "all",
     defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a senior software engineer.`,
         `Write clean, tested, maintainable code.`,
         `Follow project conventions and best practices.`,
@@ -57,7 +54,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "subagent",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a code review specialist.`,
         `Focus on: security, performance, maintainability, correctness.`,
         `Provide actionable feedback with specific line references.`,
@@ -71,7 +69,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "subagent",
     defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a research analyst.`,
         `Investigate thoroughly before concluding.`,
         `Provide pros/cons, alternatives, and clear recommendations.`,
@@ -85,7 +84,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "all",
     defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a team coordinator.`,
         `Break complex tasks into subtasks for team members.`,
         `Distribute work based on member specializations.`,
@@ -100,7 +100,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "all",
     defaultSkills: [...DEFAULT_SKILLS, "skill-combo"],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a system architect.`,
         `Design scalable, maintainable architectures.`,
         `Consider: performance, security, cost, maintainability.`,
@@ -115,7 +116,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "all",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a debugging specialist.`,
         `Systematically investigate issues: reproduce, isolate, fix.`,
         `Use logs, stack traces, debugger tools.`,
@@ -129,7 +131,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "subagent",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a test engineer.`,
         `Write comprehensive tests: unit, integration, e2e.`,
         `Think about edge cases, error paths, race conditions.`,
@@ -143,7 +146,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "subagent",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a documentation specialist.`,
         `Write clear, concise, accurate documentation.`,
         `Include: purpose, usage, examples, edge cases.`,
@@ -157,7 +161,8 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
     defaultMode: "subagent",
     defaultSkills: [...DEFAULT_SKILLS],
     promptFn: (name, customPrompt) =>
-      customPrompt || [
+      customPrompt ||
+      [
         `You are ${name}, a performance optimizer.`,
         `Profile first, optimize second.`,
         `Focus on bottlenecks, not micro-optimizations.`,
@@ -167,10 +172,7 @@ export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
   },
 };
 
-export function createHeraAgent(
-  model: string,
-  skills: SkillDefinition[]
-): AgentConfig {
+export function createHeraAgent(model: string, skills: SkillDefinition[]): AgentConfig {
   const skillList = skills
     .map((s) => `- **${s.name}** (${s.category}): ${s.description}`)
     .join("\n");
@@ -237,7 +239,7 @@ export function createHeraAgent(
     model,
     temperature: 0.3,
     maxSteps: DEFAULT_HERA_MAX_STEPS,
-    permission: { ...DEFAULT_PERMISSION },
+    permission: getDefaultPermission(),
   };
 }
 
@@ -255,14 +257,11 @@ export function createChildAgentConfig(
     model,
     temperature: 0.3,
     maxSteps: DEFAULT_CHILD_MAX_STEPS,
-    permission: { ...DEFAULT_PERMISSION },
+    permission: getDefaultPermission(),
   };
 }
 
-export function buildAgentPrompt(
-  def: AgentDefinition,
-  resolvedSkills: SkillDefinition[]
-): string {
+export function buildAgentPrompt(def: AgentDefinition, resolvedSkills: SkillDefinition[]): string {
   const sections: string[] = [];
 
   sections.push(`# Agent: ${def.name}`);

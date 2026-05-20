@@ -1,5 +1,5 @@
 ﻿import { describe, test, expect } from "bun:test";
-import { SkillAnalyzer, type AnalysisResult, type ConflictReport } from "./skill-analyzer.js";
+import { SkillAnalyzer } from "./skill-analyzer.js";
 import type { SkillPackage } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -46,7 +46,8 @@ const mediumSkill = makeSkill({
 const complexSkill = makeSkill({
   name: "complex-fullstack",
   description: "Full stack development with API, database, and deployment",
-  prompt: "Design REST API endpoints. Optimize database queries. Deploy to production. Monitor performance and debug issues.",
+  prompt:
+    "Design REST API endpoints. Optimize database queries. Deploy to production. Monitor performance and debug issues.",
   files: Array.from({ length: 7 }, (_, i) => ({
     path: `file${i}.ts`,
     type: "script" as const,
@@ -57,12 +58,7 @@ const complexSkill = makeSkill({
     { name: "test", runtime: "bun", entry: "test.ts" },
     { name: "deploy", runtime: "bash", entry: "deploy.sh" },
   ],
-  dependencies: [
-    { name: "react" },
-    { name: "express" },
-    { name: "postgres" },
-    { name: "docker" },
-  ],
+  dependencies: [{ name: "react" }, { name: "express" }, { name: "postgres" }, { name: "docker" }],
 });
 
 const tsSkill = makeSkill({
@@ -178,14 +174,14 @@ describe("SkillAnalyzer", () => {
       });
       const result = analyzer.analyze(skill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("automation scripts")]),
+        expect.arrayContaining([expect.stringContaining("automation scripts")])
       );
     });
 
     test("recommends files for skill without files", () => {
       const result = analyzer.analyze(simpleSkill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("reference files")]),
+        expect.arrayContaining([expect.stringContaining("reference files")])
       );
     });
 
@@ -197,7 +193,7 @@ describe("SkillAnalyzer", () => {
       });
       const result = analyzer.analyze(skill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("Reduce dependency")]),
+        expect.arrayContaining([expect.stringContaining("Reduce dependency")])
       );
     });
 
@@ -212,14 +208,14 @@ describe("SkillAnalyzer", () => {
       });
       const result = analyzer.analyze(skill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("decomposing")]),
+        expect.arrayContaining([expect.stringContaining("decomposing")])
       );
     });
 
     test("recommends improving prompt when no capabilities found", () => {
       const result = analyzer.analyze(noCapSkill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("No clear capabilities")]),
+        expect.arrayContaining([expect.stringContaining("No clear capabilities")])
       );
     });
 
@@ -230,7 +226,7 @@ describe("SkillAnalyzer", () => {
       });
       const result = analyzer.analyze(skill);
       expect(result.recommendations).toEqual(
-        expect.arrayContaining([expect.stringContaining("trigger keywords")]),
+        expect.arrayContaining([expect.stringContaining("trigger keywords")])
       );
     });
 

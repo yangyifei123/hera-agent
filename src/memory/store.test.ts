@@ -17,15 +17,30 @@ describe("MemoryStore", () => {
   });
 
   test("search matches substring by default", async () => {
-    await store.save({ id: "m1", type: "session", content: "The quick brown fox", timestamp: 1000 });
+    await store.save({
+      id: "m1",
+      type: "session",
+      content: "The quick brown fox",
+      timestamp: 1000,
+    });
     const results = await store.search("quick");
     expect(results).toHaveLength(1);
     expect(results[0].id).toBe("m1");
   });
 
   test("search matches word boundaries", async () => {
-    await store.save({ id: "m1", type: "session", content: "TypeScript is great", timestamp: 1000 });
-    await store.save({ id: "m2", type: "session", content: "JavaScript typing is different", timestamp: 1001 });
+    await store.save({
+      id: "m1",
+      type: "session",
+      content: "TypeScript is great",
+      timestamp: 1000,
+    });
+    await store.save({
+      id: "m2",
+      type: "session",
+      content: "JavaScript typing is different",
+      timestamp: 1001,
+    });
 
     const results = await store.search("Type");
     // "TypeScript" matches word boundary + substring; "typing" has "typ" not "type"

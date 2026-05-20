@@ -25,7 +25,9 @@ describe("proposeEvolution", () => {
   });
 
   it("detects memory leak pattern", () => {
-    const result = proposeEvolution("Memory leak detected — event listeners not cleaned up properly");
+    const result = proposeEvolution(
+      "Memory leak detected — event listeners not cleaned up properly"
+    );
     expect(result).not.toBeNull();
     expect(result!.directive).toContain("clean up");
     expect(result!.directive).toContain("resources");
@@ -44,7 +46,9 @@ describe("proposeEvolution", () => {
   });
 
   it("detects test failure pattern", () => {
-    const result = proposeEvolution("Test fail: assertion error in integration test, coverage below threshold");
+    const result = proposeEvolution(
+      "Test fail: assertion error in integration test, coverage below threshold"
+    );
     expect(result).not.toBeNull();
     expect(result!.directive).toContain("tests");
   });

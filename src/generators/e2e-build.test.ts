@@ -49,81 +49,93 @@ describe("E2E: generated plugin builds with bun build", () => {
   });
 
   afterEach(async () => {
-    try { await rm(tmp, { recursive: true }); } catch {}
+    try {
+      await rm(tmp, { recursive: true });
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 
-  it("agent plugin: generated src/index.ts builds to a dist bundle", async () => {
-    const gen = new PluginGenerator();
-    const agent: AgentDefinition = {
-      name: "e2e-test-agent",
-      description: "End-to-end test agent",
-      mode: "subagent",
-      prompt: "You are an e2e test agent.",
-      skills: ["caveman", "init", "memory", "evolution"],
-      maxSteps: 30,
-      createdAt: Date.now(),
-      evolutionLog: [{ timestamp: Date.now(), directive: "Test directive" }],
-    };
-    const pkg = gen.generate(agent, []);
-    const pluginDir = join(tmp, "e2e-test-agent");
-    await gen.writeToDisk(pkg, pluginDir);
+  it(
+    "agent plugin: generated src/index.ts builds to a dist bundle",
+    async () => {
+      const gen = new PluginGenerator();
+      const agent: AgentDefinition = {
+        name: "e2e-test-agent",
+        description: "End-to-end test agent",
+        mode: "subagent",
+        prompt: "You are an e2e test agent.",
+        skills: ["caveman", "init", "memory", "evolution"],
+        maxSteps: 30,
+        createdAt: Date.now(),
+        evolutionLog: [{ timestamp: Date.now(), directive: "Test directive" }],
+      };
+      const pkg = gen.generate(agent, []);
+      const pluginDir = join(tmp, "e2e-test-agent");
+      await gen.writeToDisk(pkg, pluginDir);
 
-    const result = await runBunBuild(pluginDir);
-    if (!result.ok) {
-      // Surface stderr in test output so failures are diagnosable.
-      throw new Error(`bun build failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
-    }
+      const result = await runBunBuild(pluginDir);
+      if (!result.ok) {
+        // Surface stderr in test output so failures are diagnosable.
+        throw new Error(`bun build failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      }
 
-    // Verify the dist bundle actually exists and is non-empty.
-    const distPath = join(pluginDir, "dist", "index.js");
-    const s = await stat(distPath);
-    expect(s.isFile()).toBe(true);
-    expect(s.size).toBeGreaterThan(0);
+      // Verify the dist bundle actually exists and is non-empty.
+      const distPath = join(pluginDir, "dist", "index.js");
+      const s = await stat(distPath);
+      expect(s.isFile()).toBe(true);
+      expect(s.size).toBeGreaterThan(0);
 
-    // Verify the bundle preserves the agent's identity and prompt skeleton.
-    const distContent = await readFile(distPath, "utf-8");
-    expect(distContent).toContain("e2e-test-agent");
-    expect(distContent).toContain("hera_remember");
-  }, E2E_TIMEOUT_MS);
+      // Verify the bundle preserves the agent's identity and prompt skeleton.
+      const distContent = await readFile(distPath, "utf-8");
+      expect(distContent).toContain("e2e-test-agent");
+      expect(distContent).toContain("hera_remember");
+    },
+    E2E_TIMEOUT_MS
+  );
 
-  it("team plugin: generated src/index.ts builds to a dist bundle", async () => {
-    const gen = new TeamPluginGenerator();
-    const team: TeamDefinition = {
-      name: "e2e-test-team",
-      description: "End-to-end test team",
-      coordination: "parallel",
-      members: [
-        { agentName: "alpha", role: "lead", subscriptions: [], backendType: "in-process" },
-        { agentName: "beta", role: "worker", subscriptions: [], backendType: "in-process" },
-      ],
-    };
-    const members: AgentDefinition[] = team.members.map((m) => ({
-      name: m.agentName,
-      description: `${m.agentName} member`,
-      mode: "subagent",
-      prompt: `You are ${m.agentName}.`,
-      skills: ["caveman", "memory"],
-      maxSteps: 30,
-      createdAt: Date.now(),
-      evolutionLog: [],
-    }));
-    const pkg = gen.generate(team, members, []);
-    const pluginDir = join(tmp, "e2e-test-team-plugin");
-    await gen.writeToDisk(pkg, pluginDir);
+  it(
+    "team plugin: generated src/index.ts builds to a dist bundle",
+    async () => {
+      const gen = new TeamPluginGenerator();
+      const team: TeamDefinition = {
+        name: "e2e-test-team",
+        description: "End-to-end test team",
+        coordination: "parallel",
+        members: [
+          { agentName: "alpha", role: "lead", subscriptions: [], backendType: "in-process" },
+          { agentName: "beta", role: "worker", subscriptions: [], backendType: "in-process" },
+        ],
+      };
+      const members: AgentDefinition[] = team.members.map((m) => ({
+        name: m.agentName,
+        description: `${m.agentName} member`,
+        mode: "subagent",
+        prompt: `You are ${m.agentName}.`,
+        skills: ["caveman", "memory"],
+        maxSteps: 30,
+        createdAt: Date.now(),
+        evolutionLog: [],
+      }));
+      const pkg = gen.generate(team, members, []);
+      const pluginDir = join(tmp, "e2e-test-team-plugin");
+      await gen.writeToDisk(pkg, pluginDir);
 
-    const result = await runBunBuild(pluginDir);
-    if (!result.ok) {
-      throw new Error(`bun build failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
-    }
+      const result = await runBunBuild(pluginDir);
+      if (!result.ok) {
+        throw new Error(`bun build failed:\nstdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      }
 
-    const distPath = join(pluginDir, "dist", "index.js");
-    const s = await stat(distPath);
-    expect(s.isFile()).toBe(true);
-    expect(s.size).toBeGreaterThan(0);
+      const distPath = join(pluginDir, "dist", "index.js");
+      const s = await stat(distPath);
+      expect(s.isFile()).toBe(true);
+      expect(s.size).toBeGreaterThan(0);
 
-    const distContent = await readFile(distPath, "utf-8");
-    // Both member agents must appear in the compiled output.
-    expect(distContent).toContain("alpha");
-    expect(distContent).toContain("beta");
-  }, E2E_TIMEOUT_MS);
+      const distContent = await readFile(distPath, "utf-8");
+      // Both member agents must appear in the compiled output.
+      expect(distContent).toContain("alpha");
+      expect(distContent).toContain("beta");
+    },
+    E2E_TIMEOUT_MS
+  );
 });

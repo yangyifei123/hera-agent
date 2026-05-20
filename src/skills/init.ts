@@ -2,7 +2,8 @@ import type { SkillDefinition } from "../types.js";
 
 export const INIT_SKILL: SkillDefinition = {
   name: "init",
-  description: "Agent initialization and environment awareness. Auto-detects project context on startup.",
+  description:
+    "Agent initialization and environment awareness. Auto-detects project context on startup.",
   trigger: "ACTIVE on first message of every session. Provides environment context automatically.",
   category: "builtin",
   prompt: `# Init — Environment Awareness

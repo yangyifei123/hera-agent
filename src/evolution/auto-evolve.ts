@@ -12,27 +12,33 @@ const TRIGGER_MAX_LENGTH = 100;
 const FAILURE_PATTERNS: Array<{ pattern: RegExp; directive: string }> = [
   {
     pattern: /SQL injection|injection|parameterized/i,
-    directive: "Always verify database queries use parameterized statements or prepared statements.",
+    directive:
+      "Always verify database queries use parameterized statements or prepared statements.",
   },
   {
     pattern: /null pointer|null reference|cannot read prop|undefined/i,
-    directive: "Always check for null/undefined before accessing object properties. Use optional chaining (?.) where appropriate.",
+    directive:
+      "Always check for null/undefined before accessing object properties. Use optional chaining (?.) where appropriate.",
   },
   {
     pattern: /race condition|async|await|concurrent/i,
-    directive: "Always handle async operations with proper await or Promise chaining. Use locks or atomic operations for shared state.",
+    directive:
+      "Always handle async operations with proper await or Promise chaining. Use locks or atomic operations for shared state.",
   },
   {
     pattern: /memory leak|leak|not cleaned up/i,
-    directive: "Always clean up resources (event listeners, timers, subscriptions) when components are destroyed.",
+    directive:
+      "Always clean up resources (event listeners, timers, subscriptions) when components are destroyed.",
   },
   {
     pattern: /XSS|cross.site|sanitize|escape/i,
-    directive: "Always sanitize user input before rendering in HTML. Use a trusted sanitization library.",
+    directive:
+      "Always sanitize user input before rendering in HTML. Use a trusted sanitization library.",
   },
   {
     pattern: /timeout|slow|performance|optimize/i,
-    directive: "Always profile before optimizing. Focus on algorithmic complexity and I/O bottlenecks first.",
+    directive:
+      "Always profile before optimizing. Focus on algorithmic complexity and I/O bottlenecks first.",
   },
   {
     pattern: /test fail|assertion|coverage/i,

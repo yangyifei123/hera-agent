@@ -9,7 +9,8 @@ export function createEvolutionTools(ctx: PluginContext) {
 
   return {
     hera_evolve_agent: tool({
-      description: "Append an evolution directive to an agent. Agent will self-improve based on reflection.",
+      description:
+        "Append an evolution directive to an agent. Agent will self-improve based on reflection.",
       args: {
         name: z.string().describe("Agent name"),
         trigger: z.string().describe("What triggered this evolution"),
@@ -18,9 +19,16 @@ export function createEvolutionTools(ctx: PluginContext) {
       },
       async execute(args) {
         const def = registeredAgents.get(args.name);
-        if (!def) return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
+        if (!def)
+          return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
         if (!def.evolutionLog) def.evolutionLog = [];
-        const entry = { timestamp: Date.now(), trigger: args.trigger, observation: args.observation, directive: args.directive, rolledBack: false };
+        const entry = {
+          timestamp: Date.now(),
+          trigger: args.trigger,
+          observation: args.observation,
+          directive: args.directive,
+          rolledBack: false,
+        };
         def.evolutionLog.push(entry);
         def.evolvedAt = Date.now();
         registeredAgents.set(args.name, def);
@@ -41,12 +49,16 @@ export function createEvolutionTools(ctx: PluginContext) {
       args: { name: z.string().describe("Agent name") },
       async execute(args) {
         const def = registeredAgents.get(args.name);
-        if (!def) return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
-        if (!def.evolutionLog || def.evolutionLog.length === 0) return `Agent "${args.name}" has no evolution history.`;
-        return def.evolutionLog.map((e, i) => {
-          const status = e.rolledBack ? "[ROLLED BACK]" : "[ACTIVE]";
-          return `${i + 1}. ${status} [${new Date(e.timestamp).toISOString()}] Trigger: ${e.trigger}\n   Directive: ${e.directive}`;
-        }).join("\n\n");
+        if (!def)
+          return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
+        if (!def.evolutionLog || def.evolutionLog.length === 0)
+          return `Agent "${args.name}" has no evolution history.`;
+        return def.evolutionLog
+          .map((e, i) => {
+            const status = e.rolledBack ? "[ROLLED BACK]" : "[ACTIVE]";
+            return `${i + 1}. ${status} [${new Date(e.timestamp).toISOString()}] Trigger: ${e.trigger}\n   Directive: ${e.directive}`;
+          })
+          .join("\n\n");
       },
     }),
 
@@ -55,8 +67,10 @@ export function createEvolutionTools(ctx: PluginContext) {
       args: { name: z.string().describe("Agent name") },
       async execute(args) {
         const def = registeredAgents.get(args.name);
-        if (!def) return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
-        if (!def.evolutionLog || def.evolutionLog.length === 0) return `Agent "${args.name}" has no evolution history.`;
+        if (!def)
+          return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
+        if (!def.evolutionLog || def.evolutionLog.length === 0)
+          return `Agent "${args.name}" has no evolution history.`;
         // Find last non-rolled-back entry
         for (let i = def.evolutionLog.length - 1; i >= 0; i--) {
           if (!def.evolutionLog[i].rolledBack) {
@@ -96,9 +110,10 @@ export function createEvolutionTools(ctx: PluginContext) {
         }
 
         // Fallback: dummy message if no real messages were fetched
-        const sessionMessages = messages && messages.length > 0
-          ? messages
-          : [{ role: "system", content: "Session distillation requested by Hera" }];
+        const sessionMessages =
+          messages && messages.length > 0
+            ? messages
+            : [{ role: "system", content: "Session distillation requested by Hera" }];
 
         const result = await distillation.distillSession(args.session_id, sessionMessages);
         if (args.skill_name) {
@@ -116,14 +131,16 @@ export function createEvolutionTools(ctx: PluginContext) {
     }),
 
     hera_propose_evolution: tool({
-      description: "Analyze a failure and propose an evolution directive for an agent. Does NOT auto-apply — use hera_evolve_agent to apply.",
+      description:
+        "Analyze a failure and propose an evolution directive for an agent. Does NOT auto-apply — use hera_evolve_agent to apply.",
       args: {
         agent_name: z.string().describe("Agent name to propose evolution for"),
         failure_description: z.string().describe("Description of the failure or error encountered"),
       },
       async execute(args) {
         const def = registeredAgents.get(args.agent_name);
-        if (!def) return `Error: Agent "${args.agent_name}" not found. Use hera_list_agents to see available agents.`;
+        if (!def)
+          return `Error: Agent "${args.agent_name}" not found. Use hera_list_agents to see available agents.`;
 
         const proposal = proposeEvolution(args.failure_description);
         if (!proposal) {

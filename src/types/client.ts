@@ -1,6 +1,6 @@
 /**
  * OpenCode Client Interface
- * 
+ *
  * Type definition for the OpenCode SDK client used in Hera.
  * Based on actual API usage in team/manager.ts and tools/index.ts.
  */
@@ -31,17 +31,13 @@ export interface OpenCodeClient {
      * Get session status
      * @returns Session status (completed, idle, running, error)
      */
-    status(args: {
-      path: { id: string };
-    }): Promise<{ data: { status: string } }>;
+    status(args: { path: { id: string } }): Promise<{ data: { status: string } }>;
 
     /**
      * Get session messages
      * @returns Array of messages with role and parts
      */
-    messages(args: {
-      path: { id: string };
-    }): Promise<{
+    messages(args: { path: { id: string } }): Promise<{
       data: Array<{
         role: string;
         parts?: Array<{ text?: string }>;

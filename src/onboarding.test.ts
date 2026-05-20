@@ -39,7 +39,9 @@ describe("runOnboarding", () => {
   });
 
   afterEach(async () => {
-    try { await rm(tmp, { recursive: true }); } catch {}
+    try {
+      await rm(tmp, { recursive: true });
+    } catch {}
   });
 
   it("should create the quick-fixer default agent", async () => {

@@ -43,19 +43,19 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       const { writeFile } = await import("node:fs/promises");
       // Use relative path for schema to avoid network dependency in internal networks
       const defaultConfig = {
-        "$schema": "./hera.schema.json",
-        "disabled_agents": [],
-        "disabled_skills": [],
-        "disabled_tools": [],
-        "agent_overrides": {},
-        "templates": {},
-        "auto_evolve": false,
-        "auto_memory": false,
-        "memory_limit": DEFAULT_MEMORY_LIMIT,
-        "team_defaults": {
-          "coordination": "parallel",
-          "timeout": DEFAULT_TEAM_TIMEOUT_MS
-        }
+        $schema: "./hera.schema.json",
+        disabled_agents: [],
+        disabled_skills: [],
+        disabled_tools: [],
+        agent_overrides: {},
+        templates: {},
+        auto_evolve: false,
+        auto_memory: false,
+        memory_limit: DEFAULT_MEMORY_LIMIT,
+        team_defaults: {
+          coordination: "parallel",
+          timeout: DEFAULT_TEAM_TIMEOUT_MS,
+        },
       };
       await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
       heraLog("info", `Created config file: ${heraConfigPath}`);
@@ -144,19 +144,22 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       for (const [name, def] of registeredAgents) {
         if (config.disabled_agents?.includes(name)) continue;
 
-        const childSkills = def.skills
-          .map((sn) => skillManager.getSkill(sn))
-          .filter(Boolean);
+        const childSkills = def.skills.map((sn) => skillManager.getSkill(sn)).filter(Boolean);
 
-        const skillPrompts = childSkills.map((s) => `## Skill: ${s!.name}\n${s!.prompt}`).join("\n\n");
+        const skillPrompts = childSkills
+          .map((s) => `## Skill: ${s!.name}\n${s!.prompt}`)
+          .join("\n\n");
 
         // Include evolution log if present
         let evolutionBlock = "";
         if (def.evolutionLog && def.evolutionLog.length > 0) {
           const active = def.evolutionLog.filter((e) => !e.rolledBack);
           if (active.length > 0) {
-            evolutionBlock = "\n\n## Evolved Directives\n\n" +
-              active.map((e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`).join("\n");
+            evolutionBlock =
+              "\n\n## Evolved Directives\n\n" +
+              active
+                .map((e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`)
+                .join("\n");
           }
         }
 
@@ -187,27 +190,38 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         const agents = Array.from(registeredAgents.entries());
         if (agents.length > 0) {
           const agentList = agents
-            .map(([n, d]) => `- **@${n}**: ${d.description} [${d.mode}]${d.template ? ` template:${d.template}` : ""}`)
+            .map(
+              ([n, d]) =>
+                `- **@${n}**: ${d.description} [${d.mode}]${d.template ? ` template:${d.template}` : ""}`
+            )
             .join("\n");
           output.system.push(`\n## Registered Agents\n\n${agentList}`);
         }
 
         const skills = skillManager.getAllSkills();
-        const skillList = skills.map((s) => `- **${s.name}** (${s.category}): ${s.description}`).join("\n");
+        const skillList = skills
+          .map((s) => `- **${s.name}** (${s.category}): ${s.description}`)
+          .join("\n");
         output.system.push(`\n## Available Skills\n\n${skillList}`);
       }
     },
 
     async "experimental.session.compacting"(input, output) {
-      output.context.push("Hera Session Context: Distill key decisions, patterns, and skills before compaction. Recall relevant memories.");
+      output.context.push(
+        "Hera Session Context: Distill key decisions, patterns, and skills before compaction. Recall relevant memories."
+      );
       if (ctx.autoEvolve) {
-        output.context.push("Reflect on this session's failures and propose evolution directives if needed. Use hera_evolve_agent to suggest improvements. If you encountered failures, describe them and I'll propose evolution directives via hera_propose_evolution.");
+        output.context.push(
+          "Reflect on this session's failures and propose evolution directives if needed. Use hera_evolve_agent to suggest improvements. If you encountered failures, describe them and I'll propose evolution directives via hera_propose_evolution."
+        );
       }
 
       // Auto-memory extraction
       if (config.auto_memory === true) {
         try {
-          const messages = (input as any).messages as Array<{ role: string; content: string }> | undefined;
+          const messages = (input as any).messages as
+            | Array<{ role: string; content: string }>
+            | undefined;
           if (messages && messages.length > 0) {
             const extracted = extractMemories(messages);
             for (const memory of extracted) {
@@ -220,7 +234,10 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
               });
             }
             if (extracted.length > 0) {
-              heraLog("debug", `Auto-memory: extracted ${extracted.length} memories from session compaction`);
+              heraLog(
+                "debug",
+                `Auto-memory: extracted ${extracted.length} memories from session compaction`
+              );
             }
           }
         } catch (err) {

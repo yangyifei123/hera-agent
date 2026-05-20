@@ -32,11 +32,7 @@ export interface CommandResult {
   stderr: string;
 }
 
-export type CommandRunner = (
-  cmd: string,
-  args: string[],
-  cwd: string
-) => Promise<CommandResult>;
+export type CommandRunner = (cmd: string, args: string[], cwd: string) => Promise<CommandResult>;
 
 export interface BuildInstallStep {
   name: "install" | "build" | "add";
@@ -78,7 +74,7 @@ const defaultRunner: CommandRunner = async (cmd, args, cwd) => {
 function camelCase(name: string): string {
   return name
     .split("-")
-    .map((part, i) => i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part, i) => (i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
     .join("");
 }
 
@@ -145,10 +141,7 @@ export class PluginGenerator {
    * `<configRoot>/hera-data/memory/` directory Hera itself uses, so generated
    * agents share a memory pool with Hera and with each other.
    */
-  generatePluginIndex(
-    agent: AgentDefinition,
-    resolvedSkills: SkillDefinition[] = []
-  ): string {
+  generatePluginIndex(agent: AgentDefinition, resolvedSkills: SkillDefinition[] = []): string {
     const fullPrompt = buildAgentPrompt(agent, resolvedSkills);
 
     const agentConfig = {
@@ -172,7 +165,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 
-const z = tool.schema;
+const _z = tool.schema; // Schema validator (unused but kept for future validation)
 
 // Memory category → on-disk subdirectory (mirrors Hera's store layout)
 const SUBDIR: Record<string, string> = {
@@ -376,10 +369,7 @@ opencode --agent ${pluginName} "Hello, are you working?"
    * Pass `resolvedSkills` so additional user skills (anything beyond the four
    * built-ins always embedded by buildAgentPrompt) are baked into the prompt.
    */
-  generate(
-    agentDef: AgentDefinition,
-    resolvedSkills: SkillDefinition[] = []
-  ): PluginPackage {
+  generate(agentDef: AgentDefinition, resolvedSkills: SkillDefinition[] = []): PluginPackage {
     heraLog("debug", `Generating plugin package for agent: ${agentDef.name}`);
 
     const files: PluginFile[] = [];
@@ -466,19 +456,13 @@ opencode --agent ${pluginName} "Hello, are you working?"
     }
 
     const pluginArray = opencodeConfig.plugin as string[];
-    const pluginEntry = pluginPath.startsWith("file://")
-      ? pluginPath
-      : `file://${pluginPath}`;
+    const pluginEntry = pluginPath.startsWith("file://") ? pluginPath : `file://${pluginPath}`;
 
     if (!pluginArray.includes(pluginEntry)) {
       pluginArray.push(pluginEntry);
     }
 
-    await writeFile(
-      opencodeJsonPath,
-      JSON.stringify(opencodeConfig, null, 2) + "\n",
-      "utf-8"
-    );
+    await writeFile(opencodeJsonPath, JSON.stringify(opencodeConfig, null, 2) + "\n", "utf-8");
 
     heraLog("debug", `Plugin added to ${opencodeJsonPath}`);
   }
@@ -490,10 +474,7 @@ opencode --agent ${pluginName} "Hello, are you working?"
    *
    * Stops at the first failure to avoid producing a broken half-install.
    */
-  async installWithBuild(
-    pluginDir: string,
-    configRoot: string
-  ): Promise<BuildInstallResult> {
+  async installWithBuild(pluginDir: string, configRoot: string): Promise<BuildInstallResult> {
     const steps: BuildInstallStep[] = [];
 
     const installRes = await this.runner("bun", ["install"], pluginDir);
@@ -504,11 +485,7 @@ opencode --agent ${pluginName} "Hello, are you working?"
     steps.push({ name: "build", ...buildRes });
     if (!buildRes.ok) return { ok: false, steps };
 
-    const addRes = await this.runner(
-      "bun",
-      ["add", `file://${pluginDir}`],
-      configRoot
-    );
+    const addRes = await this.runner("bun", ["add", `file://${pluginDir}`], configRoot);
     steps.push({ name: "add", ...addRes });
     if (!addRes.ok) return { ok: false, steps };
 
@@ -543,18 +520,12 @@ opencode --agent ${pluginName} "Hello, are you working?"
     const before = pluginArray.length;
 
     opencodeConfig.plugin = pluginArray.filter(
-      (entry) =>
-        typeof entry === "string" &&
-        !entry.includes(pluginName)
+      (entry) => typeof entry === "string" && !entry.includes(pluginName)
     );
 
     const removed = before - (opencodeConfig.plugin as string[]).length;
     if (removed > 0) {
-      await writeFile(
-        opencodeJsonPath,
-        JSON.stringify(opencodeConfig, null, 2) + "\n",
-        "utf-8"
-      );
+      await writeFile(opencodeJsonPath, JSON.stringify(opencodeConfig, null, 2) + "\n", "utf-8");
       heraLog("debug", `Removed ${removed} plugin entries from opencode.json`);
     } else {
       heraLog("debug", `No matching plugin entries found for: ${pluginName}`);

@@ -8,11 +8,7 @@
  * isolation. The hera_upgrade_to_team tool is a thin wrapper around it.
  */
 
-import type {
-  AgentDefinition,
-  TeamDefinition,
-  TeamMember,
-} from "../types.js";
+import type { AgentDefinition, TeamDefinition, TeamMember } from "../types.js";
 import type { SkillManager } from "../skills/manager.js";
 import type { TeamManager } from "../team/manager.js";
 import type { AgentRegistry } from "../agents/registry.js";
@@ -129,13 +125,7 @@ export async function upgradeSkillsToTeam(
       createdAt: Date.now(),
       evolutionLog: [],
     };
-    await persistAgent(
-      def,
-      skillsMap,
-      args.registeredAgents,
-      args.agentRegistry,
-      args.store
-    );
+    await persistAgent(def, skillsMap, args.registeredAgents, args.agentRegistry, args.store);
     createdAgents.push(agentName);
     members.push({
       agentName,
