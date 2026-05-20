@@ -5,6 +5,68 @@ import type { WorkflowDefinition, WorkflowStep } from "../types.js";
 import { randomUUID } from "node:crypto";
 
 export function createWorkflowTools(ctx: PluginContext) {
+  // Helper functions
+  function estimateExecutionTime(workflow: WorkflowDefinition): string {
+    const stepCount = workflow.steps.length;
+    if (workflow.mode === "parallel") {
+      return "1-3 minutes";
+    } else if (workflow.mode === "serial") {
+      return `${stepCount * 2}-${stepCount * 5} minutes`;
+    } else {
+      // DAG mode - estimate based on longest path
+      return `${Math.ceil(stepCount / 2) * 2}-${Math.ceil(stepCount / 2) * 5} minutes`;
+    }
+  }
+
+  function identifyRisks(workflow: WorkflowDefinition): string[] {
+    const risks: string[] = [];
+
+    // Check for missing approval steps
+    const hasApproval = workflow.steps.some(s => s.type === "approval");
+    if (!hasApproval) {
+      risks.push("No approval step - workflow will execute without human review");
+    }
+
+    // Check for circular dependencies in DAG mode
+    if (workflow.mode === "dag") {
+      const visited = new Set<string>();
+      const recursionStack = new Set<string>();
+
+      function hasCycle(stepId: string): boolean {
+        visited.add(stepId);
+        recursionStack.add(stepId);
+
+        const step = workflow.steps.find(s => s.id === stepId);
+        if (step?.dependencies) {
+          for (const depId of step.dependencies) {
+            if (!visited.has(depId)) {
+              if (hasCycle(depId)) return true;
+            } else if (recursionStack.has(depId)) {
+              return true;
+            }
+          }
+        }
+
+        recursionStack.delete(stepId);
+        return false;
+      }
+
+      for (const step of workflow.steps) {
+        if (!visited.has(step.id) && hasCycle(step.id)) {
+          risks.push("Circular dependency detected in DAG - workflow may deadlock");
+          break;
+        }
+      }
+    }
+
+    // Check for long execution chains
+    if (workflow.mode === "serial" && workflow.steps.length > 10) {
+      risks.push(`Long serial chain (${workflow.steps.length} steps) - consider parallelizing independent steps`);
+    }
+
+    return risks;
+  }
+
   return {
     hera_create_workflow: tool({
       description: "Create a workflow definition with steps and execution mode",
@@ -76,12 +138,14 @@ export function createWorkflowTools(ctx: PluginContext) {
           workflow: workflow.name,
           mode: workflow.mode,
           steps: workflow.steps.map((s) => `${s.name} (${s.type}${s.executor ? `: ${s.executor}` : ""})`),
-          estimatedTime: this.estimateExecutionTime(workflow),
-          risks: this.identifyRisks(workflow),
+          estimatedTime: estimateExecutionTime(workflow),
+          risks: identifyRisks(workflow),
         };
 
         // If approval required, return plan for user review
-        if (args.requireApproval) {
+        // Default to true if not specified
+        const requireApproval = args.requireApproval !== false;
+        if (requireApproval) {
           return {
             success: true,
             requiresApproval: true,
