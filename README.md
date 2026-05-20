@@ -12,6 +12,7 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 
 - **Agent Factory** — Create agents from 10 templates or custom prompts
 - **Plugin Architecture** — Every generated agent is a standalone OpenCode plugin with full capabilities
+- **Agent Packaging & Migration** — Package agents as .tar.gz files for easy distribution and migration across environments
 - **8 Built-in Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
 - **Shared Memory Pool** — All agents (Hera + generated) share the same persistent memory store
 - **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone plugins (auto-installable)
@@ -21,7 +22,7 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 - **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
 - **Team Management Modes** — Simple, OKR, hierarchy (tree), or control-point management
 - **Self-Evolution** — Agents reflect on performance and append improvement directives
-- **34 Management Tools** — Complete agent/skill/team lifecycle management
+- **37 Management Tools** — Complete agent/skill/team lifecycle management + packaging
 - **Session Distillation** — Extract structured knowledge from conversations
 - **Auto-Memory** — Automatically extract insights from sessions
 - **Semi-Auto Evolution** — Proposes improvements based on session analysis
@@ -134,9 +135,95 @@ opencode run --agent hera "create review-team with code-reviewer and bug-hunter,
 opencode run --agent hera "export my-dev as plugin"
 opencode run --agent hera "export review-team as team plugin"
 
+# Package agents for migration
+opencode run --agent hera "package my-dev agent for distribution"
+opencode run --agent hera "package code-reviewer with memory included"
+
+# Import packaged agents
+opencode run --agent hera "unpack agent from /path/to/my-dev-package.tar.gz"
+
 # Memory management
 opencode run --agent hera "remember: our coding style uses 2-space indentation"
 opencode run --agent hera "recall memories about coding style"
+```
+
+## 📦 Agent Packaging & Migration
+
+Hera provides complete agent packaging for easy distribution and migration across environments.
+
+### Package an Agent
+
+```bash
+# Package agent (plugin or .md mode)
+opencode run --agent hera "package my-dev agent"
+
+# Package with memory data
+opencode run --agent hera "package my-dev agent with memory"
+
+# Custom output name
+opencode run --agent hera "package my-dev as my-custom-name"
+```
+
+**What gets packaged:**
+- **Plugin mode**: Complete plugin code (dist/, package.json, INSTALL.md)
+- **MD mode**: Agent .md definition file
+- **Optional**: Related memory data from shared memory pool
+- **Always**: Manifest with metadata and file list
+
+**Output**: `.tar.gz` file in `~/.config/opencode/hera-data/packages/`
+
+### Unpack an Agent
+
+```bash
+# Unpack and install
+opencode run --agent hera "unpack agent from /path/to/package.tar.gz"
+
+# Unpack without auto-install (plugin mode)
+opencode run --agent hera "unpack /path/to/package.tar.gz without installing"
+```
+
+**What gets restored:**
+- Agent plugin code or .md file
+- Memory data (if included in package)
+- All configuration and metadata
+
+### List Packages
+
+```bash
+# List all packaged agents
+opencode run --agent hera "list packages"
+```
+
+### Use Cases
+
+**Scenario 1: Share agent with team**
+```bash
+# Developer A: Package agent
+opencode run --agent hera "package code-reviewer with memory"
+# Send: ~/.config/opencode/hera-data/packages/code-reviewer-package.tar.gz
+
+# Developer B: Import agent
+opencode run --agent hera "unpack agent from ~/Downloads/code-reviewer-package.tar.gz"
+```
+
+**Scenario 2: Migrate agents to new machine**
+```bash
+# Old machine: Package all important agents
+opencode run --agent hera "package my-dev with memory"
+opencode run --agent hera "package architect with memory"
+
+# New machine: Restore agents
+opencode run --agent hera "unpack agent from my-dev-package.tar.gz"
+opencode run --agent hera "unpack agent from architect-package.tar.gz"
+```
+
+**Scenario 3: Backup before major changes**
+```bash
+# Create backup
+opencode run --agent hera "package production-agent with memory as backup-2024-05-18"
+
+# If needed, restore
+opencode run --agent hera "unpack agent from backup-2024-05-18.tar.gz"
 ```
 
 ## 🔄 Update / Upgrade
