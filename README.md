@@ -11,15 +11,16 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 ## ✨ Features
 
 - **Agent Factory** — Create agents from 10 templates or custom prompts
-- **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone OpenCode plugins (auto-installable)
-- **Team Plugin Export** — Export an entire team as one plugin (`hera_export_team`) registering all member agents at once
-- **8 Built-in Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent in both md and plugin form)
-- **Skill → Agent Upgrade** — Promote one or more skills into a single full agent (`hera_upgrade_to_agent`)
-- **Skill → Team Upgrade** — Promote N skills into N specialist agents + a coordinating team (`hera_upgrade_to_team`)
+- **Plugin Architecture** — Every generated agent is a standalone OpenCode plugin with full capabilities
+- **8 Built-in Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
+- **Shared Memory Pool** — All agents (Hera + generated) share the same persistent memory store
+- **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone plugins (auto-installable)
+- **Team Plugin Export** — Export entire teams as single plugins registering all member agents at once
+- **Skill → Agent Upgrade** — Promote skills into full agents (`hera_upgrade_to_agent`)
+- **Skill → Team Upgrade** — Promote N skills into N specialist agents + coordinating team (`hera_upgrade_to_team`)
 - **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
 - **Team Management Modes** — Simple, OKR, hierarchy (tree), or control-point management
 - **Self-Evolution** — Agents reflect on performance and append improvement directives
-- **Persistent Memory** — JSON-based memory store, shared between Hera and every generated plugin
 - **34 Management Tools** — Complete agent/skill/team lifecycle management
 - **Session Distillation** — Extract structured knowledge from conversations
 - **Auto-Memory** — Automatically extract insights from sessions
@@ -27,326 +28,221 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 - **Soft Delete + Backup** — Safe agent deletion with restore capability
 - **Functional CLI** — `hera doctor`, `hera list[-agents|-skills|-templates|-teams]`, install/uninstall, version, help
 - **First-Run Onboarding** — Automatic setup with default agents (quick-fixer, architect, senior-dev, qa-engineer) and `dev-team`
-- **Zero-config plugin auto-install** — `auto_install=true` runs bun install/build/add end-to-end; no manual user steps
+- **Zero-config Auto-install** — `auto_install=true` runs bun install/build/add end-to-end with no manual steps
 
 ## 📦 Installation
 
-### Windows Installation
+### Prerequisites
 
-```powershell
-# 1. Install Bun (if not already installed)
-powershell -c "irm bun.sh/install.ps1 | iex"
+- [Bun](https://bun.sh) runtime (v1.0+)
+- [OpenCode](https://github.com/opencode-ai/opencode) CLI
 
-# 2. Navigate to OpenCode config directory
-Set-Location "$env:USERPROFILE\.config\opencode"
-
-# 3. Install hera-agent
-bun add hera-agent
-
-# 4. Verify installation
-Get-Content "$env:USERPROFILE\.config\opencode\opencode.json" | Select-String "hera-agent"
-
-# 5. Test
-opencode agent list | Select-String "hera"
-```
-
-### Linux/macOS Installation
+### One-Command Install
 
 ```bash
-# 1. Install Bun (if not already installed)
-curl -fsSL https://bun.sh/install | bash
+# Linux/macOS
+cd ~/.config/opencode && bun add hera-agent
 
-# 2. Navigate to OpenCode config directory
-cd ~/.config/opencode
-
-# 3. Install hera-agent
-bun add hera-agent
-
-# 4. Verify installation
-cat ~/.config/opencode/opencode.json | grep hera-agent
-
-# 5. Test
-opencode agent list | grep hera
-```
-
-### Method 2: From GitHub Release (ZIP)
-
-**If you downloaded the ZIP from GitHub Releases:**
-
-```bash
-# 1. Extract the ZIP
-unzip hera-agent-2.0.0.zip
-cd hera-agent-2.0.0
-
-# 2. Install dependencies and build (if dist/ is missing)
-bun install
-bun run build
-
-# 3. Install to OpenCode
-cd ~/.config/opencode
-bun add file:///path/to/hera-agent-2.0.0
-
-# Example on Windows:
-# bun add file:///E:/Downloads/hera-agent-2.0.0
-
-# Example on Linux/Mac:
-# bun add file:///home/user/Downloads/hera-agent-2.0.0
-```
-
-### Method 3: From Source (Development)
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/yangyifei123/hera-agent.git
-cd hera-agent
-
-# 2. Install dependencies
-bun install
-
-# 3. Build
-bun run build
-
-# 4. Link for development
-cd ~/.config/opencode
-bun add file:///path/to/hera-agent
+# Windows (PowerShell)
+cd $env:USERPROFILE\.config\opencode; bun add hera-agent
 ```
 
 ### Verify Installation
 
-After installation, verify `opencode.json` contains:
-
-```json
-{
-  "plugin": [
-    "hera-agent"
-  ]
-}
-```
-
-Then run the built-in diagnostic:
-
 ```bash
-# Quick health check
-hera doctor
+# Run health check (recommended)
+bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 
-# Should output:
-# ✓ opencode.json found
-# ✓ hera-agent in plugin list
-# ✓ dist/index.js exists
-# ✓ hera.json configured
-# ✓ All systems operational
-```
-
-Or test manually:
-
-```bash
-# Check if Hera is loaded
+# Or check agent list
 opencode agent list | grep hera
-
-# Should show:
-# hera (primary)
-
-# Start Hera
-opencode --agent hera
+# Expected: hera (primary)
 ```
 
-**That's it!** Hera will automatically create `~/.config/opencode/hera.json` on first load.
+**That's it!** Hera auto-configures on first load and creates 4 default agents (quick-fixer, architect, senior-dev, qa-engineer) plus a dev-team.
+
+### Alternative: Install from Source
+
+```bash
+# Clone and build
+git clone https://github.com/yangyifei123/hera-agent.git
+cd hera-agent
+bun install && bun run build
+
+# Install to OpenCode
+cd ~/.config/opencode
+bun add file://$(pwd)/../hera-agent  # Linux/macOS
+# bun add file:///E:/path/to/hera-agent  # Windows
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `bun: command not found` | Install Bun: `curl -fsSL https://bun.sh/install \| bash` (Linux/macOS) or `irm bun.sh/install.ps1 \| iex` (Windows) |
+| `opencode: command not found` | Install OpenCode from [opencode-ai/opencode](https://github.com/opencode-ai/opencode) |
+| Hera not showing in agent list | Restart OpenCode or run `opencode agent reload` |
+| Permission errors (Linux) | `chmod -R 755 ~/.config/opencode/node_modules/hera-agent/` |
 
 ## 🚀 Quick Start
 
-After installation, verify core functionality with these quick tests:
-
-### 1. Basic Agent Test
+### Start Using Hera
 
 ```bash
-# Start Hera and ask a simple question
+# Interactive mode
 opencode --agent hera
 
-# In the chat:
-> "What is your name and version?"
-# Expected: Hera should respond with its name and current version
+# Single command
+opencode run --agent hera "create a coder agent named my-dev"
+
+# Use a generated agent (if mode is 'all' or 'primary')
+opencode --agent my-dev "write a fibonacci function"
 ```
 
-### 2. Skill System Test
+### 5-Step Verification
 
 ```bash
-# List available skills
-hera skill list
+# 1. Check Hera is loaded
+opencode agent list | grep hera
+# Expected: hera (primary)
 
-# Expected output:
-# Built-in Skills:
-#   - code-review
-#   - debug-assistant
-#   - test-generator
-#   ...
+# 2. Run health check
+bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+# Expected: All checks passed ✓
+
+# 3. List built-in skills
+bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js list-skills
+# Expected: 8 built-in skills (caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact)
+
+# 4. Test agent creation
+opencode run --agent hera "create test-agent, mode: all, template: coder"
+
+# 5. Use the created agent
+opencode --agent test-agent "echo 'Hello from Hera agent!'"
 ```
 
-### 3. Team Collaboration Test
+### Common Use Cases
 
 ```bash
-# Create a simple team
-hera team create my-test-team
+# Create specialized agents
+opencode run --agent hera "create a code-reviewer agent"
+opencode run --agent hera "create a bug-hunter agent with debugging skills"
 
-# Add Hera to the team
-hera team add my-test-team hera
+# Create teams
+opencode run --agent hera "create review-team with code-reviewer and bug-hunter, mode: parallel"
 
-# List teams
-hera team list
+# Export as plugins (for distribution)
+opencode run --agent hera "export my-dev as plugin"
+opencode run --agent hera "export review-team as team plugin"
 
-# Expected: Should show my-test-team with hera as member
+# Memory management
+opencode run --agent hera "remember: our coding style uses 2-space indentation"
+opencode run --agent hera "recall memories about coding style"
 ```
-
-### 4. Health Check
-
-```bash
-# Run comprehensive diagnostic
-hera doctor
-
-# Expected output:
-# ✓ opencode.json found
-# ✓ hera-agent in plugin list
-# ✓ dist/index.js exists
-# ✓ hera.json configured
-# ✓ All systems operational
-```
-
-### 5. Quick Functionality Checklist
-
-- [ ] Agent responds to basic questions
-- [ ] `hera skill list` shows built-in skills
-- [ ] `hera team create` works without errors
-- [ ] `hera doctor` reports all systems operational
-- [ ] No error messages in OpenCode console
-
-If all checks pass, you're ready to use Hera in production.
-
-### Troubleshooting Installation
-
-| Problem | Solution |
-|---------|----------|
-| **Windows: PowerShell path issues** | Use `cmd /c` workaround: `cmd /c "cd %USERPROFILE%\.config\opencode && bun add hera-agent"` |
-| **Linux: Permission denied** | `chmod -R 755 ~/.config/opencode/node_modules/hera-agent/` |
-| **Bun not installed** | Windows: `powershell -c "irm bun.sh/install.ps1 \| iex"` · Linux/macOS: `curl -fsSL https://bun.sh/install \| bash` |
-| **General diagnosis** | Run `hera doctor` for automatic health check |
 
 ## 🔄 Update / Upgrade
 
-### Update from npm
-
 ```bash
-# Quick update
+# Update to latest version
 cd ~/.config/opencode
 bun update hera-agent
 
-# Or force reinstall latest
+# Or force reinstall
 bun remove hera-agent && bun add hera-agent@latest
-```
 
-### Update from local source
+# Check current version
+bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js version
 
-```bash
-# 1. Update source
-cd /path/to/hera-agent
-git pull origin master  # if from git
-# or extract new ZIP
-
-# 2. Rebuild
-bun install
-bun run build
-
-# 3. Reinstall
-cd ~/.config/opencode
-bun remove hera-agent
-bun add file:///path/to/hera-agent
-```
-
-### Check versions
-
-```bash
-# Current installed version
-hera version
-
-# Latest available version
+# Check latest available
 npm view hera-agent version
-
-# Or use CLI helper
-hera update
 ```
 
 **After update**: Restart OpenCode to load the new version.
 
 ## 🗑️ Uninstallation
 
-### Complete Uninstall
+### Quick Uninstall (Keep Data)
 
 ```bash
-# 1. Remove from opencode.json
-# Edit ~/.config/opencode/opencode.json and remove "hera-agent" from plugin array
-
-# 2. Remove the package
+# Remove package only (keeps agents, skills, memory)
 cd ~/.config/opencode
 bun remove hera-agent
 
-# 3. (Optional) Remove all Hera data
+# Remove from opencode.json plugin list
+# Edit ~/.config/opencode/opencode.json and remove "hera-agent"
+```
+
+Your data remains in:
+- `~/.config/opencode/hera-data/` (memory, skills, teams)
+- `~/.config/opencode/agents/hera/` (agent definitions)
+- `~/.config/opencode/hera.json` (configuration)
+
+### Complete Uninstall (Remove Everything)
+
+```bash
+# 1. Remove package
+cd ~/.config/opencode
+bun remove hera-agent
+
+# 2. Remove from opencode.json
+# Edit ~/.config/opencode/opencode.json and remove "hera-agent" from plugin array
+
+# 3. Remove all data
 rm -rf ~/.config/opencode/hera-data/
 rm -rf ~/.config/opencode/agents/hera/
 rm -f ~/.config/opencode/hera.json
+
+# Windows PowerShell:
+# Remove-Item -Recurse -Force "$env:USERPROFILE\.config\opencode\hera-data"
+# Remove-Item -Recurse -Force "$env:USERPROFILE\.config\opencode\agents\hera"
+# Remove-Item -Force "$env:USERPROFILE\.config\opencode\hera.json"
 ```
 
-### Keep Data (Reinstall Later)
-
-If you want to keep your agents, skills, and memory:
+### Backup Before Uninstall
 
 ```bash
-# Only remove the package
+# Backup your data
 cd ~/.config/opencode
-bun remove hera-agent
+tar -czf hera-backup-$(date +%Y%m%d).tar.gz hera-data/ agents/hera/ hera.json
 
-# Data remains in:
-# - ~/.config/opencode/hera-data/      (memory, skills)
-# - ~/.config/opencode/agents/hera/    (agent definitions)
-# - ~/.config/opencode/hera.json       (configuration)
+# Or on Windows:
+# Compress-Archive -Path "$env:USERPROFILE\.config\opencode\hera-data","$env:USERPROFILE\.config\opencode\agents\hera","$env:USERPROFILE\.config\opencode\hera.json" -DestinationPath "hera-backup.zip"
 ```
 
-## 🚀 Quick Start
+## 🏗️ Architecture
 
-```bash
-# Start Hera
-opencode --agent hera
+### Plugin-Based Design
 
-# Or run a single command
-opencode run --agent hera "创建一个名为 my-coder 的编码专家 agent"
-
-# Use a created agent (if mode is 'all' or 'primary')
-opencode --agent my-coder "帮我写一个排序算法"
-
-# Use a subagent via @mention
-opencode run "请 @code-guardian 审查这段代码"
+```
+Hera (OpenCode Plugin)
+├── Generates → Agent Plugins (standalone, full capabilities)
+│   ├── Inherits: 8 built-in skills
+│   ├── Shares: Memory pool with Hera
+│   └── Tools: hera_remember, hera_recall (built-in)
+├── Generates → Team Plugins (multi-agent coordination)
+└── Exports → Distributable packages
 ```
 
-### 5-Minute Quick Verification
+**Key Points:**
+- Hera itself is an OpenCode plugin
+- Every generated agent is also a standalone OpenCode plugin
+- All agents share the same memory store (`~/.config/opencode/hera-data/memory/`)
+- Generated agents have full capabilities: memory, evolution, skill-combo, subagent, etc.
+- Teams can be exported as single plugins containing all member agents
 
-Verify Hera works correctly:
+### Built-in Skills (Inherited by All Agents)
 
-```bash
-# 1. Create a test agent
-opencode run --agent hera "创建 test-agent，mode: all，template: coder"
+| Skill | Description | Capability |
+|-------|-------------|------------|
+| **caveman** | Ultra-compressed communication | ~75% token savings |
+| **init** | Environment awareness | Auto-detects project context |
+| **memory** | Persistent memory management | Shared JSON store with tools |
+| **evolution** | Self-improvement through reflection | Appends directives after sessions |
+| **skill-combo** | Dynamic skill composition | Combines multiple skills on-the-fly |
+| **subagent** | Delegate to specialized agents | Spawns focused sub-tasks |
+| **communicate** | Team coordination | Message passing between agents |
+| **auto-compact** | Context window discipline | Automatic conversation compression |
 
-# 2. Use the agent
-opencode run --agent test-agent "创建一个 hello.js 文件，输出 Hello World"
-
-# 3. Verify the result
-cat hello.js && node hello.js
-
-# Should output: Hello World
-```
-
-## Built-in Skills
-
-| Skill | Description |
-|-------|-------------|
-| **caveman** | Ultra-compressed communication (~75% token savings) |
-| **init** | Environment awareness — auto-detects project context |
+All 8 skills are embedded in every generated agent's prompt and are fully functional.
 | **skill-combo** | Dynamic skill composition for multi-domain tasks |
 | **memory** | Autonomous memory management — remember/recall |
 | **evolution** | Self-improvement through reflection and directive appending |
@@ -489,56 +385,54 @@ hera status
 hera --help
 ```
 
-## Architecture
+## 📂 File Structure
 
 ```
 hera-agent/
 ├── src/
-│   ├── index.ts              # Plugin entry
-│   ├── cli.ts                # CLI interface
-│   ├── onboarding.ts         # First-run setup
-│   ├── constants.ts          # Extracted constants
-│   ├── helpers.ts            # Shared utilities
-│   ├── persistence.ts        # Unified persistence
-│   ├── logger.ts             # Debug logging
-│   ├── validation.ts         # Name validation
-│   ├── types.ts              # Core types
-│   ├── types/
-│   │   └── client.ts         # OpenCode client types
+│   ├── index.ts              # Plugin entry + config hook
 │   ├── agents/
-│   │   ├── hera.ts           # Hera agent + templates
+│   │   ├── hera.ts           # Hera agent + 10 templates + buildAgentPrompt
 │   │   └── registry.ts       # .md file persistence
-│   ├── skills/
+│   ├── skills/               # 8 built-in skills (inherited by all agents)
 │   │   ├── caveman.ts        # Ultra-compressed communication
 │   │   ├── init.ts           # Environment awareness
-│   │   ├── skill-combo.ts    # Skill composition
-│   │   ├── memory.ts         # Autonomous memory
-│   │   ├── evolution.ts      # Self-improvement
-│   │   └── manager.ts        # Skill CRUD
-│   ├── tools/
-│   │   ├── index.ts          # Tool registration
-│   │   ├── agent-tools.ts    # Agent domain
-│   │   ├── skill-tools.ts    # Skill domain
-│   │   ├── team-tools.ts     # Team domain
-│   │   ├── memory-tools.ts   # Memory domain
-│   │   ├── evolution-tools.ts # Evolution domain
-│   │   └── system-tools.ts   # System domain
+│   │   ├── memory.ts         # Persistent memory with tools
+│   │   ├── evolution.ts      # Self-improvement reflection
+│   │   ├── skill-combo.ts    # Dynamic skill composition
+│   │   ├── subagent.ts       # Delegate to specialists
+│   │   ├── communicate.ts    # Team coordination
+│   │   ├── auto-compact.ts   # Context window management
+│   │   └── manager.ts        # Skill CRUD operations
+│   ├── tools/                # 34 management tools
+│   │   ├── agent-tools.ts    # Agent lifecycle (create, delete, export)
+│   │   ├── skill-tools.ts    # Skill management
+│   │   ├── team-tools.ts     # Team coordination
+│   │   ├── memory-tools.ts   # Memory operations
+│   │   ├── evolution-tools.ts # Evolution management
+│   │   └── system-tools.ts   # System utilities
+│   ├── generators/
+│   │   └── plugin-generator.ts # Generates standalone agent plugins
 │   ├── team/
-│   │   ├── manager.ts        # Team coordination
-│   │   └── templates.ts      # Pre-defined templates
+│   │   ├── manager.ts        # Team execution (parallel/sequential/adaptive)
+│   │   └── control-manager.ts # Team management modes
 │   ├── memory/
-│   │   ├── store.ts          # JSON persistence
+│   │   ├── store.ts          # Shared JSON memory store
 │   │   └── smart-extractor.ts # Auto-memory extraction
 │   └── distillation/
-│       ├── engine.ts         # Knowledge extraction
+│       ├── engine.ts         # Session knowledge extraction
 │       └── auto-evolve.ts    # Semi-automatic evolution
-├── bin/hera.js               # CLI entry
+├── bin/hera.js               # CLI entry (doctor, list-*, version, help)
 ├── dist/                     # Build output
-├── package.json
-├── README.md
-├── CLAUDE.md
-└── ARCHITECTURE.md
+└── tests/                    # 438 tests, 90.73% coverage
 ```
+
+**Data Directories** (created at `~/.config/opencode/`):
+- `hera-data/memory/` — Shared memory pool (all agents)
+- `hera-data/skills/` — User-defined skills
+- `hera-data/teams/` — Team configurations
+- `agents/hera/` — Agent definitions (.md files)
+- `hera.json` — Hera configuration
 
 For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
