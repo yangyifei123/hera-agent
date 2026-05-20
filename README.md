@@ -12,8 +12,10 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 
 - **Agent Factory** — Create agents from 10 templates or custom prompts
 - **Plugin Architecture** — Every generated agent is a standalone OpenCode plugin with full capabilities
+- **Workflow System** — Automatic task complexity analysis with serial, parallel, and DAG execution modes
+- **Intelligent Skills** — 11 built-in skills including workflow-orchestration, brainstorming, and skill-creator
 - **Agent Packaging & Migration** — Package agents as .tar.gz files for easy distribution and migration across environments
-- **8 Built-in Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
+- **8 Core Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
 - **Shared Memory Pool** — All agents (Hera + generated) share the same persistent memory store
 - **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone plugins (auto-installable)
 - **Team Plugin Export** — Export entire teams as single plugins registering all member agents at once
@@ -22,7 +24,7 @@ Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts 
 - **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
 - **Team Management Modes** — Simple, OKR, hierarchy (tree), or control-point management
 - **Self-Evolution** — Agents reflect on performance and append improvement directives
-- **37 Management Tools** — Complete agent/skill/team lifecycle management + packaging
+- **43 Management Tools** — Complete agent/skill/team/workflow lifecycle management + packaging
 - **Session Distillation** — Extract structured knowledge from conversations
 - **Auto-Memory** — Automatically extract insights from sessions
 - **Semi-Auto Evolution** — Proposes improvements based on session analysis
@@ -244,6 +246,158 @@ npm view hera-agent version
 ```
 
 **After update**: Restart OpenCode to load the new version.
+
+## 🔀 Workflow System
+
+Hera automatically analyzes task complexity and proposes workflows for complex tasks, with user approval before execution.
+
+### Automatic Workflow Detection
+
+Hera uses the **workflow-orchestration** skill to analyze every task:
+
+```bash
+# Simple task - executes directly
+opencode run --agent hera "fix typo in README"
+
+# Complex task - proposes workflow
+opencode run --agent hera "refactor authentication module, add tests, and update docs"
+# Hera analyzes complexity → proposes workflow → requests approval → executes
+```
+
+**Complexity Indicators** (triggers workflow):
+- Multiple distinct steps (create, test, deploy)
+- Requires multiple agents (coder + tester + reviewer)
+- Destructive operations (delete, migrate, refactor)
+- Approval mentions (review, verify, confirm)
+- Estimated duration > 5 minutes
+- External dependencies (API, database, deployment)
+
+### Workflow Execution Modes
+
+**Serial**: Steps execute in sequence, output passes to next step
+```bash
+# Example: Build → Test → Deploy
+opencode run --agent hera "build the app, run tests, then deploy to staging"
+```
+
+**Parallel**: All steps execute concurrently
+```bash
+# Example: Review multiple files simultaneously
+opencode run --agent hera "review auth.ts, user.ts, and api.ts in parallel"
+```
+
+**DAG** (Directed Acyclic Graph): Complex dependencies with mixed execution
+```bash
+# Example: Plan → (Dev + Docs in parallel) → Review → Deploy
+opencode run --agent hera "plan feature, implement code and docs, then review and deploy"
+```
+
+### Manual Workflow Creation
+
+```bash
+# Create custom workflow
+opencode run --agent hera "create workflow: analyze → implement → test → review → approve"
+
+# Execute workflow with approval
+opencode run --agent hera "execute my-workflow with approval required"
+
+# Check workflow status
+opencode run --agent hera "check status of workflow execution-id-123"
+
+# List all workflows
+opencode run --agent hera "list all workflows"
+```
+
+### Workflow Tools
+
+- **hera_create_workflow**: Define workflow with steps and dependencies
+- **hera_execute_workflow**: Run workflow with optional user approval
+- **hera_approve_workflow**: Approve and execute pending workflow
+- **hera_get_workflow_status**: Check execution progress
+- **hera_list_workflows**: List all available workflows
+- **hera_delete_workflow**: Remove workflow definition
+
+### Workflow Templates
+
+Hera includes 10 pre-defined workflow templates:
+
+| Template | Mode | Description |
+|----------|------|-------------|
+| **coder-workflow** | Serial | Analyze → Implement → Test → Review → Approve |
+| **reviewer-workflow** | Parallel | Style + Security + Logic + Coverage checks |
+| **tester-workflow** | Serial | Unit → Integration → E2E → Report |
+| **documenter-workflow** | Serial | Analyze → Write → Review → Approve |
+| **team-workflow** | DAG | Plan → (Dev + Test + Docs) → Review → Approve |
+| **architect-workflow** | Serial | Research → Design → Review → Document → Approve |
+| **debugger-workflow** | Serial | Reproduce → Analyze → Fix → Verify |
+| **optimizer-workflow** | Serial | Profile → Identify → Optimize → Benchmark → Validate |
+| **researcher-workflow** | Serial | Gather → Analyze → Synthesize → Document |
+| **general-workflow** | Serial | Analyze → Execute → Verify → Report |
+
+### Brainstorming & Skill Creation
+
+When existing skills are insufficient, Hera uses **brainstorming** and **skill-creator**:
+
+```bash
+# Hera automatically brainstorms when needed
+opencode run --agent hera "I need to validate all API responses for security issues"
+# Hera: 
+# 1. Uses brainstorming to generate 3-5 approaches
+# 2. Analyzes pros/cons of each approach
+# 3. Recommends best approach
+# 4. Uses skill-creator to create "api-security-validator" skill
+# 5. Applies the new skill to the task
+```
+
+**Brainstorming Process**:
+1. **Diverge**: Generate 3-5 different approaches
+2. **Analyze**: Evaluate pros, cons, complexity, maintainability
+3. **Converge**: Select best approach based on constraints
+4. **Extract**: Propose creating reusable skill if pattern is identified
+
+**Skill Creator Process**:
+1. Define scope and single responsibility
+2. Identify trigger conditions
+3. Write actionable prompt with examples
+4. Test mentally with scenarios
+5. Create skill via `hera_create_skill`
+6. Validate effectiveness
+
+### Example: Complex Task with Workflow
+
+```bash
+opencode run --agent hera "refactor user authentication, add OAuth support, write tests, and update documentation"
+```
+
+**Hera's Response**:
+```
+Task Complexity Analysis:
+- Score: 85/100 (High Complexity)
+- Multiple steps: refactor, add feature, test, document
+- Multiple agents needed: coder, tester, documenter, reviewer
+- Estimated duration: 15-20 minutes
+- Risks: Breaking existing auth, OAuth integration complexity
+
+Proposed Workflow (DAG mode):
+1. Analyze Current Auth (coder)
+2. Design OAuth Integration (architect) [depends on: 1]
+3. Implement Changes (coder) [depends on: 2]
+4. Write Tests (tester) [depends on: 3]
+5. Update Docs (documenter) [depends on: 3]
+6. Code Review (reviewer) [depends on: 4, 5]
+7. User Approval Gate [depends on: 6]
+8. Merge Changes [depends on: 7]
+
+Estimated Time: 18 minutes
+Risks:
+- Refactoring may break existing functionality
+- OAuth integration requires external API setup
+
+Approve this workflow? (yes/no)
+```
+
+After approval, Hera executes the workflow and reports progress at each step.
+
 
 ## 🗑️ Uninstallation
 
