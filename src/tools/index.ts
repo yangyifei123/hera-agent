@@ -6,6 +6,7 @@ import { createMemoryTools } from "./memory-tools.js";
 import { createEvolutionTools } from "./evolution-tools.js";
 import { createSystemTools } from "./system-tools.js";
 import { createPackageTools } from "./package-tools.js";
+import { createWorkflowTools } from "./workflow-tools.js";
 
 export function createAllTools(ctx: PluginContext) {
   return {
@@ -16,5 +17,6 @@ export function createAllTools(ctx: PluginContext) {
     ...createEvolutionTools(ctx),
     ...createSystemTools(ctx),
     ...createPackageTools(ctx),
+    ...createWorkflowTools(ctx),
   };
 }

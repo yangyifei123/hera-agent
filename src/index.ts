@@ -2,6 +2,7 @@ import type { Plugin, PluginInput, Hooks, Config } from "@opencode-ai/plugin";
 import { MemoryStore } from "./memory/store.js";
 import { SkillManager } from "./skills/manager.js";
 import { TeamManager } from "./team/manager.js";
+import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
@@ -81,6 +82,9 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const teamManager = new TeamManager(store, client);
   await teamManager.init();
 
+  const workflowManager = new WorkflowManager(store, teamManager, client);
+  await workflowManager.init();
+
   const distillation = new DistillationEngine(store);
   const agentRegistry = new AgentRegistry(paths.agentsDir);
   await agentRegistry.init();
@@ -119,6 +123,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     store,
     skillManager,
     teamManager,
+    workflowManager,
     distillation,
     agentRegistry,
     registeredAgents,

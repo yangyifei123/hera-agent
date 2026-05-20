@@ -16,7 +16,8 @@ export interface HeraMemory {
     | "pattern"
     | "preference"
     | "context"
-    | "skill-package";
+    | "skill-package"
+    | "workflow";
   content: string;
   timestamp: number;
   metadata?: Record<string, unknown>;
@@ -122,6 +123,45 @@ export interface ControlPoint {
   status?: "pending" | "passed" | "failed";
 }
 
+// Workflow system types
+export type WorkflowMode = "serial" | "parallel" | "dag";
+
+export interface WorkflowStep {
+  id: string;
+  name: string;
+  type: "agent" | "tool" | "decision" | "approval";
+  executor?: string;
+  input?: Record<string, any>;
+  dependencies?: string[];
+  condition?: string;
+  timeout?: number;
+  retryPolicy?: {
+    maxAttempts: number;
+    backoffMs: number;
+  };
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  name: string;
+  description: string;
+  mode: WorkflowMode;
+  steps: WorkflowStep[];
+  createdAt: number;
+  metadata?: Record<string, any>;
+}
+
+export interface WorkflowExecution {
+  id: string;
+  workflowId: string;
+  status: "pending" | "running" | "paused" | "completed" | "failed";
+  currentStep?: string;
+  stepResults: Record<string, any>;
+  startedAt: number;
+  completedAt?: number;
+  error?: string;
+}
+
 export interface AgentDefinition {
   name: string;
   description: string;
@@ -136,6 +176,7 @@ export interface AgentDefinition {
   createdAt?: number;
   evolvedAt?: number;
   evolutionLog?: EvolutionEntry[];
+  workflow?: WorkflowDefinition;
 }
 
 export interface EvolutionEntry {
@@ -181,6 +222,7 @@ export interface TeamDefinition {
   hierarchy?: TreeNode[];
   /** Control points (used when management="control") */
   controlPoints?: ControlPoint[];
+  workflow?: WorkflowDefinition;
 }
 
 export interface TeamMember {
@@ -243,6 +285,7 @@ export interface PluginContext {
   store: import("./memory/store.js").MemoryStore;
   skillManager: import("./skills/manager.js").SkillManager;
   teamManager: import("./team/manager.js").TeamManager;
+  workflowManager: import("./workflow/manager.js").WorkflowManager;
   distillation: import("./distillation/engine.js").DistillationEngine;
   agentRegistry: import("./agents/registry.js").AgentRegistry;
   registeredAgents: Map<string, AgentDefinition>;

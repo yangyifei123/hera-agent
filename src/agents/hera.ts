@@ -16,6 +16,9 @@ import { getSkillComboPrompt } from "../skills/skill-combo.js";
 import { getSubagentPrompt } from "../skills/subagent.js";
 import { getCommunicatePrompt } from "../skills/communicate.js";
 import { getAutoCompactPrompt } from "../skills/auto-compact.js";
+import { getWorkflowOrchestrationPrompt } from "../skills/workflow-orchestration.js";
+import { getBrainstormingPrompt } from "../skills/brainstorming.js";
+import { getSkillCreatorPrompt } from "../skills/skill-creator.js";
 
 export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
   general: {
@@ -300,6 +303,18 @@ export function buildAgentPrompt(def: AgentDefinition, resolvedSkills: SkillDefi
 
   sections.push("## Built-in Skill: Auto-Compact");
   sections.push(getAutoCompactPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Workflow-Orchestration");
+  sections.push(getWorkflowOrchestrationPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Brainstorming");
+  sections.push(getBrainstormingPrompt());
+  sections.push("");
+
+  sections.push("## Built-in Skill: Skill-Creator");
+  sections.push(getSkillCreatorPrompt());
   sections.push("");
 
   // Embed additional user skills
