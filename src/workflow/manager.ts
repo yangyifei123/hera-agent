@@ -100,7 +100,8 @@ export class WorkflowManager {
 
       execution.status = "completed";
       execution.completedAt = Date.now();
-      return result;
+      execution.context = context;
+      return execution;
     } catch (error) {
       execution.status = "failed";
       execution.error = error instanceof Error ? error.message : String(error);

@@ -142,11 +142,11 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("serial-test", {});
+      const execution = await manager.executeWorkflow("serial-test", {});
 
-      expect(result).toHaveProperty("step1");
-      expect(result).toHaveProperty("step2");
-      expect(result).toHaveProperty("step3");
+      expect(execution.stepResults).toHaveProperty("step1");
+      expect(execution.stepResults).toHaveProperty("step2");
+      expect(execution.stepResults).toHaveProperty("step3");
     });
 
     test("passes context between steps", async () => {
@@ -163,10 +163,10 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("context-test", { initial: "value" });
+      const execution = await manager.executeWorkflow("context-test", { initial: "value" });
 
-      expect(result.step1).toBeDefined();
-      expect(result.step2).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
+      expect(execution.stepResults.step2).toBeDefined();
     });
 
     test("skips steps with false conditions", async () => {
@@ -190,11 +190,11 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("condition-test", { skip: "false" });
+      const execution = await manager.executeWorkflow("condition-test", { skip: "false" });
 
-      expect(result.step1).toBeDefined();
-      expect(result.step2).toBeUndefined();
-      expect(result.step3).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
+      expect(execution.stepResults.step2).toBeUndefined();
+      expect(execution.stepResults.step3).toBeDefined();
     });
   });
 
@@ -215,12 +215,12 @@ describe("WorkflowManager", () => {
 
       await manager.createWorkflow(workflow);
       const start = Date.now();
-      const result = await manager.executeWorkflow("parallel-test", {});
+      const execution = await manager.executeWorkflow("parallel-test", {});
       const duration = Date.now() - start;
 
-      expect(result).toHaveProperty("step1");
-      expect(result).toHaveProperty("step2");
-      expect(result).toHaveProperty("step3");
+      expect(execution.stepResults).toHaveProperty("step1");
+      expect(execution.stepResults).toHaveProperty("step2");
+      expect(execution.stepResults).toHaveProperty("step3");
       // Should complete faster than serial (no artificial delays in this test)
       expect(duration).toBeLessThan(1000);
     });
@@ -241,8 +241,8 @@ describe("WorkflowManager", () => {
       await manager.createWorkflow(workflow);
 
       // Should not throw, but step2 will have null result
-      const result = await manager.executeWorkflow("parallel-fail", {});
-      expect(result.step1).toBeDefined();
+      const execution = await manager.executeWorkflow("parallel-fail", {});
+      expect(execution.stepResults.step1).toBeDefined();
     });
   });
 
@@ -281,12 +281,12 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("dag-test", {});
+      const execution = await manager.executeWorkflow("dag-test", {});
 
-      expect(result.step1).toBeDefined();
-      expect(result.step2).toBeDefined();
-      expect(result.step3).toBeDefined();
-      expect(result.step4).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
+      expect(execution.stepResults.step2).toBeDefined();
+      expect(execution.stepResults.step3).toBeDefined();
+      expect(execution.stepResults.step4).toBeDefined();
     });
 
     test("detects circular dependencies", async () => {
@@ -331,13 +331,13 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("dag-parallel", {});
+      const execution = await manager.executeWorkflow("dag-parallel", {});
 
       // step1, step2, step3 should run in parallel, then step4
-      expect(result.step1).toBeDefined();
-      expect(result.step2).toBeDefined();
-      expect(result.step3).toBeDefined();
-      expect(result.step4).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
+      expect(execution.stepResults.step2).toBeDefined();
+      expect(execution.stepResults.step3).toBeDefined();
+      expect(execution.stepResults.step4).toBeDefined();
     });
   });
 
@@ -379,7 +379,7 @@ describe("WorkflowManager", () => {
       const result = await managerWithRetry.executeWorkflow("retry-test", {});
 
       expect(attempts).toBe(3);
-      expect(result.step1).toBeDefined();
+      expect(result.stepResults.step1).toBeDefined();
     });
 
     test("fails after max retry attempts", async () => {
@@ -480,9 +480,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("eq-test", { env: "prod" });
+      const execution = await manager.executeWorkflow("eq-test", { env: "prod" });
 
-      expect(result.step1).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
     });
 
     test("evaluates comparison conditions", async () => {
@@ -501,12 +501,12 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("cmp-test", { count: 7 });
+      const execution = await manager.executeWorkflow("cmp-test", { count: 7 });
 
-      expect(result.step1).toBeDefined(); // 7 > 5
-      expect(result.step2).toBeDefined(); // 7 < 10
-      expect(result.step3).toBeDefined(); // 7 >= 7
-      expect(result.step4).toBeDefined(); // 7 <= 7
+      expect(execution.stepResults.step1).toBeDefined(); // 7 > 5
+      expect(execution.stepResults.step2).toBeDefined(); // 7 < 10
+      expect(execution.stepResults.step3).toBeDefined(); // 7 >= 7
+      expect(execution.stepResults.step4).toBeDefined(); // 7 <= 7
     });
 
     test("evaluates truthy conditions", async () => {
@@ -522,9 +522,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("truthy-test", { enabled: true });
+      const execution = await manager.executeWorkflow("truthy-test", { enabled: true });
 
-      expect(result.step1).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
     });
   });
 
@@ -547,7 +547,7 @@ describe("WorkflowManager", () => {
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       const result = await resultPromise;
-      expect(result.step1).toBeDefined();
+      expect(result.stepResults.step1).toBeDefined();
     });
 
     test("marks execution as failed on error", async () => {
@@ -592,9 +592,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("agent-test", {});
+      const execution = await manager.executeWorkflow("agent-test", {});
 
-      expect(result.step1).toBeDefined();
+      expect(execution.stepResults.step1).toBeDefined();
       expect(mockClient.session.create).toHaveBeenCalled();
       expect(mockClient.session.promptAsync).toHaveBeenCalled();
     });
@@ -610,9 +610,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("tool-test", {});
+      const execution = await manager.executeWorkflow("tool-test", {});
 
-      expect(result.step1).toEqual({ tool: "test-tool", input: {} });
+      expect(execution.stepResults.step1).toEqual({ tool: "test-tool", input: {} });
     });
 
     test("executes decision steps", async () => {
@@ -628,9 +628,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("decision-test", { enabled: "true" });
+      const execution = await manager.executeWorkflow("decision-test", { enabled: "true" });
 
-      expect(result.step1).toBe(true);
+      expect(execution.stepResults.step1).toBe(true);
     });
 
     test("executes approval steps", async () => {
@@ -644,9 +644,9 @@ describe("WorkflowManager", () => {
       };
 
       await manager.createWorkflow(workflow);
-      const result = await manager.executeWorkflow("approval-test", {});
+      const execution = await manager.executeWorkflow("approval-test", {});
 
-      expect(result.step1).toEqual({
+      expect(execution.stepResults.step1).toEqual({
         type: "approval_required",
         step: "step1",
         context: {},
