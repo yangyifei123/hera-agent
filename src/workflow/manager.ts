@@ -8,6 +8,10 @@ import type {
   WorkflowMode,
 } from "../types.js";
 import { randomUUID } from "node:crypto";
+import { WorkflowNotFoundError, WorkflowExecutionError } from "../errors.js";
+import { WorkflowValidator } from "./validator.js";
+import { WorkflowProgressCallback, ConcurrencyLimiter } from "./progress.js";
+import { heraLog } from "../logger.js";
 
 export class WorkflowManager {
   private store: MemoryStore;
@@ -15,6 +19,11 @@ export class WorkflowManager {
   private client: OpenCodeClient | undefined;
   private workflows: Map<string, WorkflowDefinition> = new Map();
   private executions: Map<string, WorkflowExecution> = new Map();
+
+  // Resource management
+  private readonly MAX_EXECUTION_HISTORY = 1000;
+  private readonly EXECUTION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly MAX_PARALLEL_STEPS = 10; // Limit concurrent step execution
 
   constructor(
     store: MemoryStore,
@@ -39,6 +48,9 @@ export class WorkflowManager {
   }
 
   async createWorkflow(def: WorkflowDefinition): Promise<void> {
+    // Validate workflow before creating
+    WorkflowValidator.validateOrThrow(def);
+
     this.workflows.set(def.id, def);
     await this.store.save({
       id: `workflow-${def.id}`,
@@ -47,6 +59,8 @@ export class WorkflowManager {
       timestamp: Date.now(),
       metadata: { mode: def.mode, stepCount: def.steps.length },
     });
+
+    heraLog('info', `Created workflow: ${def.id} (${def.mode} mode, ${def.steps.length} steps)`);
   }
 
   async deleteWorkflow(id: string): Promise<boolean> {
@@ -64,11 +78,12 @@ export class WorkflowManager {
 
   async executeWorkflow(
     workflowId: string,
-    context: Record<string, any> = {}
+    context: Record<string, any> = {},
+    callbacks?: WorkflowProgressCallback
   ): Promise<any> {
     const workflow = this.workflows.get(workflowId);
     if (!workflow) {
-      throw new Error(`Workflow not found: ${workflowId}`);
+      throw new WorkflowNotFoundError(workflowId);
     }
 
     const executionId = randomUUID();
@@ -82,17 +97,19 @@ export class WorkflowManager {
 
     this.executions.set(executionId, execution);
 
+    heraLog('info', `Starting workflow execution: ${workflowId} (${workflow.mode} mode)`);
+
     try {
       let result: any;
       switch (workflow.mode) {
         case "serial":
-          result = await this.executeSerialWorkflow(workflow, context, execution);
+          result = await this.executeSerialWorkflow(workflow, context, execution, callbacks);
           break;
         case "parallel":
-          result = await this.executeParallelWorkflow(workflow, context, execution);
+          result = await this.executeParallelWorkflow(workflow, context, execution, callbacks);
           break;
         case "dag":
-          result = await this.executeDAGWorkflow(workflow, context, execution);
+          result = await this.executeDAGWorkflow(workflow, context, execution, callbacks);
           break;
         default:
           throw new Error(`Unknown workflow mode: ${workflow.mode}`);
@@ -101,12 +118,27 @@ export class WorkflowManager {
       execution.status = "completed";
       execution.completedAt = Date.now();
       execution.context = context;
+
+      heraLog('info', `Workflow completed: ${workflowId} in ${execution.completedAt - execution.startedAt}ms`);
+
       return execution;
     } catch (error) {
       execution.status = "failed";
       execution.error = error instanceof Error ? error.message : String(error);
       execution.completedAt = Date.now();
-      throw error;
+
+      heraLog('warn', `Workflow failed: ${workflowId}`, error);
+
+      throw new WorkflowExecutionError(
+        workflowId,
+        execution.currentStep || 'unknown',
+        error as Error
+      );
+    } finally {
+      // Periodic cleanup (10% chance)
+      if (Math.random() < 0.1) {
+        await this.cleanupOldExecutions();
+      }
     }
   }
 
@@ -136,9 +168,12 @@ export class WorkflowManager {
   private async executeSerialWorkflow(
     workflow: WorkflowDefinition,
     context: Record<string, any>,
-    execution: WorkflowExecution
+    execution: WorkflowExecution,
+    callbacks?: WorkflowProgressCallback
   ): Promise<any> {
     let currentContext = { ...context };
+    let completedSteps = 0;
+    const totalSteps = workflow.steps.length;
 
     for (const step of workflow.steps) {
       if (execution.status === "paused") {
@@ -146,14 +181,34 @@ export class WorkflowManager {
       }
 
       execution.currentStep = step.id;
+      callbacks?.onStepStart?.(step.id, step.name, step);
 
       if (step.condition && !this.evaluateCondition(step.condition, currentContext)) {
+        heraLog('debug', `Skipping step ${step.id} due to condition: ${step.condition}`);
         continue;
       }
 
-      const result = await this.executeStep(step, currentContext);
-      execution.stepResults[step.id] = result;
-      currentContext = { ...currentContext, [step.id]: result };
+      const stepStart = Date.now();
+      try {
+        const result = await this.executeStep(step, currentContext);
+        const duration = Date.now() - stepStart;
+
+        execution.stepResults[step.id] = result;
+        currentContext = { ...currentContext, [step.id]: result };
+
+        callbacks?.onStepComplete?.(step.id, {
+          status: 'success',
+          output: result,
+          duration,
+          timestamp: Date.now(),
+        });
+
+        completedSteps++;
+        callbacks?.onWorkflowProgress?.(completedSteps, totalSteps, (completedSteps / totalSteps) * 100);
+      } catch (error) {
+        callbacks?.onStepError?.(step.id, error as Error, false);
+        throw error;
+      }
     }
 
     return execution.stepResults;
@@ -162,16 +217,45 @@ export class WorkflowManager {
   private async executeParallelWorkflow(
     workflow: WorkflowDefinition,
     context: Record<string, any>,
-    execution: WorkflowExecution
+    execution: WorkflowExecution,
+    callbacks?: WorkflowProgressCallback
   ): Promise<any> {
-    const promises = workflow.steps.map(async (step) => {
-      if (step.condition && !this.evaluateCondition(step.condition, context)) {
-        return null;
-      }
+    const limiter = new ConcurrencyLimiter(this.MAX_PARALLEL_STEPS);
+    let completedSteps = 0;
+    const totalSteps = workflow.steps.length;
 
-      const result = await this.executeStep(step, context);
-      execution.stepResults[step.id] = result;
-      return { stepId: step.id, result };
+    const promises = workflow.steps.map(async (step) => {
+      return limiter.run(async () => {
+        callbacks?.onStepStart?.(step.id, step.name, step);
+
+        if (step.condition && !this.evaluateCondition(step.condition, context)) {
+          heraLog('debug', `Skipping step ${step.id} due to condition: ${step.condition}`);
+          return null;
+        }
+
+        const stepStart = Date.now();
+        try {
+          const result = await this.executeStep(step, context);
+          const duration = Date.now() - stepStart;
+
+          execution.stepResults[step.id] = result;
+
+          callbacks?.onStepComplete?.(step.id, {
+            status: 'success',
+            output: result,
+            duration,
+            timestamp: Date.now(),
+          });
+
+          completedSteps++;
+          callbacks?.onWorkflowProgress?.(completedSteps, totalSteps, (completedSteps / totalSteps) * 100);
+
+          return { stepId: step.id, result };
+        } catch (error) {
+          callbacks?.onStepError?.(step.id, error as Error, false);
+          throw error;
+        }
+      });
     });
 
     await Promise.all(promises);
@@ -181,7 +265,8 @@ export class WorkflowManager {
   private async executeDAGWorkflow(
     workflow: WorkflowDefinition,
     context: Record<string, any>,
-    execution: WorkflowExecution
+    execution: WorkflowExecution,
+    callbacks?: WorkflowProgressCallback
   ): Promise<any> {
     const dag = this.buildDAG(workflow.steps);
     const sorted = this.topologicalSort(dag);
@@ -190,6 +275,10 @@ export class WorkflowManager {
 
     // Group steps by wave (steps with same depth can run in parallel)
     const waves = this.groupByWaves(sorted, dag);
+    const limiter = new ConcurrencyLimiter(this.MAX_PARALLEL_STEPS);
+
+    let completedSteps = 0;
+    const totalSteps = workflow.steps.length;
 
     for (const wave of waves) {
       if (execution.status === "paused") {
@@ -197,18 +286,41 @@ export class WorkflowManager {
       }
 
       const promises = wave.map(async (stepId) => {
-        const step = stepMap.get(stepId);
-        if (!step) return null;
+        return limiter.run(async () => {
+          const step = stepMap.get(stepId);
+          if (!step) return null;
 
-        execution.currentStep = stepId;
+          execution.currentStep = stepId;
+          callbacks?.onStepStart?.(stepId, step.name, step);
 
-        if (step.condition && !this.evaluateCondition(step.condition, currentContext)) {
-          return null;
-        }
+          if (step.condition && !this.evaluateCondition(step.condition, currentContext)) {
+            heraLog('debug', `Skipping step ${stepId} due to condition: ${step.condition}`);
+            return null;
+          }
 
-        const result = await this.executeStep(step, currentContext);
-        execution.stepResults[stepId] = result;
-        return { stepId, result };
+          const stepStart = Date.now();
+          try {
+            const result = await this.executeStep(step, currentContext);
+            const duration = Date.now() - stepStart;
+
+            execution.stepResults[stepId] = result;
+
+            callbacks?.onStepComplete?.(stepId, {
+              status: 'success',
+              output: result,
+              duration,
+              timestamp: Date.now(),
+            });
+
+            completedSteps++;
+            callbacks?.onWorkflowProgress?.(completedSteps, totalSteps, (completedSteps / totalSteps) * 100);
+
+            return { stepId, result };
+          } catch (error) {
+            callbacks?.onStepError?.(stepId, error as Error, false);
+            throw error;
+          }
+        });
       });
 
       const results = await Promise.all(promises);
@@ -434,5 +546,56 @@ export class WorkflowManager {
         }
       }, 1000);
     });
+  }
+
+  /**
+   * Clean up old completed executions to prevent memory leaks
+   */
+  async cleanupOldExecutions(): Promise<number> {
+    const now = Date.now();
+    let cleaned = 0;
+
+    for (const [id, execution] of this.executions.entries()) {
+      const age = now - execution.startedAt;
+      const isCompleted = execution.status === 'completed' || execution.status === 'failed';
+
+      if (isCompleted && age > this.EXECUTION_TTL_MS) {
+        this.executions.delete(id);
+        cleaned++;
+      }
+    }
+
+    // If still over limit, delete oldest completed executions
+    if (this.executions.size > this.MAX_EXECUTION_HISTORY) {
+      const completed = Array.from(this.executions.entries())
+        .filter(([_, e]) => e.status === 'completed' || e.status === 'failed')
+        .sort((a, b) => a[1].startedAt - b[1].startedAt);
+
+      const toDelete = completed.slice(0, this.executions.size - this.MAX_EXECUTION_HISTORY);
+      toDelete.forEach(([id]) => {
+        this.executions.delete(id);
+        cleaned++;
+      });
+    }
+
+    if (cleaned > 0) {
+      heraLog('debug', `Cleaned up ${cleaned} old workflow executions`);
+    }
+
+    return cleaned;
+  }
+
+  /**
+   * Get execution statistics
+   */
+  getExecutionStats() {
+    const executions = Array.from(this.executions.values());
+    return {
+      total: executions.length,
+      running: executions.filter(e => e.status === 'running').length,
+      completed: executions.filter(e => e.status === 'completed').length,
+      failed: executions.filter(e => e.status === 'failed').length,
+      paused: executions.filter(e => e.status === 'paused').length,
+    };
   }
 }

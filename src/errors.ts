@@ -57,6 +57,13 @@ export enum ErrorCode {
   PLUGIN_GENERATION_FAILED = 9001,
   PLUGIN_INSTALL_FAILED = 9002,
   PLUGIN_BUILD_FAILED = 9003,
+
+  // Workflow errors (10xxx)
+  WORKFLOW_NOT_FOUND = 10001,
+  WORKFLOW_ALREADY_EXISTS = 10002,
+  WORKFLOW_VALIDATION_FAILED = 10003,
+  WORKFLOW_EXECUTION_FAILED = 10004,
+  WORKFLOW_CIRCULAR_DEPENDENCY = 10005,
 }
 
 export class HeraError extends Error {
@@ -180,4 +187,48 @@ export function formatErrorMessage(error: HeraError): string {
   }
 
   return parts.join("\n");
+}
+
+// Workflow-specific errors
+export class WorkflowError extends HeraError {
+  constructor(code: ErrorCode, message: string, details?: Record<string, unknown>) {
+    super(code, message, details);
+    this.name = "WorkflowError";
+  }
+}
+
+export class WorkflowNotFoundError extends WorkflowError {
+  constructor(workflowId: string) {
+    super(
+      ErrorCode.WORKFLOW_NOT_FOUND,
+      `Workflow '${workflowId}' not found`,
+      { workflowId }
+    );
+  }
+}
+
+export class WorkflowValidationError extends WorkflowError {
+  constructor(workflowId: string, validationErrors: string[]) {
+    super(
+      ErrorCode.WORKFLOW_VALIDATION_FAILED,
+      `Workflow '${workflowId}' validation failed: ${validationErrors.join(', ')}`,
+      { workflowId, validationErrors }
+    );
+  }
+}
+
+export class WorkflowExecutionError extends WorkflowError {
+  constructor(workflowId: string, stepId: string, cause: Error) {
+    super(
+      ErrorCode.WORKFLOW_EXECUTION_FAILED,
+      `Workflow '${workflowId}' failed at step '${stepId}': ${cause.message}`,
+      { workflowId, stepId, cause: cause.message, causeStack: cause.stack }
+    );
+  }
+}
+
+export class CircularDependencyError extends WorkflowValidationError {
+  constructor(workflowId: string, cycle: string[]) {
+    super(workflowId, [`Circular dependency detected: ${cycle.join(' → ')}`]);
+  }
 }
