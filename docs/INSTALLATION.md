@@ -1,21 +1,130 @@
-# Installation Guide
+﻿# Installation Guide
 
-## Quick Install (Recommended)
+Hera can be installed several ways. If Bun fails on your machine, use the npm path first. Bun is supported, but it is not required for installing the published package.
+
+## Recommended: npm / Node.js (No Bun Required)
+
+Use this when users report `bun add` failures or do not want to install Bun.
+
+### Linux/macOS
 
 ```bash
-opencode plugin hera-agent --global -f
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ```
 
-That's it! Hera will automatically create `~/.config/opencode/hera.json` on first load.
+### Windows PowerShell
 
-## Manual Installation
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\opencode"
+npm install --prefix "$env:USERPROFILE\.config\opencode" hera-agent
+node "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
+```
+
+What this does:
+
+1. Installs `hera-agent` into the OpenCode config directory.
+2. Runs `postinstall.mjs`, which creates Hera data directories.
+3. Adds `hera-agent` to `opencode.json` when possible.
+4. Lets you verify with `hera doctor`.
+
+## Linux One-Shot Install
 
 ```bash
+set -e
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+opencode agent list | grep hera || true
+```
+
+If `opencode agent list` does not show Hera immediately, restart OpenCode or run `opencode agent reload` if your OpenCode version supports it.
+
+## Bun Install (Supported, Not Required)
+
+```bash
+# Linux/macOS
 cd ~/.config/opencode
 bun add hera-agent
+bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ```
 
-Then add to `opencode.json`:
+```powershell
+# Windows PowerShell
+Set-Location "$env:USERPROFILE\.config\opencode"
+bun add hera-agent
+bun run "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
+```
+
+If this fails with `bun: command not found` or package resolution errors, use the npm method above.
+
+## pnpm / yarn Alternatives
+
+```bash
+# pnpm
+mkdir -p ~/.config/opencode
+cd ~/.config/opencode
+pnpm add hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+
+# yarn
+mkdir -p ~/.config/opencode
+cd ~/.config/opencode
+yarn add hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+## Manual Tarball Install (Offline/Internal Networks)
+
+Use this when the target machine cannot reach npm or Bun registries.
+
+### Step 1: Create the tarball on an online machine
+
+```bash
+npm pack hera-agent
+# Produces hera-agent-<version>.tgz
+```
+
+### Step 2: Copy the tarball to the target machine
+
+Use USB, internal artifact storage, SCP, or any approved transfer method.
+
+### Step 3: Install from the local file
+
+```bash
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode /path/to/hera-agent-<version>.tgz
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+This method does not require Bun and can work fully offline once the tarball is available.
+
+## Manual Source Install
+
+Use this when you want to install a local checkout rather than the npm package.
+
+```bash
+git clone https://github.com/yangyifei123/hera-agent.git
+cd hera-agent
+npm install
+npm run build
+
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode /path/to/hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+Notes:
+
+- `npm run build` uses the package build script. It may require Bun for development builds because this repository uses Bun to bundle TypeScript.
+- If you want a no-Bun install path, prefer the published npm package or tarball method.
+
+## Manual Configuration Fallback
+
+If `postinstall.mjs` cannot update `opencode.json`, add Hera manually.
+
+Open `~/.config/opencode/opencode.json` and ensure it includes:
 
 ```json
 {
@@ -25,69 +134,62 @@ Then add to `opencode.json`:
 }
 ```
 
-## Internal Network / Offline Installation
+If the file already has a `plugin` array, add `"hera-agent"` to the existing array instead of replacing it.
 
-Hera v2.0.0+ is fully compatible with internal networks and offline environments.
-
-### Method 1: From tarball
+Then create the basic directories:
 
 ```bash
-# On a machine with internet access
-npm pack hera-agent
-
-# Transfer hera-agent-2.0.0.tgz to internal network
-
-# On internal network machine
-cd ~/.config/opencode
-bun add ./hera-agent-2.0.0.tgz
+mkdir -p ~/.config/opencode/hera-data/memory
+mkdir -p ~/.config/opencode/hera-data/skills
+mkdir -p ~/.config/opencode/hera-data/backups
+mkdir -p ~/.config/opencode/agents/hera
 ```
 
-### Method 2: From local directory
+## Verification
 
 ```bash
-# Clone or copy the repository
-git clone https://github.com/yangyifei123/hera-agent.git
-cd hera-agent
-bun install
-bun run build
-
-# Install locally
-cd ~/.config/opencode
-bun add file:///path/to/hera-agent
-```
-
-### Verification
-
-After installation, verify Hera is loaded:
-
-```bash
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 opencode agent list | grep hera
 ```
 
-You should see:
-```
+Expected:
+
+```text
 hera (primary)
 ```
 
+If Hera does not appear, restart OpenCode and verify that `opencode.json` includes `hera-agent`.
+
 ## Troubleshooting
 
-### Issue: "fetch() cannot be empty string"
+### `bun: command not found`
 
-**Cause**: Older versions (< 2.0.0) had a GitHub URL in the config schema that failed in internal networks.
-
-**Solution**: Upgrade to v2.0.0 or later:
+Use npm instead:
 
 ```bash
-cd ~/.config/opencode
-bun remove hera-agent
-bun add hera-agent@latest
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
 ```
 
-### Issue: Config file not created
+### `npm: command not found`
 
-**Cause**: Permission issues or missing directory.
+Install Node.js LTS first, then retry the npm path.
 
-**Solution**: Manually create the config:
+Linux examples:
+
+```bash
+# Ubuntu/Debian via NodeSource
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Verify
+node --version
+npm --version
+```
+
+### Config file not created
+
+Manually create the config:
 
 ```bash
 cd ~/.config/opencode
@@ -109,52 +211,54 @@ cat > hera.json <<'EOF'
 EOF
 ```
 
-### Issue: Plugin not loading
+### Plugin not loading
 
-**Check 1**: Verify `opencode.json` includes hera-agent:
+Check 1: `opencode.json` includes Hera:
 
 ```bash
 cat ~/.config/opencode/opencode.json | grep hera-agent
 ```
 
-**Check 2**: Verify build artifacts exist:
+Check 2: build artifacts exist:
 
 ```bash
 ls ~/.config/opencode/node_modules/hera-agent/dist/index.js
+ls ~/.config/opencode/node_modules/hera-agent/dist/index.d.ts
 ```
 
-**Check 3**: Check for errors:
+Check 3: run doctor:
 
 ```bash
-opencode --verbose
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ```
 
 ## Network Requirements
 
-**v2.0.0+**: ✅ **Zero network dependencies**
-- No external URLs in runtime code
-- Schema uses relative paths
-- Fully offline compatible
+**v2.0.0+**: zero runtime network dependencies.
 
-**v1.x**: ⚠️ Required GitHub access for schema validation
+- No external URLs in runtime code.
+- Schema uses relative paths.
+- Offline/internal network installs are supported through the tarball method.
 
 ## Platform Support
 
-- ✅ Windows (tested on Windows 11)
-- ✅ Linux (tested on Ubuntu 22.04)
-- ✅ macOS (tested on macOS 14)
-- ✅ Internal networks / Air-gapped environments
+- Windows
+- Linux
+- macOS
+- Internal networks / air-gapped environments through tarball installation
 
 ## Next Steps
 
-After installation:
+1. Start Hera: `opencode --agent hera`
+2. Create your first agent: see [Quick Start](../README.md#quick-start)
+3. Run the demo: see [Canonical Demo](CANONICAL_DEMO.md)
 
-1. **Start Hera**: `opencode --agent hera`
-2. **Create your first agent**: See [Quick Start](../README.md#quick-start)
-3. **Explore templates**: `hera_list_agents`
+## Installation Risk Matrix
+
+For failure modes, plugin-boundary rules, and pre-launch install checks, see [INSTALLATION_RISK_MATRIX.md](INSTALLATION_RISK_MATRIX.md). For verified smoke-test results, see [INSTALLATION_MATRIX.md](INSTALLATION_MATRIX.md).
 
 ## Support
 
-- **Issues**: https://github.com/yangyifei123/hera-agent/issues
-- **Documentation**: See [README.md](../README.md)
-- **Changelog**: See [CHANGELOG.md](../CHANGELOG.md)
+- Issues: https://github.com/yangyifei123/hera-agent/issues
+- Documentation: see [README.md](../README.md)
+- Changelog: see [CHANGELOG.md](../CHANGELOG.md)

@@ -37,6 +37,15 @@ function checkBun() {
   }
 }
 
+function checkNpm() {
+  try {
+    const version = execSync("npm --version", { encoding: "utf8", stdio: "pipe" }).trim();
+    return version;
+  } catch {
+    return null;
+  }
+}
+
 function runCmd(command, options = {}) {
   try {
     const result = execSync(command, { encoding: "utf8", stdio: "pipe", ...options });
@@ -55,17 +64,21 @@ switch (cmd) {
   case "install": {
     console.log("Hera Agent Factory — Installing...\n");
 
-    // 1. Check bun
+    // 1. Pick a package manager. Prefer npm because Bun is optional for published installs.
+    const npmVersion = checkNpm();
     const bunVersion = checkBun();
-    if (!bunVersion) {
-      console.log("[✗] Bun is not installed.\n");
-      console.log("Install Bun first:");
-      console.log("  Windows:  powershell -c \"irm bun.sh/install.ps1 | iex\"");
-      console.log("  macOS:    curl -fsSL https://bun.sh/install | bash");
-      console.log("  Linux:    curl -fsSL https://bun.sh/install | bash\n");
+    if (npmVersion) {
+      console.log(`[✓] npm v${npmVersion}`);
+    } else if (bunVersion) {
+      console.log(`[✓] bun v${bunVersion}`);
+    } else {
+      console.log("[✗] Neither npm nor bun is installed.\n");
+      console.log("Install Node.js LTS first, then retry:");
+      console.log("  Linux:    curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs");
+      console.log("  macOS:    brew install node");
+      console.log("  Windows:  https://nodejs.org/\n");
       process.exit(1);
     }
-    console.log(`[✓] bun v${bunVersion}`);
 
     // 2. Compute config root
     const configRoot = getConfigRoot();
@@ -103,20 +116,22 @@ switch (cmd) {
       needsOpencodeJsonUpdate = true;
     }
 
-    // 5. Run bun add hera-agent
-    console.log("\n[i] Installing hera-agent via bun...");
+    // 5. Install package. npm is preferred because it avoids Bun install issues.
+    const useNpm = Boolean(npmVersion);
+    console.log(`\n[i] Installing hera-agent via ${useNpm ? "npm" : "bun"}...`);
     let addCmd;
     if (process.platform === "win32") {
-      addCmd = `cmd /c bun add hera-agent`;
+      addCmd = useNpm ? `cmd /c npm install hera-agent` : `cmd /c bun add hera-agent`;
     } else {
-      addCmd = `bun add hera-agent`;
+      addCmd = useNpm ? `npm install hera-agent` : `bun add hera-agent`;
     }
     const installResult = runCmd(addCmd, { cwd: configRoot });
     if (!installResult.ok) {
       console.log(`[✗] Failed to install: ${installResult.error}`);
+      console.log("    Manual fallback: npm pack hera-agent, copy the .tgz, then npm install /path/to/hera-agent-<version>.tgz");
       process.exit(1);
     }
-    console.log("[✓] hera-agent installed via bun");
+    console.log(`[✓] hera-agent installed via ${useNpm ? "npm" : "bun"}`);
 
     // 6. Update opencode.json if needed
     if (needsOpencodeJsonUpdate) {
@@ -147,13 +162,17 @@ switch (cmd) {
     let pass = 0;
     let fail = 0;
 
-    // 1. Check bun
+    // 1. Check package manager. Bun is optional; npm is enough for published installs.
+    const npmVersion = checkNpm();
     const bunVersion = checkBun();
-    if (bunVersion) {
+    if (npmVersion) {
+      console.log(`[✓] npm installed (v${npmVersion})`);
+      pass++;
+    } else if (bunVersion) {
       console.log(`[✓] bun installed (v${bunVersion})`);
       pass++;
     } else {
-      console.log("[✗] bun not installed — install from https://bun.sh");
+      console.log("[✗] neither npm nor bun is installed");
       fail++;
     }
 
@@ -215,7 +234,7 @@ switch (cmd) {
     if (fail === 0) {
       console.log("All checks passed. Hera is healthy.");
     } else {
-      console.log("Some checks failed. Run 'hera install' to fix installation issues.");
+      console.log("Some checks failed. Install with npm first: cd ~/.config/opencode; npm install hera-agent");
     }
     process.exit(fail > 0 ? 1 : 0);
     break;

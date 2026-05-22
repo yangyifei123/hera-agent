@@ -16,7 +16,8 @@
     }
   },
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --declarationMap --outDir dist && echo 'build done'",
+    "prepublishOnly": "bun run typecheck && bun run lint && bun test && bun run build && npm pack --dry-run",
     "postinstall": "node postinstall.mjs",
     "dev": "bun run --watch src/index.ts",
     "test": "bun test",
@@ -60,7 +61,11 @@
     "bin",
     "postinstall.mjs",
     "hera.schema.json",
-    "hera.example.json"
+    "hera.example.json",
+    "docs/INSTALLATION.md",
+    "docs/CANONICAL_DEMO.md",
+    "docs/INSTALLATION_RISK_MATRIX.md",
+    "docs/INSTALLATION_MATRIX.md"
   ],
   "repository": {
     "type": "git",
@@ -72,7 +77,6 @@
   "homepage": "https://github.com/yangyifei123/hera-agent#readme",
   "license": "MIT",
   "engines": {
-    "node": ">=18.0.0",
-    "bun": ">=1.0.0"
+    "node": ">=18.0.0"
   }
 }
