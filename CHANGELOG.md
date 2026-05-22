@@ -5,6 +5,36 @@ All notable changes to Hera Agent will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-05-21
+
+### Added
+- **Agent Packaging & Migration**: Package, export, and import agents as `.tar.gz` for distribution across environments
+- **Team Plugin Export**: Export entire teams as single plugins
+- **Skill Upgrade Paths**: `hera_upgrade_to_agent` and `hera_upgrade_to_team` for promoting skills
+- **Workflow Engine**: Automatic task complexity analysis with serial, parallel, and DAG execution modes
+- **10 Workflow Templates**: Pre-defined workflows (coder, reviewer, tester, documenter, team, architect, debugger, optimizer, researcher, general)
+- **Agent CLI**: `hera doctor`, `hera list-*`, `hera version`, `hera create/delete/restore`
+- **First-Run Onboarding**: Auto-creates 4 default agents + dev-team
+- **Zero-Config Auto-Install**: `auto_install=true` runs full install/build/add pipeline
+- **Soft Delete + Backup**: Safe agent deletion with restore capability
+- **Session Distillation**: Extract structured knowledge from conversations
+- **Auto-Memory**: Automatic insight extraction from sessions
+- **8 Built-in Skills**: caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
+- **43 Management Tools**: Complete agent/skill/team/workflow lifecycle management
+
+### Changed
+- **Type Safety**: Eliminated all `any` types in runtime code; typed catch blocks, dynamic imports, SDK response parsing
+- **Lint**: Zero warnings (from 332 warnings baseline)
+- **Build**: Clean TypeScript declaration emit with `dist/index.d.ts`
+- **README**: Conversion-optimized rewrite (56% shorter, above-fold value prop)
+- **Documentation**: Added canonical demo, positioning document, restructured docs IA
+
+### Fixed
+- Agent persistence and discovery reliability
+- Memory store naming consistency
+- Workflow execution error handling with typed `unknown` catches
+- Plugin generator exports typed correctly
+
 ## [2.0.0] - 2026-05-13
 
 ### Added

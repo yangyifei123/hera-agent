@@ -1,728 +1,386 @@
-# Hera — Agent Factory for OpenCode
+﻿# Hera - Agent Factory for OpenCode
 
-> Named after the Greek goddess of creation. Hera creates agents, skills, and teams that self-evolve.
+> Create persistent AI agents with memory and teams inside OpenCode.
 
 [![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.2.0)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Plugin-orange.svg)](https://github.com/opencode-ai/opencode)
 
-Hera is an [OpenCode](https://github.com/opencode-ai/opencode) plugin that acts as an **agent factory**. It creates autonomous agents with persistent memory, distills conversations into reusable skills, and organizes agents into collaborative teams. Every agent inherits 8 built-in skills and can self-evolve over time. Both agents and teams can be exported as standalone OpenCode plugins.
+**Stop re-typing the same prompts.** Hera creates AI agents that remember across sessions, evolve from experience, and coordinate as teams - all inside your existing OpenCode workflow.
 
-## ✨ Features
+> **Scope**: Hera is an OpenCode plugin. It is not a standalone agent platform, not a Claude Code replacement, and not an OpenCode competitor. It extends OpenCode by adding persistent agents, memory, teams, and export tools.
 
-- **Agent Factory** — Create agents from 10 templates or custom prompts
-- **Plugin Architecture** — Every generated agent is a standalone OpenCode plugin with full capabilities
-- **Workflow System** — Automatic task complexity analysis with serial, parallel, and DAG execution modes
-- **Intelligent Skills** — 11 built-in skills including workflow-orchestration, brainstorming, and skill-creator
-- **Agent Packaging & Migration** — Package agents as .tar.gz files for easy distribution and migration across environments
-- **8 Core Skills** — caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact (inherited by every agent)
-- **Shared Memory Pool** — All agents (Hera + generated) share the same persistent memory store
-- **MD or Plugin Output** — Create agents as `.md` files (auto-discovered) or as standalone plugins (auto-installable)
-- **Team Plugin Export** — Export entire teams as single plugins registering all member agents at once
-- **Skill → Agent Upgrade** — Promote skills into full agents (`hera_upgrade_to_agent`)
-- **Skill → Team Upgrade** — Promote N skills into N specialist agents + coordinating team (`hera_upgrade_to_team`)
-- **Agent Teams** — Parallel, sequential, or adaptive coordination with real OpenCode sessions
-- **Team Management Modes** — Simple, OKR, hierarchy (tree), or control-point management
-- **Self-Evolution** — Agents reflect on performance and append improvement directives
-- **43 Management Tools** — Complete agent/skill/team/workflow lifecycle management + packaging
-- **Session Distillation** — Extract structured knowledge from conversations
-- **Auto-Memory** — Automatically extract insights from sessions
-- **Semi-Auto Evolution** — Proposes improvements based on session analysis
-- **Soft Delete + Backup** — Safe agent deletion with restore capability
-- **Functional CLI** — `hera doctor`, `hera list[-agents|-skills|-templates|-teams]`, install/uninstall, version, help
-- **First-Run Onboarding** — Automatic setup with default agents (quick-fixer, architect, senior-dev, qa-engineer) and `dev-team`
-- **Zero-config Auto-install** — `auto_install=true` runs bun install/build/add end-to-end with no manual steps
+```bash
+# 1. Install with npm (recommended; no Bun required)
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
 
-## 📦 Installation
+# 2. Create an agent that remembers
+opencode run --agent hera "create my-reviewer, mode: all, template: coder"
+
+# 3. Use it - it persists
+opencode --agent my-reviewer "review src/auth.ts for security issues"
+```
+
+## Why Hera?
+
+If you use OpenCode and find yourself re-typing prompt patterns - code review, testing, documentation, debugging - Hera turns those patterns into persistent agents that:
+
+- **Remember** across sessions (shared memory pool)
+- **Evolve** by reflecting on past work
+- **Coordinate** as teams (parallel, sequential, or DAG workflows)
+- **Export** as standalone plugins you can share
+
+No Python service, no API server, no new runtime. Runs inside OpenCode.
+
+## 2-Minute Demo
+
+See [docs/CANONICAL_DEMO.md](docs/CANONICAL_DEMO.md) for the full walkthrough. Quick version:
+
+```bash
+# Install Hera (npm path; no Bun required)
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+
+# Verify
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+# Expected: All checks passed
+
+# Create a code review team
+opencode run --agent hera "create review-team with code-reviewer and bug-hunter, mode: parallel"
+
+# Use the team
+opencode run --agent hera "spawn review-team to review src/index.ts"
+
+# Memory persists across sessions
+opencode run --agent hera "remember: our project uses 2-space indentation and strict TypeScript"
+opencode run --agent hera "recall: coding style"
+```
+
+## Features
+
+| Feature | What it does |
+|---------|-------------|
+| **Agent Factory** | Create agents from 10 templates or custom prompts |
+| **Persistent Memory** | All agents share a JSON memory store that survives restarts |
+| **Self-Evolution** | Agents reflect on sessions and append improvement directives |
+| **Team Coordination** | Parallel, sequential, or DAG execution with real OpenCode sessions |
+| **Plugin Export** | Agents and teams export as standalone OpenCode plugins |
+| **Skill Composition** | 8 built-in skills inherited by every agent |
+| **Workflow Engine** | Auto-detects task complexity; proposes workflows for multi-step tasks |
+| **Session Distillation** | Extract structured knowledge from conversations |
+| **Agent Packaging** | Package/export/import agents with memory as `.tar.gz` |
+| **Offline Friendly** | Runtime has zero network dependencies from v2.0+ |
+
+## Quick Start
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) runtime (v1.0+)
 - [OpenCode](https://github.com/opencode-ai/opencode) CLI
+- One package manager: npm/Node.js (recommended), Bun, pnpm, or yarn
 
-### One-Command Install
+### Install Options
+
+#### Option A: npm / Node.js (recommended if Bun fails)
+
+```bash
+# Linux/macOS
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+
+# Windows PowerShell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\opencode"
+npm install --prefix "$env:USERPROFILE\.config\opencode" hera-agent
+```
+
+#### Option B: Linux one-shot install
+
+```bash
+set -e
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+#### Option C: Bun
 
 ```bash
 # Linux/macOS
 cd ~/.config/opencode && bun add hera-agent
 
-# Windows (PowerShell)
+# Windows PowerShell
 cd $env:USERPROFILE\.config\opencode; bun add hera-agent
 ```
 
-### Verify Installation
+#### Option D: Manual tarball install (offline/internal networks)
 
 ```bash
-# Run health check (recommended)
-bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+# On a machine with internet access
+npm pack hera-agent
 
-# Or check agent list
-opencode agent list | grep hera
-# Expected: hera (primary)
+# Copy hera-agent-<version>.tgz to the target machine, then:
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode /path/to/hera-agent-<version>.tgz
 ```
 
-**That's it!** Hera auto-configures on first load and creates 4 default agents (quick-fixer, architect, senior-dev, qa-engineer) plus a dev-team.
-
-### Alternative: Install from Source
+#### Option E: Manual source install
 
 ```bash
-# Clone and build
 git clone https://github.com/yangyifei123/hera-agent.git
 cd hera-agent
-bun install && bun run build
+npm install
+npm run build
 
-# Install to OpenCode
-cd ~/.config/opencode
-bun add file://$(pwd)/../hera-agent  # Linux/macOS
-# bun add file:///E:/path/to/hera-agent  # Windows
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode /path/to/hera-agent
 ```
 
-### Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `bun: command not found` | Install Bun: `curl -fsSL https://bun.sh/install \| bash` (Linux/macOS) or `irm bun.sh/install.ps1 \| iex` (Windows) |
-| `opencode: command not found` | Install OpenCode from [opencode-ai/opencode](https://github.com/opencode-ai/opencode) |
-| Hera not showing in agent list | Restart OpenCode or run `opencode agent reload` |
-| Permission errors (Linux) | `chmod -R 755 ~/.config/opencode/node_modules/hera-agent/` |
-
-## 🚀 Quick Start
-
-### Start Using Hera
+### Verify
 
 ```bash
-# Interactive mode
-opencode --agent hera
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+# Expected: All checks passed
 
-# Single command
-opencode run --agent hera "create a coder agent named my-dev"
-
-# Use a generated agent (if mode is 'all' or 'primary')
-opencode --agent my-dev "write a fibonacci function"
-```
-
-### 5-Step Verification
-
-```bash
-# 1. Check Hera is loaded
-opencode agent list | grep hera
-# Expected: hera (primary)
-
-# 2. Run health check
+# If installed with Bun, this also works:
 bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
-# Expected: All checks passed ✓
-
-# 3. List built-in skills
-bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js list-skills
-# Expected: 8 built-in skills (caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact)
-
-# 4. Test agent creation
-opencode run --agent hera "create test-agent, mode: all, template: coder"
-
-# 5. Use the created agent
-opencode --agent test-agent "echo 'Hello from Hera agent!'"
 ```
 
-### Common Use Cases
+### Create and Use Agents
 
 ```bash
-# Create specialized agents
-opencode run --agent hera "create a code-reviewer agent"
-opencode run --agent hera "create a bug-hunter agent with debugging skills"
+# Create from template
+opencode run --agent hera "create my-dev, mode: all, template: coder"
 
-# Create teams
-opencode run --agent hera "create review-team with code-reviewer and bug-hunter, mode: parallel"
+# Use it
+opencode --agent my-dev "write a fibonacci function in TypeScript"
 
-# Export as plugins (for distribution)
-opencode run --agent hera "export my-dev as plugin"
-opencode run --agent hera "export review-team as team plugin"
+# Create a team
+opencode run --agent hera "create dev-team with architect, coder, and tester, mode: sequential"
 
-# Package agents for migration
-opencode run --agent hera "package my-dev agent for distribution"
-opencode run --agent hera "package code-reviewer with memory included"
-
-# Import packaged agents
-opencode run --agent hera "unpack agent from /path/to/my-dev-package.tar.gz"
-
-# Memory management
-opencode run --agent hera "remember: our coding style uses 2-space indentation"
-opencode run --agent hera "recall memories about coding style"
+# Store knowledge for all agents
+opencode run --agent hera "remember: our API follows REST conventions with snake_case fields"
 ```
 
-## 📦 Agent Packaging & Migration
+> Important: Use `mode: all` or `mode: primary` for agents you want to call directly with `--agent`. Subagent-mode agents are invoked by other agents, not directly.
 
-Hera provides complete agent packaging for easy distribution and migration across environments.
+## Built-in Skills
 
-### Package an Agent
+Every agent created by Hera inherits these 8 skills:
 
-```bash
-# Package agent (plugin or .md mode)
-opencode run --agent hera "package my-dev agent"
+| Skill | What it does |
+|-------|-------------|
+| **caveman** | Ultra-compressed communication (~75% token savings) |
+| **init** | Auto-detect project context on session start |
+| **memory** | Persistent JSON store - remember/recall across sessions |
+| **evolution** | Self-improvement through session reflection |
+| **skill-combo** | Chain multiple skills on-the-fly |
+| **subagent** | Delegate sub-tasks to specialized agents |
+| **communicate** | Message passing between team members |
+| **auto-compact** | Automatic context window compression |
 
-# Package with memory data
-opencode run --agent hera "package my-dev agent with memory"
+## Agent Templates
 
-# Custom output name
-opencode run --agent hera "package my-dev as my-custom-name"
-```
+| Template | Mode | Use for |
+|----------|------|---------|
+| **general** | all | Versatile assistant |
+| **coder** | all | Coding with skill-combo |
+| **reviewer** | subagent | Code review |
+| **researcher** | subagent | Research and analysis |
+| **coordinator** | all | Team coordination |
+| **architect** | all | System design |
+| **debugger** | all | Debugging |
+| **tester** | subagent | Testing |
+| **documenter** | subagent | Documentation |
+| **optimizer** | subagent | Performance optimization |
 
-**What gets packaged:**
-- **Plugin mode**: Complete plugin code (dist/, package.json, INSTALL.md)
-- **MD mode**: Agent .md definition file
-- **Optional**: Related memory data from shared memory pool
-- **Always**: Manifest with metadata and file list
+## Workflow System
 
-**Output**: `.tar.gz` file in `~/.config/opencode/hera-data/packages/`
-
-### Unpack an Agent
-
-```bash
-# Unpack and install
-opencode run --agent hera "unpack agent from /path/to/package.tar.gz"
-
-# Unpack without auto-install (plugin mode)
-opencode run --agent hera "unpack /path/to/package.tar.gz without installing"
-```
-
-**What gets restored:**
-- Agent plugin code or .md file
-- Memory data (if included in package)
-- All configuration and metadata
-
-### List Packages
-
-```bash
-# List all packaged agents
-opencode run --agent hera "list packages"
-```
-
-### Use Cases
-
-**Scenario 1: Share agent with team**
-```bash
-# Developer A: Package agent
-opencode run --agent hera "package code-reviewer with memory"
-# Send: ~/.config/opencode/hera-data/packages/code-reviewer-package.tar.gz
-
-# Developer B: Import agent
-opencode run --agent hera "unpack agent from ~/Downloads/code-reviewer-package.tar.gz"
-```
-
-**Scenario 2: Migrate agents to new machine**
-```bash
-# Old machine: Package all important agents
-opencode run --agent hera "package my-dev with memory"
-opencode run --agent hera "package architect with memory"
-
-# New machine: Restore agents
-opencode run --agent hera "unpack agent from my-dev-package.tar.gz"
-opencode run --agent hera "unpack agent from architect-package.tar.gz"
-```
-
-**Scenario 3: Backup before major changes**
-```bash
-# Create backup
-opencode run --agent hera "package production-agent with memory as backup-2024-05-18"
-
-# If needed, restore
-opencode run --agent hera "unpack agent from backup-2024-05-18.tar.gz"
-```
-
-## 🔄 Update / Upgrade
-
-```bash
-# Update to latest version
-cd ~/.config/opencode
-bun update hera-agent
-
-# Or force reinstall
-bun remove hera-agent && bun add hera-agent@latest
-
-# Check current version
-bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js version
-
-# Check latest available
-npm view hera-agent version
-```
-
-**After update**: Restart OpenCode to load the new version.
-
-## 🔀 Workflow System
-
-Hera automatically analyzes task complexity and proposes workflows for complex tasks, with user approval before execution.
-
-### Automatic Workflow Detection
-
-Hera uses the **workflow-orchestration** skill to analyze every task:
+Hera auto-detects complex tasks and proposes workflows:
 
 ```bash
 # Simple task - executes directly
 opencode run --agent hera "fix typo in README"
 
-# Complex task - proposes workflow
-opencode run --agent hera "refactor authentication module, add tests, and update docs"
-# Hera analyzes complexity → proposes workflow → requests approval → executes
+# Complex task - proposes workflow with approval
+opencode run --agent hera "refactor auth, add OAuth, write tests, update docs"
 ```
 
-**Complexity Indicators** (triggers workflow):
-- Multiple distinct steps (create, test, deploy)
-- Requires multiple agents (coder + tester + reviewer)
-- Destructive operations (delete, migrate, refactor)
-- Approval mentions (review, verify, confirm)
-- Estimated duration > 5 minutes
-- External dependencies (API, database, deployment)
+**Modes**: Serial (sequential), Parallel (concurrent), DAG (dependencies).
 
-### Workflow Execution Modes
+See [Workflow Templates](#workflow-templates) for 10 pre-defined templates.
 
-**Serial**: Steps execute in sequence, output passes to next step
-```bash
-# Example: Build → Test → Deploy
-opencode run --agent hera "build the app, run tests, then deploy to staging"
-```
-
-**Parallel**: All steps execute concurrently
-```bash
-# Example: Review multiple files simultaneously
-opencode run --agent hera "review auth.ts, user.ts, and api.ts in parallel"
-```
-
-**DAG** (Directed Acyclic Graph): Complex dependencies with mixed execution
-```bash
-# Example: Plan → (Dev + Docs in parallel) → Review → Deploy
-opencode run --agent hera "plan feature, implement code and docs, then review and deploy"
-```
-
-### Manual Workflow Creation
+## Agent Packaging & Migration
 
 ```bash
-# Create custom workflow
-opencode run --agent hera "create workflow: analyze → implement → test → review → approve"
+# Package agent with memory
+opencode run --agent hera "package my-dev agent with memory"
 
-# Execute workflow with approval
-opencode run --agent hera "execute my-workflow with approval required"
+# Export as plugin for distribution
+opencode run --agent hera "export my-dev as plugin"
 
-# Check workflow status
-opencode run --agent hera "check status of workflow execution-id-123"
-
-# List all workflows
-opencode run --agent hera "list all workflows"
+# Import on another machine
+opencode run --agent hera "unpack agent from /path/to/my-dev-package.tar.gz"
 ```
-
-### Workflow Tools
-
-- **hera_create_workflow**: Define workflow with steps and dependencies
-- **hera_execute_workflow**: Run workflow with optional user approval
-- **hera_approve_workflow**: Approve and execute pending workflow
-- **hera_get_workflow_status**: Check execution progress
-- **hera_list_workflows**: List all available workflows
-- **hera_delete_workflow**: Remove workflow definition
-
-### Workflow Templates
-
-Hera includes 10 pre-defined workflow templates:
-
-| Template | Mode | Description |
-|----------|------|-------------|
-| **coder-workflow** | Serial | Analyze → Implement → Test → Review → Approve |
-| **reviewer-workflow** | Parallel | Style + Security + Logic + Coverage checks |
-| **tester-workflow** | Serial | Unit → Integration → E2E → Report |
-| **documenter-workflow** | Serial | Analyze → Write → Review → Approve |
-| **team-workflow** | DAG | Plan → (Dev + Test + Docs) → Review → Approve |
-| **architect-workflow** | Serial | Research → Design → Review → Document → Approve |
-| **debugger-workflow** | Serial | Reproduce → Analyze → Fix → Verify |
-| **optimizer-workflow** | Serial | Profile → Identify → Optimize → Benchmark → Validate |
-| **researcher-workflow** | Serial | Gather → Analyze → Synthesize → Document |
-| **general-workflow** | Serial | Analyze → Execute → Verify → Report |
-
-### Brainstorming & Skill Creation
-
-When existing skills are insufficient, Hera uses **brainstorming** and **skill-creator**:
-
-```bash
-# Hera automatically brainstorms when needed
-opencode run --agent hera "I need to validate all API responses for security issues"
-# Hera: 
-# 1. Uses brainstorming to generate 3-5 approaches
-# 2. Analyzes pros/cons of each approach
-# 3. Recommends best approach
-# 4. Uses skill-creator to create "api-security-validator" skill
-# 5. Applies the new skill to the task
-```
-
-**Brainstorming Process**:
-1. **Diverge**: Generate 3-5 different approaches
-2. **Analyze**: Evaluate pros, cons, complexity, maintainability
-3. **Converge**: Select best approach based on constraints
-4. **Extract**: Propose creating reusable skill if pattern is identified
-
-**Skill Creator Process**:
-1. Define scope and single responsibility
-2. Identify trigger conditions
-3. Write actionable prompt with examples
-4. Test mentally with scenarios
-5. Create skill via `hera_create_skill`
-6. Validate effectiveness
-
-### Example: Complex Task with Workflow
-
-```bash
-opencode run --agent hera "refactor user authentication, add OAuth support, write tests, and update documentation"
-```
-
-**Hera's Response**:
-```
-Task Complexity Analysis:
-- Score: 85/100 (High Complexity)
-- Multiple steps: refactor, add feature, test, document
-- Multiple agents needed: coder, tester, documenter, reviewer
-- Estimated duration: 15-20 minutes
-- Risks: Breaking existing auth, OAuth integration complexity
-
-Proposed Workflow (DAG mode):
-1. Analyze Current Auth (coder)
-2. Design OAuth Integration (architect) [depends on: 1]
-3. Implement Changes (coder) [depends on: 2]
-4. Write Tests (tester) [depends on: 3]
-5. Update Docs (documenter) [depends on: 3]
-6. Code Review (reviewer) [depends on: 4, 5]
-7. User Approval Gate [depends on: 6]
-8. Merge Changes [depends on: 7]
-
-Estimated Time: 18 minutes
-Risks:
-- Refactoring may break existing functionality
-- OAuth integration requires external API setup
-
-Approve this workflow? (yes/no)
-```
-
-After approval, Hera executes the workflow and reports progress at each step.
-
-
-## 🗑️ Uninstallation
-
-### Quick Uninstall (Keep Data)
-
-```bash
-# Remove package only (keeps agents, skills, memory)
-cd ~/.config/opencode
-bun remove hera-agent
-
-# Remove from opencode.json plugin list
-# Edit ~/.config/opencode/opencode.json and remove "hera-agent"
-```
-
-Your data remains in:
-- `~/.config/opencode/hera-data/` (memory, skills, teams)
-- `~/.config/opencode/agents/hera/` (agent definitions)
-- `~/.config/opencode/hera.json` (configuration)
-
-### Complete Uninstall (Remove Everything)
-
-```bash
-# 1. Remove package
-cd ~/.config/opencode
-bun remove hera-agent
-
-# 2. Remove from opencode.json
-# Edit ~/.config/opencode/opencode.json and remove "hera-agent" from plugin array
-
-# 3. Remove all data
-rm -rf ~/.config/opencode/hera-data/
-rm -rf ~/.config/opencode/agents/hera/
-rm -f ~/.config/opencode/hera.json
-
-# Windows PowerShell:
-# Remove-Item -Recurse -Force "$env:USERPROFILE\.config\opencode\hera-data"
-# Remove-Item -Recurse -Force "$env:USERPROFILE\.config\opencode\agents\hera"
-# Remove-Item -Force "$env:USERPROFILE\.config\opencode\hera.json"
-```
-
-### Backup Before Uninstall
-
-```bash
-# Backup your data
-cd ~/.config/opencode
-tar -czf hera-backup-$(date +%Y%m%d).tar.gz hera-data/ agents/hera/ hera.json
-
-# Or on Windows:
-# Compress-Archive -Path "$env:USERPROFILE\.config\opencode\hera-data","$env:USERPROFILE\.config\opencode\agents\hera","$env:USERPROFILE\.config\opencode\hera.json" -DestinationPath "hera-backup.zip"
-```
-
-## 🏗️ Architecture
-
-### Plugin-Based Design
-
-```
-Hera (OpenCode Plugin)
-├── Generates → Agent Plugins (standalone, full capabilities)
-│   ├── Inherits: 8 built-in skills
-│   ├── Shares: Memory pool with Hera
-│   └── Tools: hera_remember, hera_recall (built-in)
-├── Generates → Team Plugins (multi-agent coordination)
-└── Exports → Distributable packages
-```
-
-**Key Points:**
-- Hera itself is an OpenCode plugin
-- Every generated agent is also a standalone OpenCode plugin
-- All agents share the same memory store (`~/.config/opencode/hera-data/memory/`)
-- Generated agents have full capabilities: memory, evolution, skill-combo, subagent, etc.
-- Teams can be exported as single plugins containing all member agents
-
-### Built-in Skills (Inherited by All Agents)
-
-| Skill | Description | Capability |
-|-------|-------------|------------|
-| **caveman** | Ultra-compressed communication | ~75% token savings |
-| **init** | Environment awareness | Auto-detects project context |
-| **memory** | Persistent memory management | Shared JSON store with tools |
-| **evolution** | Self-improvement through reflection | Appends directives after sessions |
-| **skill-combo** | Dynamic skill composition | Combines multiple skills on-the-fly |
-| **subagent** | Delegate to specialized agents | Spawns focused sub-tasks |
-| **communicate** | Team coordination | Message passing between agents |
-| **auto-compact** | Context window discipline | Automatic conversation compression |
-
-All 8 skills are embedded in every generated agent's prompt and are fully functional.
-| **skill-combo** | Dynamic skill composition for multi-domain tasks |
-| **memory** | Autonomous memory management — remember/recall |
-| **evolution** | Self-improvement through reflection and directive appending |
-
-## Agent Templates
-
-| Template | Mode | Description |
-|----------|------|-------------|
-| **general** | all | Versatile assistant for any task |
-| **coder** | all | Coding expert with skill-combo |
-| **reviewer** | subagent | Code review specialist |
-| **researcher** | subagent | Research analyst with skill-combo |
-| **coordinator** | all | Team coordinator with skill-combo |
-| **architect** | all | System architect with skill-combo |
-| **debugger** | all | Debug specialist |
-| **tester** | subagent | Test engineer |
-| **documenter** | subagent | Documentation specialist |
-| **optimizer** | subagent | Performance optimizer |
-
-> **New in v2.0**: 5 additional templates (architect, debugger, tester, documenter, optimizer)
-
-## Tool Reference
-
-### Agent Management
-- `hera_create_agent` — Create agent (optionally from template)
-- `hera_list_agents` — List all created agents
-- `hera_delete_agent` — Remove an agent (with backup)
-- `hera_restore_agent` — Restore agent from backup
-- `hera_spawn_agent` — Spawn agent as real OpenCode session
-- `hera_verify_agent` — Verify agent registration
-- `hera_export_agent` — Export agent as JSON
-- `hera_import_agent` — Import agent from JSON
-- `hera_quickstart` — Guided wizard for first-time setup
-
-### Skill Management
-- `hera_create_skill` — Create a reusable skill
-- `hera_list_skills` — List all skills
-- `hera_delete_skill` — Delete a user-created skill
-- `hera_upgrade_to_agent` — Upgrade skills into a full agent
-
-### Team Management
-- `hera_create_team` — Create team with members and coordination mode
-- `hera_list_teams` — List all teams
-- `hera_delete_team` — Remove a team
-- `hera_spawn_team` — Launch team task
-- `hera_team_message` — Send message between team members
-- `hera_quick_team` — Create team from template
-
-### Memory & Evolution
-- `hera_remember` — Store information in persistent memory
-- `hera_recall` — Search persistent memory
-- `hera_evolve_agent` — Append evolution directive to agent
-- `hera_list_evolutions` — View agent evolution history
-- `hera_rollback_evolution` — Rollback latest evolution
-- `hera_distill_session` — Extract knowledge from session
-
-### System Management
-- `hera_status` — Show system status (agents, skills, teams, memory)
-- `hera_onboard` — Re-run onboarding manually
 
 ## Configuration
 
-Hera automatically creates `~/.config/opencode/hera.json` on first load. Edit it to customize:
-
-### Configuration Options
+Hera creates `~/.config/opencode/hera.json` on first load:
 
 ```json
 {
-  "$schema": "./hera.schema.json",
   "disabled_agents": [],
   "disabled_skills": [],
-  "disabled_tools": [],
   "agent_overrides": {
-    "architect": {
-      "model": "cherry/glm-5.1",
-      "temperature": 0.3,
-      "maxSteps": 50
-    }
-  },
-  "templates": {
-    "custom-analyst": {
-      "label": "Data Analyst",
-      "description": "Analyzes data and generates insights",
-      "defaultMode": "subagent",
-      "defaultSkills": ["caveman", "init", "memory", "evolution"],
-      "prompt": "You are a data analyst..."
-    }
+    "architect": { "model": "cherry/glm-5.1", "temperature": 0.3 }
   },
   "auto_evolve": false,
   "memory_limit": 1000,
-  "team_defaults": {
-    "coordination": "parallel",
-    "timeout": 300000
-  }
+  "team_defaults": { "coordination": "parallel", "timeout": 300000 }
 }
 ```
-
-### Legacy Configuration (opencode.json)
-
-You can also configure via plugin options in `opencode.json`:
-
-```json
-{
-  "plugin": [
-    ["hera-agent", {
-      "disabled_agents": [],
-      "disabled_skills": [],
-      "disabled_tools": []
-    }]
-  ]
-}
-```
-
-**Note**: `hera.json` takes precedence over `opencode.json` plugin options.
-
-## CLI Usage
-
-Hera provides a functional CLI for all operations:
-
-```bash
-# List all agents
-hera list agents
-
-# Create an agent
-hera create agent my-coder --template coder
-
-# Delete an agent (with backup)
-hera delete agent my-coder
-
-# Restore from backup
-hera restore agent my-coder
-
-# List teams
-hera list teams
-
-# Show system status
-hera status
-
-# Get help
-hera --help
-```
-
-## 📂 File Structure
-
-```
-hera-agent/
-├── src/
-│   ├── index.ts              # Plugin entry + config hook
-│   ├── agents/
-│   │   ├── hera.ts           # Hera agent + 10 templates + buildAgentPrompt
-│   │   └── registry.ts       # .md file persistence
-│   ├── skills/               # 8 built-in skills (inherited by all agents)
-│   │   ├── caveman.ts        # Ultra-compressed communication
-│   │   ├── init.ts           # Environment awareness
-│   │   ├── memory.ts         # Persistent memory with tools
-│   │   ├── evolution.ts      # Self-improvement reflection
-│   │   ├── skill-combo.ts    # Dynamic skill composition
-│   │   ├── subagent.ts       # Delegate to specialists
-│   │   ├── communicate.ts    # Team coordination
-│   │   ├── auto-compact.ts   # Context window management
-│   │   └── manager.ts        # Skill CRUD operations
-│   ├── tools/                # 34 management tools
-│   │   ├── agent-tools.ts    # Agent lifecycle (create, delete, export)
-│   │   ├── skill-tools.ts    # Skill management
-│   │   ├── team-tools.ts     # Team coordination
-│   │   ├── memory-tools.ts   # Memory operations
-│   │   ├── evolution-tools.ts # Evolution management
-│   │   └── system-tools.ts   # System utilities
-│   ├── generators/
-│   │   └── plugin-generator.ts # Generates standalone agent plugins
-│   ├── team/
-│   │   ├── manager.ts        # Team execution (parallel/sequential/adaptive)
-│   │   └── control-manager.ts # Team management modes
-│   ├── memory/
-│   │   ├── store.ts          # Shared JSON memory store
-│   │   └── smart-extractor.ts # Auto-memory extraction
-│   └── distillation/
-│       ├── engine.ts         # Session knowledge extraction
-│       └── auto-evolve.ts    # Semi-automatic evolution
-├── bin/hera.js               # CLI entry (doctor, list-*, version, help)
-├── dist/                     # Build output
-└── tests/                    # 438 tests, 90.73% coverage
-```
-
-**Data Directories** (created at `~/.config/opencode/`):
-- `hera-data/memory/` — Shared memory pool (all agents)
-- `hera-data/skills/` — User-defined skills
-- `hera-data/teams/` — Team configurations
-- `agents/hera/` — Agent definitions (.md files)
-- `hera.json` — Hera configuration
-
-For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Troubleshooting
 
-### Issue: "agent not found"
+| Issue | Solution |
+|-------|----------|
+| `bun: command not found` | Use the npm path: `npm install --prefix ~/.config/opencode hera-agent` |
+| `npm: command not found` | Install Node.js LTS, then retry Option A |
+| `opencode: command not found` | Install from [opencode-ai/opencode](https://github.com/opencode-ai/opencode) |
+| Hera not appearing | Restart OpenCode or run `opencode agent reload` |
+| Agent says "not found" | Create with `mode: "all"`, not `mode: "subagent"` |
+| `fetch() cannot be empty string` | Upgrade to v2.0+ (zero network deps) |
 
-**Check 1**: Verify Hera is in opencode.json:
+## Documentation
+
+- [Installation Guide](docs/INSTALLATION.md) - online/offline/internal networks
+- [Installation Risk Matrix](docs/INSTALLATION_RISK_MATRIX.md) - install failure modes and plugin boundary
+- [Installation Matrix](docs/INSTALLATION_MATRIX.md) - verified install smoke-test results
+- [Canonical Demo](docs/CANONICAL_DEMO.md) - 2-minute walkthrough
+- [Architecture](ARCHITECTURE.md) - deep dive
+- [Changelog](CHANGELOG.md) - version history
+- [Contributing](CONTRIBUTING.md) - how to contribute
+
+## CLI Reference
+
 ```bash
-cat ~/.config/opencode/opencode.json | grep hera-agent
+hera doctor           # Health check
+hera list agents      # List agents
+hera list skills      # List skills
+hera list teams       # List teams
+hera create agent NAME --template coder  # Create agent
+hera status           # System status
+hera version          # Show version
 ```
 
-**Check 2**: Verify installation:
+See [Tool Reference](#tool-reference) for all 43 management tools.
+
+---
+
+## Tool Reference
+
+<details>
+<summary><strong>Agent Management</strong></summary>
+
+- `hera_create_agent` - Create agent (optionally from template)
+- `hera_list_agents` - List all created agents
+- `hera_delete_agent` - Remove an agent (with backup)
+- `hera_restore_agent` - Restore agent from backup
+- `hera_spawn_agent` - Spawn agent as real OpenCode session
+- `hera_verify_agent` - Verify agent registration
+- `hera_export_agent` - Export agent as JSON
+- `hera_import_agent` - Import agent from JSON
+- `hera_quickstart` - Guided wizard for first-time setup
+
+</details>
+
+<details>
+<summary><strong>Skill Management</strong></summary>
+
+- `hera_create_skill` - Create a reusable skill
+- `hera_list_skills` - List all skills
+- `hera_delete_skill` - Delete a user-created skill
+- `hera_upgrade_to_agent` - Upgrade skills into a full agent
+
+</details>
+
+<details>
+<summary><strong>Team Management</strong></summary>
+
+- `hera_create_team` - Create team with members and coordination mode
+- `hera_list_teams` - List all teams
+- `hera_delete_team` - Remove a team
+- `hera_spawn_team` - Launch team task
+- `hera_team_message` - Send message between team members
+- `hera_quick_team` - Create team from template
+
+</details>
+
+<details>
+<summary><strong>Memory & Evolution</strong></summary>
+
+- `hera_remember` - Store information in persistent memory
+- `hera_recall` - Search persistent memory
+- `hera_evolve_agent` - Append evolution directive to agent
+- `hera_list_evolutions` - View agent evolution history
+- `hera_rollback_evolution` - Rollback latest evolution
+- `hera_distill_session` - Extract knowledge from session
+
+</details>
+
+<details>
+<summary><strong>System Management</strong></summary>
+
+- `hera_status` - Show system status (agents, skills, teams, memory)
+- `hera_onboard` - Re-run onboarding manually
+
+</details>
+
+<details>
+<summary><strong>Workflow Templates</strong></summary>
+
+| Template | Mode | Description |
+|----------|------|-------------|
+| coder-workflow | Serial | Analyze -> Implement -> Test -> Review -> Approve |
+| reviewer-workflow | Parallel | Style + Security + Logic + Coverage checks |
+| tester-workflow | Serial | Unit -> Integration -> E2E -> Report |
+| documenter-workflow | Serial | Analyze -> Write -> Review -> Approve |
+| team-workflow | DAG | Plan -> (Dev + Test + Docs) -> Review -> Approve |
+| architect-workflow | Serial | Research -> Design -> Review -> Document -> Approve |
+| debugger-workflow | Serial | Reproduce -> Analyze -> Fix -> Verify |
+| optimizer-workflow | Serial | Profile -> Identify -> Optimize -> Benchmark -> Validate |
+| researcher-workflow | Serial | Gather -> Analyze -> Synthesize -> Document |
+| general-workflow | Serial | Analyze -> Execute -> Verify -> Report |
+
+</details>
+
+<details>
+<summary><strong>Update / Uninstall</strong></summary>
+
+**Update with npm**:
 ```bash
-ls ~/.config/opencode/node_modules/hera-agent/dist/index.js
+cd ~/.config/opencode && npm update hera-agent
+# Restart OpenCode after update
 ```
 
-**Check 3**: Restart OpenCode:
+**Update with Bun**:
 ```bash
-# OpenCode should auto-detect the plugin on next start
-opencode --agent hera
+cd ~/.config/opencode && bun update hera-agent
+# Restart OpenCode after update
 ```
 
-### Issue: "fetch() cannot be empty string" (v1.x only)
-
-**Solution**: Upgrade to v2.0.0+:
+**Uninstall (keep data)**:
 ```bash
-cd ~/.config/opencode
-bun remove hera-agent
-bun add hera-agent@latest
+cd ~/.config/opencode && npm uninstall hera-agent
+# Remove "hera-agent" from opencode.json plugin array if needed
 ```
 
-v2.0.0+ has zero network dependencies and works in internal networks.
-
-### Issue: Created agent doesn't work
-
-**Check mode**: Subagents can't be called with `--agent`:
+**Full uninstall (remove everything)**:
 ```bash
-# ❌ Wrong (if agent is subagent mode)
-opencode --agent my-subagent
-
-# ✅ Correct
-opencode run "请 @my-subagent 帮我..."
+cd ~/.config/opencode && npm uninstall hera-agent
+rm -rf ~/.config/opencode/hera-data/ ~/.config/opencode/agents/hera/ ~/.config/opencode/hera.json
 ```
 
-**Solution**: Create agents with `mode: "all"` for direct `--agent` usage:
-```bash
-opencode run --agent hera "创建 my-agent，mode: all，template: coder"
-```
+</details>
 
 ## License
 
@@ -730,25 +388,4 @@ MIT
 
 ---
 
-## 📚 Documentation
-
-- [INSTALLATION.md](docs/INSTALLATION.md) - Detailed installation guide (online/offline/internal networks)
-- [CHANGELOG.md](CHANGELOG.md) - Version history and release notes
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Development setup and contribution guidelines
-- [CLAUDE.md](CLAUDE.md) - Development documentation for Claude Code
-- [TEST_REPORT.md](TEST_REPORT.md) - Comprehensive test coverage report
-- [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md) - Technical architecture deep-dive
-
-## 🔗 Links
-
-- **GitHub**: https://github.com/yangyifei123/hera-agent
-- **Issues**: https://github.com/yangyifei123/hera-agent/issues
-- **Releases**: https://github.com/yangyifei123/hera-agent/releases
-
-## 🙏 Acknowledgments
-
-Thanks to the [OpenCode](https://github.com/opencode-ai/opencode) team for the excellent plugin system.
-
----
-
-**Current Version**: v2.2.0 | **License**: MIT | **Status**: Production Ready ✅
+**Current Version**: v2.2.0 | **License**: MIT | **Status**: Production Ready
