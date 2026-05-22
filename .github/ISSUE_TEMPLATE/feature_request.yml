@@ -1,0 +1,54 @@
+﻿name: Feature Request
+description: Suggest an improvement or new capability for Hera Agent
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please focus on the user problem first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Hera cannot do today?
+      placeholder: "I want to... but currently..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: What would you like Hera to support?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What workarounds or other tools have you considered?
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Agent creation
+        - Skills
+        - Teams
+        - Workflow engine
+        - Memory
+        - Packaging/export
+        - CLI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Links, screenshots, examples, or references.
+    validations:
+      required: false
