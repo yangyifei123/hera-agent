@@ -3,7 +3,7 @@
  * Creates default agents and team on first load
  */
 
-import { writeFile, readFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentRegistry } from "./agents/registry.js";
 import type { TeamManager } from "./team/manager.js";

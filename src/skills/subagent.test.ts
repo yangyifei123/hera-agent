@@ -3,8 +3,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SUBAGENT_SKILL, getSubagentPrompt } from "./subagent.js";
-import { COMMUNICATE_SKILL } from "./communicate.js";
-import { AUTO_COMPACT_SKILL } from "./auto-compact.js";
 import { SkillManager } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { DEFAULT_SKILLS } from "../constants.js";
@@ -83,7 +81,7 @@ describe("new builtin skills — integration", () => {
     expect(out).toContain("Context Window Discipline");
   });
 
-  async function cleanup() {
+  async function _cleanup() {
     try {
       await rm(tmp, { recursive: true });
     } catch {}

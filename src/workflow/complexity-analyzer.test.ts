@@ -55,7 +55,9 @@ describe("ComplexityAnalyzer", () => {
     });
 
     test("score > 50 recommends workflow", () => {
-      const result = analyzer.analyze("Refactor authentication, add tests, and deploy to production");
+      const result = analyzer.analyze(
+        "Refactor authentication, add tests, and deploy to production"
+      );
       expect(result.score).toBeGreaterThan(50);
       expect(result.recommendation).toBe("workflow");
       expect(result.suggestedWorkflow).toBeDefined();
@@ -76,7 +78,9 @@ describe("ComplexityAnalyzer", () => {
     });
 
     test("high score estimates long duration", () => {
-      const result = analyzer.analyze("Migrate database, update API, test, review, and deploy to production");
+      const result = analyzer.analyze(
+        "Migrate database, update API, test, review, and deploy to production"
+      );
       expect(result.score).toBeGreaterThan(70);
       expect(result.factors.estimatedDuration).toBe("long");
     });
@@ -94,7 +98,7 @@ describe("ComplexityAnalyzer", () => {
       const result = analyzer.analyze("Implement user registration and deploy to production");
       expect(result.recommendation).toBe("workflow");
       const workflow = result.suggestedWorkflow!;
-      const implStep = workflow.steps.find(s => s.name === "Implement Changes");
+      const implStep = workflow.steps.find((s) => s.name === "Implement Changes");
       expect(implStep).toBeDefined();
       expect(implStep!.executor).toBe("coder");
     });
@@ -103,7 +107,7 @@ describe("ComplexityAnalyzer", () => {
       const result = analyzer.analyze("Create new API feature, test it thoroughly, and deploy");
       expect(result.recommendation).toBe("workflow");
       const workflow = result.suggestedWorkflow!;
-      const testStep = workflow.steps.find(s => s.name === "Run Tests");
+      const testStep = workflow.steps.find((s) => s.name === "Run Tests");
       expect(testStep).toBeDefined();
       expect(testStep!.executor).toBe("tester");
     });
@@ -112,7 +116,7 @@ describe("ComplexityAnalyzer", () => {
       const result = analyzer.analyze("Add feature, test, document it, and review");
       expect(result.recommendation).toBe("workflow");
       const workflow = result.suggestedWorkflow!;
-      const docStep = workflow.steps.find(s => s.name === "Update Documentation");
+      const docStep = workflow.steps.find((s) => s.name === "Update Documentation");
       expect(docStep).toBeDefined();
       expect(docStep!.executor).toBe("documenter");
     });
@@ -120,8 +124,8 @@ describe("ComplexityAnalyzer", () => {
     test("includes review and approval for high-risk tasks", () => {
       const result = analyzer.analyze("Deploy to production and verify");
       const workflow = result.suggestedWorkflow!;
-      const reviewStep = workflow.steps.find(s => s.name === "Code Review");
-      const approvalStep = workflow.steps.find(s => s.type === "approval");
+      const reviewStep = workflow.steps.find((s) => s.name === "Code Review");
+      const approvalStep = workflow.steps.find((s) => s.type === "approval");
 
       expect(reviewStep).toBeDefined();
       expect(reviewStep!.executor).toBe("reviewer");
@@ -134,11 +138,11 @@ describe("ComplexityAnalyzer", () => {
       const workflow = result.suggestedWorkflow!;
 
       // Implementation depends on analysis
-      const implStep = workflow.steps.find(s => s.name === "Implement Changes");
+      const implStep = workflow.steps.find((s) => s.name === "Implement Changes");
       expect(implStep!.dependencies).toContain("step-1");
 
       // Testing depends on implementation
-      const testStep = workflow.steps.find(s => s.name === "Run Tests");
+      const testStep = workflow.steps.find((s) => s.name === "Run Tests");
       expect(testStep!.dependencies).toContain(implStep!.id);
     });
 
@@ -190,7 +194,7 @@ describe("ComplexityAnalyzer", () => {
       expect(result.factors.hasExternalDependencies).toBe(true);
 
       const workflow = result.suggestedWorkflow!;
-      const approvalStep = workflow.steps.find(s => s.type === "approval");
+      const approvalStep = workflow.steps.find((s) => s.type === "approval");
       expect(approvalStep).toBeDefined();
     });
 
@@ -213,7 +217,7 @@ describe("ComplexityAnalyzer", () => {
       expect(result.factors.requiresApproval).toBe(true);
 
       const workflow = result.suggestedWorkflow!;
-      const reviewStep = workflow.steps.find(s => s.name === "Code Review");
+      const reviewStep = workflow.steps.find((s) => s.name === "Code Review");
       expect(reviewStep).toBeDefined();
     });
 
@@ -229,7 +233,7 @@ describe("ComplexityAnalyzer", () => {
       expect(result.factors.requiresMultipleAgents).toBe(true);
 
       const workflow = result.suggestedWorkflow!;
-      const executors = new Set(workflow.steps.map(s => s.executor).filter(Boolean));
+      const executors = new Set(workflow.steps.map((s) => s.executor).filter(Boolean));
       expect(executors.size).toBeGreaterThan(1);
     });
   });

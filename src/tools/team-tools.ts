@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
-import type { PluginContext, AgentDefinition } from "../types.js";
+import type { PluginContext, AgentDefinition, SkillDefinition } from "../types.js";
 import { MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
-import { TEAM_TEMPLATES, type TeamTemplateName } from "../team/templates.js";
+import { TEAM_TEMPLATES } from "../team/templates.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { persistAgent } from "../persistence.js";
 import { join } from "node:path";
@@ -10,10 +10,9 @@ import {
   createObjective as okrCreateObjective,
   createKeyResult,
   updateKeyResult as okrUpdateKeyResult,
-  calculateProgress,
-  calculateTeamProgress,
   formatTeamProgress,
 } from "../team/okr-manager.js";
+import { errorMessage } from "../helpers.js";
 import { buildHierarchy, formatTree as formatTreeHierarchy } from "../team/tree-manager.js";
 import {
   createControlPoint,
@@ -115,8 +114,8 @@ export function createTeamTools(ctx: PluginContext) {
               `- ${s.agentName}: ${s.status} (session: ${s.sessionId})${s.result ? `\n  Result: ${s.result.slice(0, MAX_RESULT_PREVIEW_LENGTH)}` : ""}`
           );
           return `Team "${args.team_name}" spawned:\n${lines.join("\n")}`;
-        } catch (err: any) {
-          return `Error spawning team: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error spawning team: ${errorMessage(err)}`;
         }
       },
     }),
@@ -137,13 +136,8 @@ export function createTeamTools(ctx: PluginContext) {
         const memberNames = team.members.map((m) => m.agentName);
         if (!memberNames.includes(args.from))
           return `Error: "${args.from}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}. Use hera_create_team to update membership.`;
-        const msg = teamManager.sendMessage(
-          args.team_name,
-          args.from,
-          args.to,
-          args.content,
-          (args.kind as any) ?? "message"
-        );
+        const kind = args.kind ?? "message";
+        const msg = teamManager.sendMessage(args.team_name, args.from, args.to, args.content, kind);
         return `Message sent from ${args.from} to ${args.to} in ${args.team_name}. ID: ${msg.id}`;
       },
     }),
@@ -182,9 +176,9 @@ export function createTeamTools(ctx: PluginContext) {
               creationResults.push(
                 `+ Created agent "${member.role}" (template: ${member.template}) → ${fileWritten}`
               );
-            } catch (err: any) {
+            } catch (err: unknown) {
               creationResults.push(
-                `✗ Failed to create agent "${member.role}": ${err?.message ?? String(err)}`
+                `✗ Failed to create agent "${member.role}": ${errorMessage(err)}`
               );
             }
           } else {
@@ -237,8 +231,8 @@ export function createTeamTools(ctx: PluginContext) {
                 `Note: No session client available. Team created but task not spawned.`
               );
             }
-          } catch (err: any) {
-            lines.push(``, `Task spawn failed: ${err?.message ?? String(err)}`);
+          } catch (err: unknown) {
+            lines.push(``, `Task spawn failed: ${errorMessage(err)}`);
           }
         }
 
@@ -316,8 +310,8 @@ export function createTeamTools(ctx: PluginContext) {
           const kr = updatedObj.keyResults.find((k) => k.id === args.kr_id);
           const pct = kr && kr.target > 0 ? Math.round((kr.current / kr.target) * 100) : 0;
           return `Key result "${args.kr_id}" updated to ${args.progress} (${pct}%) under objective "${args.objective_id}" for team "${args.team_name}".`;
-        } catch (err: any) {
-          return `Error: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error: ${errorMessage(err)}`;
         }
       },
     }),
@@ -356,8 +350,8 @@ export function createTeamTools(ctx: PluginContext) {
           const controlPoints = addControlPoint(existingPoints, cp);
           await teamManager.createTeam({ ...team, controlPoints });
           return `Control point "${args.control_point}" (${cp.type}) added to team "${args.team_name}". ID: ${cp.id}`;
-        } catch (err: any) {
-          return `Error: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error: ${errorMessage(err)}`;
         }
       },
     }),
@@ -392,11 +386,11 @@ export function createTeamTools(ctx: PluginContext) {
           return `Error: Member agent(s) missing from registry/disk: ${missing.join(", ")}. Create them first.`;
         }
 
-        let TeamGenMod: any;
+        let TeamGenMod: typeof import("../generators/team-plugin-generator.js");
         try {
           TeamGenMod = await import("../generators/team-plugin-generator.js");
-        } catch (err: any) {
-          return `Error: TeamPluginGenerator unavailable: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error: TeamPluginGenerator unavailable: ${errorMessage(err)}`;
         }
 
         const generator = new TeamGenMod.TeamPluginGenerator();
@@ -411,7 +405,7 @@ export function createTeamTools(ctx: PluginContext) {
         for (const def of memberDefs) for (const s of def.skills) skillNames.add(s);
         const resolvedSkills = Array.from(skillNames)
           .map((n) => skillMap.get(n))
-          .filter(Boolean);
+          .filter((skill): skill is SkillDefinition => skill !== undefined);
 
         try {
           const pkg = generator.generate(team, memberDefs, resolvedSkills);
@@ -428,7 +422,7 @@ export function createTeamTools(ctx: PluginContext) {
                 `Restart OpenCode to load the new plugin.`,
               ].join("\n");
             }
-            const failed = result.steps.find((s: any) => !s.ok);
+            const failed = result.steps.find((s) => !s.ok);
             return [
               `Team "${args.team_name}" exported but auto-install failed at step: ${failed?.name ?? "unknown"}.`,
               `Plugin directory: ${pluginDir}`,
@@ -451,8 +445,8 @@ export function createTeamTools(ctx: PluginContext) {
             `1. cd ${pluginDir} && bun install && bun run build`,
             `2. cd ~/.config/opencode && bun add file://${pluginDir}`,
           ].join("\n");
-        } catch (err: any) {
-          return `Error generating team plugin for "${args.team_name}": ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error generating team plugin for "${args.team_name}": ${errorMessage(err)}`;
         }
       },
     }),

@@ -5,7 +5,6 @@ import { getDefaultSkills } from "../helpers.js";
 import { persistAgent } from "../persistence.js";
 import { validateAgentNameWithConflict } from "../validation.js";
 import { SkillAnalyzer, SkillDecomposer, CapabilityMapper } from "../skills/analyzer.js";
-import type { AnalysisResult, DecomposedSkill } from "../skills/analyzer.js";
 import { upgradeSkillsToTeam } from "./skill-to-team.js";
 
 const z = tool.schema;

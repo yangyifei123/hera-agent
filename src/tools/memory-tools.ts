@@ -1,9 +1,23 @@
 import { tool } from "@opencode-ai/plugin";
 import { randomUUID } from "node:crypto";
-import type { PluginContext } from "../types.js";
+import type { HeraMemory, PluginContext } from "../types.js";
 import { MAX_RECALL_RESULTS, MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
 
 const z = tool.schema;
+
+type MemoryCategory = Extract<
+  HeraMemory["type"],
+  | "session"
+  | "skill"
+  | "agent"
+  | "team"
+  | "distillation"
+  | "preference"
+  | "decision"
+  | "pattern"
+  | "fix"
+  | "context"
+>;
 
 export function createMemoryTools(ctx: PluginContext) {
   const { store } = ctx;
@@ -31,7 +45,7 @@ export function createMemoryTools(ctx: PluginContext) {
       async execute(args) {
         await store.save({
           id: `memo-${randomUUID().slice(0, 8)}`,
-          type: args.category as any,
+          type: args.category as MemoryCategory,
           content: args.content,
           timestamp: Date.now(),
         });
@@ -66,10 +80,14 @@ export function createMemoryTools(ctx: PluginContext) {
       },
       async execute(args) {
         const effectiveLimit = args.limit != null ? Math.min(args.limit, 50) : MAX_RECALL_RESULTS;
-        const results = await store.search(args.query, args.category as any, {
-          limit: effectiveLimit,
-          since: args.since,
-        });
+        const results = await store.search(
+          args.query,
+          args.category as MemoryCategory | undefined,
+          {
+            limit: effectiveLimit,
+            since: args.since,
+          }
+        );
         if (results.length === 0) return "No matching memories found.";
         return results
           .slice(0, effectiveLimit)

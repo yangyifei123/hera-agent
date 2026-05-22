@@ -8,6 +8,7 @@ export const CAVEMAN_SKILL: SkillDefinition = {
     "Ultra-compressed communication mode. Cuts token usage ~75% by speaking like caveman while keeping full technical accuracy. Supports intensity levels: lite, full (default), ultra, wenyan-lite, wenyan-full, wenyan-ultra.",
   trigger:
     "ACTIVE EVERY RESPONSE by default. Invoke with /caveman. Stop with 'stop caveman' or 'normal mode'.",
+  category: "builtin",
   intensity: "full",
   prompt: `# Caveman Mode — Auto-Activation
 
@@ -49,6 +50,6 @@ Code/commits/PRs: write normal. "stop caveman" or "normal mode": revert. Level p
 ACTIVE EVERY RESPONSE. No revert after many turns. No filler drift.`,
 };
 
-export function getCavemanPrompt(intensity?: string): string {
+export function getCavemanPrompt(_intensity?: string): string {
   return CAVEMAN_SKILL.prompt;
 }

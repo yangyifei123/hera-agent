@@ -9,9 +9,10 @@ import type { MemoryStore } from "./memory/store.js";
 import { mkdir, readdir, writeFile, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
+import { errorMessage } from "./helpers.js";
 
 export interface PersistResult {
-  config: Record<string, any>;
+  config: Record<string, unknown>;
   fileWritten: string;
   memoryId: string;
 }
@@ -28,6 +29,11 @@ export interface BackupEntry {
 
 /** Maximum backups per agent */
 const MAX_BACKUPS_PER_AGENT = 5;
+
+function getAgentRegistryDir(agentRegistry: AgentRegistry): string | undefined {
+  const maybeRegistry = agentRegistry as { getAgentsDir?: () => string };
+  return maybeRegistry.getAgentsDir?.();
+}
 
 /**
  * Get the backups directory path for a given agents directory.
@@ -77,7 +83,7 @@ export async function backupAgent(
     return;
   }
 
-  const agentsDir = (agentRegistry as any).agentsDir as string | undefined;
+  const agentsDir = getAgentRegistryDir(agentRegistry);
   if (!agentsDir) {
     heraLog("debug", `Cannot backup agent "${name}": agentsDir not accessible`);
     return;
@@ -99,7 +105,8 @@ export async function backupAgent(
       .sort();
 
     while (agentBackups.length > MAX_BACKUPS_PER_AGENT) {
-      const oldest = agentBackups.shift()!;
+      const oldest = agentBackups.shift();
+      if (!oldest) break;
       await unlink(join(backupsDir, oldest));
     }
   } catch {
@@ -115,7 +122,7 @@ export async function listBackups(
   registeredAgents: Map<string, AgentDefinition>,
   agentRegistry: AgentRegistry
 ): Promise<BackupEntry[]> {
-  const agentsDir = (agentRegistry as any).agentsDir as string | undefined;
+  const agentsDir = getAgentRegistryDir(agentRegistry);
   if (!agentsDir) return [];
 
   const backupsDir = getBackupsDir(agentsDir);
@@ -146,7 +153,7 @@ export async function restoreAgent(
   agentRegistry: AgentRegistry,
   store: MemoryStore
 ): Promise<RestoreResult> {
-  const agentsDir = (agentRegistry as any).agentsDir as string | undefined;
+  const agentsDir = getAgentRegistryDir(agentRegistry);
   if (!agentsDir) {
     return { success: false, message: "Cannot restore: agents directory not accessible." };
   }
@@ -188,7 +195,7 @@ export async function restoreAgent(
       };
     }
 
-    const skillsMap = (await agentRegistry.listSkillMap?.()) ?? new Map<string, SkillDefinition>();
+    const skillsMap = new Map<string, SkillDefinition>();
     const { fileWritten } = await persistAgent(
       def,
       skillsMap,
@@ -200,10 +207,10 @@ export async function restoreAgent(
       success: true,
       message: `Agent "${def.name}" restored from backup. Persisted to ${fileWritten}.`,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       success: false,
-      message: `Failed to restore agent "${name}": ${err?.message ?? String(err)}`,
+      message: `Failed to restore agent "${name}": ${errorMessage(err)}`,
     };
   }
 }

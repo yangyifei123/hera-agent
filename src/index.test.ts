@@ -1,13 +1,17 @@
 import { describe, test, it, expect, beforeEach, afterEach } from "bun:test";
+import { $ } from "bun";
+import { createOpencodeClient } from "@opencode-ai/sdk";
+import type { PluginInput } from "@opencode-ai/plugin";
 import type { PluginContext, HeraConfig } from "./types.js";
 import { MemoryStore } from "./memory/store.js";
 import { SkillManager } from "./skills/manager.js";
 import { TeamManager } from "./team/manager.js";
+import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import HeraPlugin from "./index.js";
 
@@ -20,6 +24,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
   const store = new MemoryStore(join(base, "memory"));
   const skillManager = new SkillManager(store, join(base, "skills"));
   const teamManager = new TeamManager(store, undefined);
+  const workflowManager = new WorkflowManager(store, teamManager, undefined);
   const distillation = new DistillationEngine(store);
   const agentRegistry = new AgentRegistry(join(base, "agents", "hera"));
 
@@ -29,6 +34,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
     store,
     skillManager,
     teamManager,
+    workflowManager,
     distillation,
     agentRegistry,
     registeredAgents: new Map(),
@@ -45,6 +51,22 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
   };
 }
 
+function makePluginInput(tmp: string): PluginInput {
+  return {
+    client: createOpencodeClient({ directory: tmp }),
+    project: {
+      id: "test-project",
+      worktree: tmp,
+      time: { created: Date.now() },
+    },
+    directory: tmp,
+    worktree: tmp,
+    experimental_workspace: { register: () => {} },
+    serverUrl: new URL("http://localhost:0"),
+    $,
+  };
+}
+
 describe("auto_evolve config wiring", () => {
   test("autoEvolve is false when config.auto_evolve is undefined", () => {
     const ctx = makeTestCtx(false);
@@ -58,7 +80,6 @@ describe("auto_evolve config wiring", () => {
 
   test("compacting hook context differs based on autoEvolve", () => {
     // Simulate the compacting hook logic
-    const ctxOff = makeTestCtx(false);
     const ctxOn = makeTestCtx(true);
 
     const outputOff = { context: [] as string[] };
@@ -112,10 +133,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("initializes and returns four hooks", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     expect(typeof hooks.config).toBe("function");
     expect(hooks.tool).toBeDefined();
     expect(typeof hooks["experimental.chat.system.transform"]).toBe("function");
@@ -123,10 +141,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("auto-creates hera.json on first load", async () => {
-    await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    await HeraPlugin(makePluginInput(tmp), undefined);
     const heraJsonPath = join(tmp, ".config", "opencode", "hera.json");
     const content = await readFile(heraJsonPath, "utf-8");
     const parsed = JSON.parse(content);
@@ -135,10 +150,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("config hook injects the Hera agent under input.agent.hera", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
     expect(input.agent.hera).toBeDefined();
@@ -148,10 +160,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("config hook injects every persisted child agent", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
     // Onboarding creates 4 default agents (quick-fixer + 3 team members).
@@ -162,10 +171,9 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("config hook honors disabled_agents from hera.json", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      { disabled_agents: ["quick-fixer"] } as any
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), {
+      disabled_agents: ["quick-fixer"],
+    } as any);
     const input: any = { agent: {} };
     await (hooks.config as any)(input);
     expect(input.agent["quick-fixer"]).toBeUndefined();
@@ -174,10 +182,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("tool hook exposes the full tool surface (hera_create_agent, hera_export_team, etc.)", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const tools = hooks.tool as Record<string, unknown>;
     expect(tools.hera_create_agent).toBeDefined();
     expect(tools.hera_list_agents).toBeDefined();
@@ -190,10 +195,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("system.transform hook appends sections to the Hera system prompt", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const input: any = { agent: "hera" };
     const output: any = { system: [] };
     await (hooks["experimental.chat.system.transform"] as any)(input, output);
@@ -205,10 +207,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("system.transform hook skips when not the Hera agent", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const input: any = { agent: "someone-else" };
     const output: any = { system: [] };
     await (hooks["experimental.chat.system.transform"] as any)(input, output);
@@ -216,10 +215,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("session.compacting hook always emits the distillation directive", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      undefined
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
     const output: any = { context: [] };
     await (hooks["experimental.session.compacting"] as any)({}, output);
     expect(output.context.length).toBeGreaterThanOrEqual(1);
@@ -227,10 +223,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
   });
 
   it("session.compacting hook emits evolution directive when auto_evolve is on", async () => {
-    const hooks = await HeraPlugin(
-      { client: undefined as any, project: { worktree: tmp } as any, directory: tmp },
-      { auto_evolve: true } as any
-    );
+    const hooks = await HeraPlugin(makePluginInput(tmp), { auto_evolve: true } as any);
     const output: any = { context: [] };
     await (hooks["experimental.session.compacting"] as any)({}, output);
     expect(output.context.length).toBe(2);

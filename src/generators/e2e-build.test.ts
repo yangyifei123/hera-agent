@@ -68,7 +68,15 @@ describe("E2E: generated plugin builds with bun build", () => {
         skills: ["caveman", "init", "memory", "evolution"],
         maxSteps: 30,
         createdAt: Date.now(),
-        evolutionLog: [{ timestamp: Date.now(), directive: "Test directive" }],
+        evolutionLog: [
+          {
+            timestamp: Date.now(),
+            trigger: "test",
+            observation: "test",
+            directive: "Test directive",
+            rolledBack: false,
+          },
+        ],
       };
       const pkg = gen.generate(agent, []);
       const pluginDir = join(tmp, "e2e-test-agent");

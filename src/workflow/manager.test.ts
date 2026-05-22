@@ -15,6 +15,21 @@ describe("WorkflowManager", () => {
   let manager: WorkflowManager;
   let mockClient: OpenCodeClient;
 
+  function makeAgentClient(
+    promptAsync: () => Promise<unknown> = async () => ({ data: undefined })
+  ) {
+    return {
+      session: {
+        create: mock(async () => ({ data: { id: "test-session" } })),
+        promptAsync: mock(promptAsync),
+      },
+    } as unknown as OpenCodeClient;
+  }
+
+  function testStep(id = "step1"): WorkflowStep {
+    return { id, name: `Step ${id}`, type: "tool", executor: "test" };
+  }
+
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "hera-workflow-test-"));
     store = new MemoryStore(tempDir);
@@ -22,12 +37,7 @@ describe("WorkflowManager", () => {
 
     teamManager = new TeamManager(store, undefined);
 
-    mockClient = {
-      session: {
-        create: mock(async () => ({ id: "test-session" })),
-        promptAsync: mock(async () => ({ result: "test-response" })),
-      },
-    } as any;
+    mockClient = makeAgentClient();
 
     manager = new WorkflowManager(store, teamManager, mockClient);
     await manager.init();
@@ -44,9 +54,7 @@ describe("WorkflowManager", () => {
         name: "Test Workflow",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "tool", executor: "test" },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "tool", executor: "test" }],
         createdAt: Date.now(),
       };
 
@@ -62,7 +70,7 @@ describe("WorkflowManager", () => {
         name: "W1",
         description: "Test",
         mode: "serial",
-        steps: [],
+        steps: [testStep()],
         createdAt: Date.now(),
       };
       const w2: WorkflowDefinition = {
@@ -70,7 +78,7 @@ describe("WorkflowManager", () => {
         name: "W2",
         description: "Test",
         mode: "parallel",
-        steps: [],
+        steps: [testStep()],
         createdAt: Date.now(),
       };
 
@@ -88,7 +96,7 @@ describe("WorkflowManager", () => {
         name: "Delete",
         description: "Test",
         mode: "serial",
-        steps: [],
+        steps: [testStep()],
         createdAt: Date.now(),
       };
 
@@ -105,7 +113,7 @@ describe("WorkflowManager", () => {
         name: "Persist",
         description: "Test",
         mode: "serial",
-        steps: [],
+        steps: [testStep()],
         createdAt: Date.now(),
       };
 
@@ -126,8 +134,6 @@ describe("WorkflowManager", () => {
 
   describe("Serial Workflow Execution", () => {
     test("executes steps in order", async () => {
-      const executionOrder: string[] = [];
-
       const workflow: WorkflowDefinition = {
         id: "serial-test",
         name: "Serial",
@@ -302,9 +308,7 @@ describe("WorkflowManager", () => {
         createdAt: Date.now(),
       };
 
-      await manager.createWorkflow(workflow);
-
-      await expect(manager.executeWorkflow("circular", {})).rejects.toThrow(
+      await expect(manager.createWorkflow(workflow)).rejects.toThrow(
         "Circular dependency detected"
       );
     });
@@ -344,16 +348,11 @@ describe("WorkflowManager", () => {
   describe("Step Retry Logic", () => {
     test("retries failed steps", async () => {
       let attempts = 0;
-      const failingClient = {
-        session: {
-          create: mock(async () => ({ id: "test-session" })),
-          promptAsync: mock(async () => {
-            attempts++;
-            if (attempts < 3) throw new Error("Temporary failure");
-            return { result: "success" };
-          }),
-        },
-      } as any;
+      const failingClient = makeAgentClient(async () => {
+        attempts++;
+        if (attempts < 3) throw new Error("Temporary failure");
+        return { data: undefined };
+      });
 
       const managerWithRetry = new WorkflowManager(store, teamManager, failingClient);
       await managerWithRetry.init();
@@ -383,14 +382,9 @@ describe("WorkflowManager", () => {
     });
 
     test("fails after max retry attempts", async () => {
-      const failingClient = {
-        session: {
-          create: mock(async () => ({ id: "test-session" })),
-          promptAsync: mock(async () => {
-            throw new Error("Permanent failure");
-          }),
-        },
-      } as any;
+      const failingClient = makeAgentClient(async () => {
+        throw new Error("Permanent failure");
+      });
 
       const managerWithRetry = new WorkflowManager(store, teamManager, failingClient);
       await managerWithRetry.init();
@@ -422,15 +416,9 @@ describe("WorkflowManager", () => {
 
   describe("Step Timeout", () => {
     test("times out long-running steps", async () => {
-      const slowClient = {
-        session: {
-          create: mock(async () => ({ id: "test-session" })),
-          promptAsync: mock(
-            async () =>
-              new Promise((resolve) => setTimeout(() => resolve({ result: "slow" }), 5000))
-          ),
-        },
-      } as any;
+      const slowClient = makeAgentClient(
+        async () => new Promise((resolve) => setTimeout(() => resolve({ data: undefined }), 5000))
+      );
 
       const managerWithTimeout = new WorkflowManager(store, teamManager, slowClient);
       await managerWithTimeout.init();
@@ -551,14 +539,9 @@ describe("WorkflowManager", () => {
     });
 
     test("marks execution as failed on error", async () => {
-      const failingClient = {
-        session: {
-          create: mock(async () => ({ id: "test-session" })),
-          promptAsync: mock(async () => {
-            throw new Error("Test error");
-          }),
-        },
-      } as any;
+      const failingClient = makeAgentClient(async () => {
+        throw new Error("Test error");
+      });
 
       const managerWithError = new WorkflowManager(store, teamManager, failingClient);
       await managerWithError.init();
@@ -621,9 +604,7 @@ describe("WorkflowManager", () => {
         name: "Decision",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "decision", condition: "enabled==true" },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "decision", condition: "enabled==true" }],
         createdAt: Date.now(),
       };
 
@@ -658,7 +639,7 @@ describe("WorkflowManager", () => {
   describe("Error Handling", () => {
     test("throws on unknown workflow", async () => {
       await expect(manager.executeWorkflow("nonexistent", {})).rejects.toThrow(
-        "Workflow not found"
+        "Workflow 'nonexistent' not found"
       );
     });
 
@@ -668,7 +649,7 @@ describe("WorkflowManager", () => {
         name: "Unknown",
         description: "Test",
         mode: "invalid" as any,
-        steps: [],
+        steps: [testStep()],
         createdAt: Date.now(),
       };
 

@@ -1,13 +1,18 @@
 import { tool } from "@opencode-ai/plugin";
-import type { PluginContext, AgentDefinition, AgentTemplateName, AgentMode } from "../types.js";
+import type {
+  PluginContext,
+  AgentDefinition,
+  AgentTemplateName,
+  AgentMode,
+  SkillDefinition,
+} from "../types.js";
 import { DEFAULT_CHILD_MAX_STEPS } from "../constants.js";
-import { getDefaultSkills } from "../helpers.js";
+import { errorMessage, getDefaultSkills } from "../helpers.js";
 import { persistAgent, removeAgent } from "../persistence.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { validateAgentNameWithConflict } from "../validation.js";
-import { heraLog } from "../logger.js";
 import { join } from "node:path";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 
 const z = tool.schema;
 
@@ -74,7 +79,9 @@ export function findAvailableName(base: string, existing: Map<string, unknown>):
  * caller asks for `format: "plugin"`. Returns the module object so the
  * caller can do `new Mod.PluginGenerator(...)`.
  */
-async function loadPluginGenerator(): Promise<any | null> {
+async function loadPluginGenerator(): Promise<
+  typeof import("../generators/plugin-generator.js") | null
+> {
   try {
     return await import("../generators/plugin-generator.js");
   } catch {
@@ -186,7 +193,7 @@ export function createAgentTools(ctx: PluginContext) {
             const skillMap = skillManager.getSkillMap();
             const resolvedSkills = agentDef.skills
               .map((n: string) => skillMap.get(n))
-              .filter(Boolean);
+              .filter((skill): skill is SkillDefinition => skill !== undefined);
 
             const pkg = generator.generate(agentDef, resolvedSkills);
             await generator.writeToDisk(pkg, pluginDir);
@@ -205,7 +212,7 @@ export function createAgentTools(ctx: PluginContext) {
                 ].join("\n");
               }
               // Build/install failed — surface which step and why
-              const failedStep = result.steps.find((s: any) => !s.ok);
+              const failedStep = result.steps.find((s) => !s.ok);
               return [
                 `Agent "${args.name}" generated but auto-install failed at step: ${failedStep?.name ?? "unknown"}.`,
                 `Plugin directory: ${pluginDir}`,
@@ -230,8 +237,8 @@ export function createAgentTools(ctx: PluginContext) {
               ``,
               `Or run: hera_install_agent agent_name="${args.name}"`,
             ].join("\n");
-          } catch (err: any) {
-            return `Error generating plugin for "${args.name}": ${err?.message ?? String(err)}`;
+          } catch (err: unknown) {
+            return `Error generating plugin for "${args.name}": ${errorMessage(err)}`;
           }
         }
 
@@ -281,8 +288,8 @@ export function createAgentTools(ctx: PluginContext) {
           const generator = new Mod.PluginGenerator();
           await generator.install(pluginDir, paths.configRoot);
           return `Agent "${args.agent_name}" installed successfully. Plugin added to opencode.json.`;
-        } catch (err: any) {
-          return `Error installing agent "${args.agent_name}": ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error installing agent "${args.agent_name}": ${errorMessage(err)}`;
         }
       },
     }),
@@ -303,8 +310,8 @@ export function createAgentTools(ctx: PluginContext) {
           const generator = new Mod.PluginGenerator();
           await generator.uninstall(args.agent_name, paths.configRoot);
           return `Agent "${args.agent_name}" uninstalled successfully. Plugin removed from opencode.json.`;
-        } catch (err: any) {
-          return `Error uninstalling agent "${args.agent_name}": ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error uninstalling agent "${args.agent_name}": ${errorMessage(err)}`;
         }
       },
     }),
@@ -379,14 +386,17 @@ export function createAgentTools(ctx: PluginContext) {
             body: { parentID: ctx.sessionID, title: `Hera spawn → @${args.agent_name}` },
             query: { directory: ctx.directory },
           });
-          const sessionId = createResult.data?.id ?? createResult.data;
+          if (createResult.error || !createResult.data) {
+            return `Error spawning agent: session creation failed.`;
+          }
+          const sessionId = createResult.data.id;
           await client.session.promptAsync({
             path: { id: sessionId },
-            body: { agent: args.agent_name, parts: [{ type: "text", text: args.task }] },
+            body: { agent: args.agent_name, parts: [{ type: "text" as const, text: args.task }] },
           });
           return `Agent "${args.agent_name}" spawned in session ${sessionId}.`;
-        } catch (err: any) {
-          return `Error spawning agent: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error spawning agent: ${errorMessage(err)}`;
         }
       },
     }),
@@ -465,8 +475,8 @@ export function createAgentTools(ctx: PluginContext) {
           );
 
           return `Agent "${def.name}" imported successfully. Persisted to ${fileWritten}.`;
-        } catch (err: any) {
-          return `Error importing agent: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error importing agent: ${errorMessage(err)}`;
         }
       },
     }),

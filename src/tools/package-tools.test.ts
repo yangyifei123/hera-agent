@@ -1,25 +1,33 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createPackageTools } from "./package-tools.js";
 import type { PluginContext } from "../types.js";
+import type { ToolContext } from "@opencode-ai/plugin";
+import { makeTestHarness, type TestHarness } from "./test-harness.js";
 import { join } from "node:path";
 import { mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
 
 describe("Package Tools", () => {
   let testDir: string;
   let ctx: PluginContext;
+  let toolCtx: ToolContext;
+  let harness: TestHarness;
 
   beforeEach(async () => {
-    testDir = join(tmpdir(), `hera-test-${Date.now()}`);
-    await mkdir(testDir, { recursive: true });
+    harness = await makeTestHarness();
+    testDir = harness.tmp;
+    ctx = harness.ctx;
 
-    // Mock context
-    ctx = {
-      configRoot: testDir,
-      store: {} as any,
-      agentRegistry: {} as any,
-      skillManager: {} as any,
-      registeredAgents: new Map(),
+    toolCtx = {
+      sessionID: "test-session",
+      messageID: "test-message",
+      agent: "hera",
+      directory: testDir,
+      worktree: testDir,
+      abort: new AbortController().signal,
+      metadata: () => {},
+      ask: (() => {
+        throw new Error("ask is not used in package tool tests");
+      }) as ToolContext["ask"],
     };
 
     // Set environment variable
@@ -27,26 +35,25 @@ describe("Package Tools", () => {
   });
 
   afterEach(async () => {
-    try {
-      await rm(testDir, { recursive: true, force: true });
-    } catch {
-      // Ignore cleanup errors
-    }
+    await harness.cleanup();
     delete process.env.OPENCODE_CONFIG_ROOT;
   });
 
   test("hera_list_packages returns empty list initially", async () => {
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_list_packages.execute({});
+    const result = await tools.hera_list_packages.execute({}, toolCtx);
 
     expect(result).toContain("No packaged agents found");
   });
 
   test("hera_package_agent fails for non-existent agent", async () => {
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_package_agent.execute({
-      name: "non-existent-agent",
-    });
+    const result = await tools.hera_package_agent.execute(
+      {
+        name: "non-existent-agent",
+      },
+      toolCtx
+    );
 
     expect(result).toContain("Error");
     expect(result).toContain("not found");
@@ -60,10 +67,13 @@ describe("Package Tools", () => {
     await writeFile(mdPath, "# Test Agent\n\nThis is a test agent.");
 
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_package_agent.execute({
-      name: "test-agent",
-      includeMemory: false,
-    });
+    const result = await tools.hera_package_agent.execute(
+      {
+        name: "test-agent",
+        includeMemory: false,
+      },
+      toolCtx
+    );
 
     expect(result).toContain("packaged successfully");
     expect(result).toContain("Mode: md");
@@ -83,11 +93,14 @@ describe("Package Tools", () => {
     await writeFile(mdPath, "# Test Agent");
 
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_package_agent.execute({
-      name: "test-agent",
-      includeMemory: false,
-      outputName: "custom-name",
-    });
+    const result = await tools.hera_package_agent.execute(
+      {
+        name: "test-agent",
+        includeMemory: false,
+        outputName: "custom-name",
+      },
+      toolCtx
+    );
 
     expect(result).toContain("packaged successfully");
 
@@ -100,9 +113,12 @@ describe("Package Tools", () => {
 
   test("hera_unpack_agent fails for non-existent package", async () => {
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_unpack_agent.execute({
-      packagePath: "/non/existent/package.tar.gz",
-    });
+    const result = await tools.hera_unpack_agent.execute(
+      {
+        packagePath: "/non/existent/package.tar.gz",
+      },
+      toolCtx
+    );
 
     expect(result).toContain("Error");
     expect(result).toContain("not found");
@@ -116,13 +132,16 @@ describe("Package Tools", () => {
     await writeFile(mdPath, "# Test Agent");
 
     const tools = createPackageTools(ctx);
-    await tools.hera_package_agent.execute({
-      name: "test-agent",
-      includeMemory: false,
-    });
+    await tools.hera_package_agent.execute(
+      {
+        name: "test-agent",
+        includeMemory: false,
+      },
+      toolCtx
+    );
 
     // List packages
-    const result = await tools.hera_list_packages.execute({});
+    const result = await tools.hera_list_packages.execute({}, toolCtx);
 
     expect(result).toContain("Packaged agents:");
     expect(result).toContain("test-agent-package.tar.gz");
@@ -139,10 +158,13 @@ describe("Package Tools", () => {
     const tools = createPackageTools(ctx);
 
     // Package the agent
-    const packageResult = await tools.hera_package_agent.execute({
-      name: "test-agent",
-      includeMemory: false,
-    });
+    const packageResult = await tools.hera_package_agent.execute(
+      {
+        name: "test-agent",
+        includeMemory: false,
+      },
+      toolCtx
+    );
     expect(packageResult).toContain("packaged successfully");
 
     // Delete the original .md file
@@ -150,10 +172,13 @@ describe("Package Tools", () => {
 
     // Unpack the agent
     const packagePath = join(testDir, "hera-data", "packages", "test-agent-package.tar.gz");
-    const unpackResult = await tools.hera_unpack_agent.execute({
-      packagePath,
-      installPlugin: false,
-    });
+    const unpackResult = await tools.hera_unpack_agent.execute(
+      {
+        packagePath,
+        installPlugin: false,
+      },
+      toolCtx
+    );
     expect(unpackResult).toContain("unpacked successfully");
 
     // Verify the .md file was restored
@@ -183,10 +208,13 @@ describe("Package Tools", () => {
     );
 
     const tools = createPackageTools(ctx);
-    const result = await tools.hera_package_agent.execute({
-      name: "test-agent",
-      includeMemory: true,
-    });
+    const result = await tools.hera_package_agent.execute(
+      {
+        name: "test-agent",
+        includeMemory: true,
+      },
+      toolCtx
+    );
 
     expect(result).toContain("packaged successfully");
     expect(result).toContain("Memory included: true");

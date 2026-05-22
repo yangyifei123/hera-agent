@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { DistillationEngine } from "./engine.js";
-import type { MemoryStore } from "./memory/store.js";
+import type { MemoryStore } from "../memory/store.js";
 
 function makeMockStore() {
   return {

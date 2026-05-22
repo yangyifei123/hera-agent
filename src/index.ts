@@ -15,8 +15,20 @@ import { extractMemories } from "./memory/smart-extractor.js";
 import { randomUUID } from "node:crypto";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
 
+type ConfigWithAgents = Config & {
+  agent?: Record<string, unknown>;
+};
+
+type ChatTransformInput = {
+  agent?: string;
+};
+
+type CompactingInput = {
+  messages?: Array<{ role: string; content: string }>;
+};
+
 const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
-  const { client, project, directory } = input;
+  const { client, directory } = input;
 
   const configRoot = resolveConfigRoot(directory);
 
@@ -137,22 +149,24 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const hooks: Hooks = {
     async config(input: Config) {
-      const model = config.default_model ?? input.model;
+      const model = config.default_model ?? input.model ?? "";
       const skills = skillManager.getAllSkills();
 
       // Inject Hera itself
-      const heraAgent = createHeraAgent(model, skills);
-      (input as any).agent = (input as any).agent ?? {};
-      (input as any).agent["hera"] = heraAgent;
+      const configInput = input as ConfigWithAgents;
+      configInput.agent = configInput.agent ?? {};
+      configInput.agent["hera"] = createHeraAgent(model, skills);
 
       // Inject all child agents
       for (const [name, def] of registeredAgents) {
         if (config.disabled_agents?.includes(name)) continue;
 
-        const childSkills = def.skills.map((sn) => skillManager.getSkill(sn)).filter(Boolean);
+        const childSkills = def.skills
+          .map((sn) => skillManager.getSkill(sn))
+          .filter((skill): skill is NonNullable<typeof skill> => skill !== undefined);
 
         const skillPrompts = childSkills
-          .map((s) => `## Skill: ${s!.name}\n${s!.prompt}`)
+          .map((s) => `## Skill: ${s.name}\n${s.prompt}`)
           .join("\n\n");
 
         // Include evolution log if present
@@ -177,14 +191,14 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           def.model ?? model,
           def.mode as import("./types.js").AgentMode
         );
-        (input as any).agent[name] = childConfig;
+        configInput.agent[name] = childConfig;
       }
     },
 
     tool: tools,
 
     async "experimental.chat.system.transform"(input, output) {
-      const agent = (input as any).agent;
+      const agent = (input as ChatTransformInput).agent;
       if (agent === "hera" || agent === undefined) {
         const teams = teamManager.getAllTeams();
         if (teams.length > 0) {
@@ -224,9 +238,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       // Auto-memory extraction
       if (config.auto_memory === true) {
         try {
-          const messages = (input as any).messages as
-            | Array<{ role: string; content: string }>
-            | undefined;
+          const messages = (input as CompactingInput).messages;
           if (messages && messages.length > 0) {
             const extracted = extractMemories(messages);
             for (const memory of extracted) {
@@ -255,7 +267,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   return hooks;
 };
 
-function resolveConfigRoot(projectDir: string): string {
+function resolveConfigRoot(_projectDir: string): string {
   if (process.platform === "win32") {
     const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
     return join(home, ".config", "opencode");

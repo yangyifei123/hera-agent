@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
@@ -158,7 +158,7 @@ describe("Installation Tests", () => {
           stdio: "pipe",
         });
         expect(output).toBeDefined();
-      } catch (error) {
+      } catch {
         // If bun test --help fails, that's okay
         expect(true).toBe(true);
       }
@@ -169,10 +169,15 @@ describe("Installation Tests", () => {
       expect(existsSync(srcPath)).toBe(true);
 
       // Check for at least one test file
-      const testFiles = execSync("find src -name '*.test.ts' -type f", {
-        encoding: "utf-8",
-        cwd: process.cwd(),
-      }).trim().split("\n");
+      function collectTestFiles(dir: string): string[] {
+        return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+          const fullPath = join(dir, entry.name);
+          if (entry.isDirectory()) return collectTestFiles(fullPath);
+          return entry.name.endsWith(".test.ts") ? [fullPath] : [];
+        });
+      }
+
+      const testFiles = collectTestFiles(srcPath);
 
       expect(testFiles.length).toBeGreaterThan(0);
     });
@@ -184,10 +189,16 @@ describe("Installation Tests", () => {
       expect(existsSync(distPath)).toBe(true);
 
       // Check that dist has JavaScript files
-      const jsFiles = execSync("find dist -name '*.js' -type f 2>/dev/null || echo ''", {
-        encoding: "utf-8",
-        cwd: process.cwd(),
-      }).trim();
+      function collectJsFiles(dir: string): string[] {
+        if (!existsSync(dir)) return [];
+        return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+          const fullPath = join(dir, entry.name);
+          if (entry.isDirectory()) return collectJsFiles(fullPath);
+          return entry.name.endsWith(".js") ? [fullPath] : [];
+        });
+      }
+
+      const jsFiles = collectJsFiles(distPath);
 
       expect(jsFiles.length).toBeGreaterThan(0);
     });
@@ -196,11 +207,6 @@ describe("Installation Tests", () => {
       const distPath = join(process.cwd(), "dist");
 
       try {
-        const mapFiles = execSync("find dist -name '*.map' -type f 2>/dev/null || echo ''", {
-          encoding: "utf-8",
-          cwd: process.cwd(),
-        }).trim();
-
         // It's okay to have source maps, but we're just checking the build completed
         expect(distPath).toBeDefined();
       } catch {
@@ -209,4 +215,3 @@ describe("Installation Tests", () => {
     });
   });
 });
-

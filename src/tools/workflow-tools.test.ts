@@ -3,7 +3,7 @@ import { createWorkflowTools } from "./workflow-tools.js";
 import { WorkflowManager } from "../workflow/manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { TeamManager } from "../team/manager.js";
-import type { PluginContext, WorkflowDefinition } from "../types.js";
+import type { PluginContext } from "../types.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +12,7 @@ describe("Workflow Tools", () => {
   let tempDir: string;
   let store: MemoryStore;
   let workflowManager: WorkflowManager;
-  let tools: ReturnType<typeof createWorkflowTools>;
+  let tools: any;
   let ctx: PluginContext;
 
   beforeEach(async () => {
@@ -234,7 +234,7 @@ describe("Workflow Tools", () => {
     });
 
     test("detects circular dependencies in DAG", async () => {
-      const circularWorkflow = await tools.hera_create_workflow.execute({
+      const result = await tools.hera_create_workflow.execute({
         name: "Circular",
         description: "Test",
         mode: "dag",
@@ -244,11 +244,8 @@ describe("Workflow Tools", () => {
         ],
       });
 
-      const result = await tools.hera_execute_workflow.execute({
-        workflowId: circularWorkflow.workflowId!,
-      });
-
-      expect(result.plan!.risks.some(r => r.toLowerCase().includes("circular"))).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.error?.toLowerCase()).toContain("circular");
     });
   });
 
@@ -303,7 +300,7 @@ describe("Workflow Tools", () => {
         steps: [{ name: "Step 1", type: "tool" }],
       });
 
-      const execResult = await tools.hera_execute_workflow.execute({
+      await tools.hera_execute_workflow.execute({
         workflowId: createResult.workflowId!,
         requireApproval: false,
       });
@@ -419,7 +416,7 @@ describe("Workflow Tools", () => {
         steps: [{ name: "S1", type: "tool" }],
       });
 
-      const create2 = await tools.hera_create_workflow.execute({
+      await tools.hera_create_workflow.execute({
         name: "W2",
         description: "Test",
         mode: "serial",
@@ -453,7 +450,9 @@ describe("Workflow Tools", () => {
 
       // List
       const listResult = await tools.hera_list_workflows.execute();
-      expect(listResult.workflows!.some(w => w.name === "Lifecycle Test")).toBe(true);
+      expect(listResult.workflows!.some((w: { name: string }) => w.name === "Lifecycle Test")).toBe(
+        true
+      );
 
       // Execute with approval
       const execResult = await tools.hera_execute_workflow.execute({
@@ -489,7 +488,7 @@ describe("Workflow Tools", () => {
 
       expect(result.success).toBe(true);
       expect(result.workflow!.steps).toHaveLength(4);
-      expect(result.workflow!.steps.map(s => s.type)).toEqual([
+      expect(result.workflow!.steps.map((s: { type: string }) => s.type)).toEqual([
         "agent",
         "tool",
         "decision",

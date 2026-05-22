@@ -18,10 +18,7 @@ export class WorkflowAutoAssigner {
    * Design a custom workflow for an agent based on requirements
    * This would typically use brainstorming to analyze the agent's purpose
    */
-  designWorkflowForAgent(
-    agentDef: AgentDefinition,
-    requirements?: string
-  ): WorkflowDefinition {
+  designWorkflowForAgent(agentDef: AgentDefinition, _requirements?: string): WorkflowDefinition {
     // For now, fall back to template-based assignment
     // In a full implementation, this would:
     // 1. Analyze agent's purpose and skills

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { extractMemories, type ExtractedMemory } from "./smart-extractor.js";
+import { extractMemories } from "./smart-extractor.js";
 
 describe("extractMemories", () => {
   describe("decision extraction", () => {

@@ -6,14 +6,9 @@ import { WorkflowValidator } from "../workflow/validator.js";
 import { ConcurrencyLimiter } from "../workflow/progress.js";
 import type { WorkflowDefinition } from "../types.js";
 import { join } from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import {
-  WorkflowNotFoundError,
-  WorkflowValidationError,
-  WorkflowExecutionError,
-  CircularDependencyError,
-} from "../errors.js";
+import { WorkflowNotFoundError, WorkflowValidationError } from "../errors.js";
 
 describe("End-to-End Tests - P0 Optimizations", () => {
   let tempDir: string;
@@ -49,9 +44,7 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         name: "Invalid",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "agent", dependencies: ["nonexistent"] },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "agent", dependencies: ["nonexistent"] }],
         createdAt: Date.now(),
       };
 
@@ -122,7 +115,7 @@ describe("End-to-End Tests - P0 Optimizations", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Duplicate step ID"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("Duplicate step ID"))).toBe(true);
     });
 
     test("WorkflowValidator - 检测无效超时", () => {
@@ -131,15 +124,13 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         name: "Test",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "agent", timeout: -100 },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "agent", timeout: -100 }],
         createdAt: Date.now(),
       };
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("invalid timeout"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("invalid timeout"))).toBe(true);
     });
 
     test("WorkflowValidator - 复杂度评估", () => {
@@ -164,7 +155,13 @@ describe("End-to-End Tests - P0 Optimizations", () => {
           { id: "step1", name: "Step 1", type: "agent" },
           { id: "step2", name: "Step 2", type: "agent", dependencies: ["step1"] },
           { id: "step3", name: "Step 3", type: "approval", dependencies: ["step2"] },
-          { id: "step4", name: "Step 4", type: "agent", dependencies: ["step2"], condition: "result==success" },
+          {
+            id: "step4",
+            name: "Step 4",
+            type: "agent",
+            dependencies: ["step2"],
+            condition: "result==success",
+          },
         ],
         createdAt: Date.now(),
       };
@@ -185,9 +182,7 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         name: "Cleanup Test",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "decision", condition: "true" },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "decision", condition: "true" }],
         createdAt: Date.now(),
       };
 
@@ -235,7 +230,7 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         limiter.run(async () => {
           concurrent++;
           maxConcurrent = Math.max(maxConcurrent, concurrent);
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 10));
           concurrent--;
           return i;
         })
@@ -251,12 +246,12 @@ describe("End-to-End Tests - P0 Optimizations", () => {
       const limiter = new ConcurrencyLimiter(2);
 
       const task1 = limiter.run(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return 1;
       });
 
       const task2 = limiter.run(async () => {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
         return 2;
       });
 
@@ -266,7 +261,7 @@ describe("End-to-End Tests - P0 Optimizations", () => {
       });
 
       // 等待一小段时间让任务开始
-      await new Promise(resolve => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const stats = limiter.getStats();
       expect(stats.maxConcurrent).toBe(2);
@@ -284,9 +279,27 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         description: "Test",
         mode: "serial",
         steps: [
-          { id: "step1", name: "Step 1", type: "tool", executor: "echo", input: { message: "test1" } },
-          { id: "step2", name: "Step 2", type: "tool", executor: "echo", input: { message: "test2" } },
-          { id: "step3", name: "Step 3", type: "tool", executor: "echo", input: { message: "test3" } },
+          {
+            id: "step1",
+            name: "Step 1",
+            type: "tool",
+            executor: "echo",
+            input: { message: "test1" },
+          },
+          {
+            id: "step2",
+            name: "Step 2",
+            type: "tool",
+            executor: "echo",
+            input: { message: "test2" },
+          },
+          {
+            id: "step3",
+            name: "Step 3",
+            type: "tool",
+            executor: "echo",
+            input: { message: "test3" },
+          },
         ],
         createdAt: Date.now(),
       };
@@ -296,22 +309,26 @@ describe("End-to-End Tests - P0 Optimizations", () => {
       const events: string[] = [];
       let progressUpdates = 0;
 
-      await workflowManager.executeWorkflow("progress-test", {}, {
-        onStepStart: (stepId, stepName) => {
-          events.push(`start:${stepId}`);
-        },
-        onStepComplete: (stepId, result) => {
-          events.push(`complete:${stepId}`);
-          expect(result.status).toBe('success');
-          expect(result.duration).toBeGreaterThanOrEqual(0);
-        },
-        onWorkflowProgress: (completed, total, percentage) => {
-          progressUpdates++;
-          expect(completed).toBeLessThanOrEqual(total);
-          expect(percentage).toBeGreaterThanOrEqual(0);
-          expect(percentage).toBeLessThanOrEqual(100);
-        },
-      });
+      await workflowManager.executeWorkflow(
+        "progress-test",
+        {},
+        {
+          onStepStart: (stepId, _stepName) => {
+            events.push(`start:${stepId}`);
+          },
+          onStepComplete: (stepId, result) => {
+            events.push(`complete:${stepId}`);
+            expect(result.status).toBe("success");
+            expect(result.duration).toBeGreaterThanOrEqual(0);
+          },
+          onWorkflowProgress: (completed, total, percentage) => {
+            progressUpdates++;
+            expect(completed).toBeLessThanOrEqual(total);
+            expect(percentage).toBeGreaterThanOrEqual(0);
+            expect(percentage).toBeLessThanOrEqual(100);
+          },
+        }
+      );
 
       expect(events).toContain("start:step1");
       expect(events).toContain("complete:step1");
@@ -332,8 +349,22 @@ describe("End-to-End Tests - P0 Optimizations", () => {
         mode: "dag",
         steps: [
           { id: "init", name: "Initialize", type: "tool", executor: "init", input: { value: 1 } },
-          { id: "process", name: "Process", type: "tool", executor: "process", input: { value: 2 }, dependencies: ["init"] },
-          { id: "validate", name: "Validate", type: "tool", executor: "validate", input: { value: 3 }, dependencies: ["process"] },
+          {
+            id: "process",
+            name: "Process",
+            type: "tool",
+            executor: "process",
+            input: { value: 2 },
+            dependencies: ["init"],
+          },
+          {
+            id: "validate",
+            name: "Validate",
+            type: "tool",
+            executor: "validate",
+            input: { value: 3 },
+            dependencies: ["process"],
+          },
         ],
         createdAt: Date.now(),
       };
@@ -420,13 +451,11 @@ describe("End-to-End Tests - P0 Optimizations", () => {
 
       // 同时执行10个工作流
       const executions = await Promise.all(
-        Array.from({ length: 10 }, () =>
-          workflowManager.executeWorkflow("concurrent-test")
-        )
+        Array.from({ length: 10 }, () => workflowManager.executeWorkflow("concurrent-test"))
       );
 
       expect(executions).toHaveLength(10);
-      executions.forEach(exec => {
+      executions.forEach((exec) => {
         expect(exec.status).toBe("completed");
       });
     });

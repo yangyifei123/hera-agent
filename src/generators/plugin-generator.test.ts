@@ -334,7 +334,9 @@ describe("PluginGenerator", () => {
       const userSkill: SkillDefinition = {
         name: "my-custom-skill",
         description: "test",
+        trigger: "test",
         prompt: "CUSTOM_SKILL_BODY_MARKER",
+        category: "user",
       };
       const code = generator.generatePluginIndex(agent, [userSkill]);
       expect(code).toContain("CUSTOM_SKILL_BODY_MARKER");
@@ -344,8 +346,20 @@ describe("PluginGenerator", () => {
     it("should bake evolution log directives into generated prompt", () => {
       const agent = makeTestAgent({
         evolutionLog: [
-          { timestamp: 1700000000000, directive: "EVO_DIRECTIVE_ONE" },
-          { timestamp: 1700000001000, directive: "EVO_DIRECTIVE_TWO" },
+          {
+            timestamp: 1700000000000,
+            trigger: "test",
+            observation: "test",
+            directive: "EVO_DIRECTIVE_ONE",
+            rolledBack: false,
+          },
+          {
+            timestamp: 1700000001000,
+            trigger: "test",
+            observation: "test",
+            directive: "EVO_DIRECTIVE_TWO",
+            rolledBack: false,
+          },
         ],
       });
       const code = generator.generatePluginIndex(agent);
@@ -357,8 +371,20 @@ describe("PluginGenerator", () => {
     it("should NOT embed evolution directives that are rolledBack", () => {
       const agent = makeTestAgent({
         evolutionLog: [
-          { timestamp: 1700000000000, directive: "ACTIVE_DIRECTIVE" },
-          { timestamp: 1700000001000, directive: "ROLLED_BACK_DIRECTIVE", rolledBack: true },
+          {
+            timestamp: 1700000000000,
+            trigger: "test",
+            observation: "test",
+            directive: "ACTIVE_DIRECTIVE",
+            rolledBack: false,
+          },
+          {
+            timestamp: 1700000001000,
+            trigger: "test",
+            observation: "test",
+            directive: "ROLLED_BACK_DIRECTIVE",
+            rolledBack: true,
+          },
         ],
       });
       const code = generator.generatePluginIndex(agent);
@@ -371,7 +397,9 @@ describe("PluginGenerator", () => {
       const extraSkill: SkillDefinition = {
         name: "extra-skill",
         description: "test",
+        trigger: "test",
         prompt: "EXTRA_SKILL_BODY",
+        category: "user",
       };
       const pkg = generator.generate(agent, [extraSkill]);
       const indexFile = pkg.files.find((f) => f.path === "src/index.ts");

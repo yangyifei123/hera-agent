@@ -3,6 +3,7 @@ import type { OpenCodeClient } from "../types/client.js";
 import type { MemoryStore } from "../memory/store.js";
 import { randomUUID } from "node:crypto";
 import { TEAM_POLL_MAX_ATTEMPTS, TEAM_POLL_INTERVAL_MS } from "../constants.js";
+import { errorMessage } from "../helpers.js";
 
 export interface TeamMessage {
   id: string;
@@ -83,7 +84,7 @@ export class TeamManager {
     if (!team) throw new Error(`Team "${teamName}" not found`);
 
     const sessions: SpawnedSession[] = [];
-    const hasClient = this.client && typeof this.client.session?.create === "function";
+    const hasClient = Boolean(this.client && typeof this.client.session?.create === "function");
 
     switch (team.coordination) {
       case "parallel": {
@@ -170,22 +171,29 @@ export class TeamManager {
       return { agentName, sessionId: `local-${randomUUID().slice(0, 8)}`, status: "pending" };
     }
     try {
+      if (!this.client) {
+        return { agentName, sessionId: `local-${randomUUID().slice(0, 8)}`, status: "pending" };
+      }
+
       const createResult = await this.client.session.create({
         body: { parentID: parentSessionId, title: `Hera team task → @${agentName}` },
         query: { directory },
       });
-      const sessionId = createResult.data?.id ?? createResult.data;
+      if (createResult.error || !createResult.data) {
+        throw new Error(`Session creation failed for @${agentName}`);
+      }
+      const sessionId = createResult.data.id;
       await this.client.session.promptAsync({
         path: { id: sessionId },
-        body: { agent: agentName, parts: [{ type: "text", text: prompt }] },
+        body: { agent: agentName, parts: [{ type: "text" as const, text: prompt }] },
       });
       return { agentName, sessionId, status: "running" };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         agentName,
         sessionId: `error-${randomUUID().slice(0, 8)}`,
         status: "error",
-        result: err?.message ?? String(err),
+        result: errorMessage(err),
       };
     }
   }
@@ -194,14 +202,16 @@ export class TeamManager {
     const maxAttempts = TEAM_POLL_MAX_ATTEMPTS;
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const statusResult = await this.client.session.status({ path: { id: sessionId } });
-        const status = statusResult.data?.status;
-        if (status === "completed" || status === "idle" || status === "error") {
+        if (!this.client) return "(no client)";
+        const statusResult = await this.client.session.status();
+        const status = statusResult.data?.[sessionId]?.type;
+        if (status === "idle") {
           const messagesResult = await this.client.session.messages({ path: { id: sessionId } });
           const messages = messagesResult.data ?? [];
           for (let j = messages.length - 1; j >= 0; j--) {
-            if (messages[j].role === "assistant") {
-              return messages[j].parts?.map((p: any) => p.text ?? "").join("") ?? "";
+            const message = messages[j];
+            if (message?.info.role === "assistant") {
+              return message.parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
             }
           }
           return "(no response)";

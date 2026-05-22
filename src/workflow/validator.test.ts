@@ -52,7 +52,7 @@ describe("WorkflowValidator", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Duplicate step ID"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("Duplicate step ID"))).toBe(true);
     });
 
     test("detects non-existent dependencies", () => {
@@ -70,7 +70,7 @@ describe("WorkflowValidator", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("non-existent step"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("non-existent step"))).toBe(true);
     });
 
     test("detects self-dependency", () => {
@@ -79,15 +79,13 @@ describe("WorkflowValidator", () => {
         name: "Test",
         description: "Test",
         mode: "dag",
-        steps: [
-          { id: "step1", name: "Step 1", type: "agent", dependencies: ["step1"] },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "agent", dependencies: ["step1"] }],
         createdAt: Date.now(),
       };
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("cannot depend on itself"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("cannot depend on itself"))).toBe(true);
     });
 
     test("detects circular dependencies", () => {
@@ -105,7 +103,7 @@ describe("WorkflowValidator", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("Circular dependency"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("Circular dependency"))).toBe(true);
     });
 
     test("detects invalid timeout", () => {
@@ -114,15 +112,13 @@ describe("WorkflowValidator", () => {
         name: "Test",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "agent", timeout: -100 },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "agent", timeout: -100 }],
         createdAt: Date.now(),
       };
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("invalid timeout"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("invalid timeout"))).toBe(true);
     });
 
     test("detects invalid retry policy", () => {
@@ -144,7 +140,7 @@ describe("WorkflowValidator", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(false);
-      expect(result.errors.some(e => e.includes("invalid retry maxAttempts"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("invalid retry maxAttempts"))).toBe(true);
     });
 
     test("warns about DAG with no dependencies", () => {
@@ -162,7 +158,7 @@ describe("WorkflowValidator", () => {
 
       const result = WorkflowValidator.validate(workflow);
       expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.includes("no dependencies"))).toBe(true);
+      expect(result.warnings.some((w) => w.includes("no dependencies"))).toBe(true);
     });
   });
 
@@ -189,9 +185,7 @@ describe("WorkflowValidator", () => {
         name: "Test",
         description: "Test",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "agent" },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "agent" }],
         createdAt: Date.now(),
       };
 
@@ -216,8 +210,8 @@ describe("WorkflowValidator", () => {
 
       const leaves = WorkflowValidator.getLeafSteps(workflow);
       expect(leaves).toHaveLength(2);
-      expect(leaves.map(s => s.id)).toContain("step2");
-      expect(leaves.map(s => s.id)).toContain("step3");
+      expect(leaves.map((s) => s.id)).toContain("step2");
+      expect(leaves.map((s) => s.id)).toContain("step3");
     });
   });
 
@@ -270,7 +264,13 @@ describe("WorkflowValidator", () => {
           { id: "step1", name: "Step 1", type: "agent" },
           { id: "step2", name: "Step 2", type: "tool", dependencies: ["step1"] },
           { id: "step3", name: "Step 3", type: "approval", dependencies: ["step2"] },
-          { id: "step4", name: "Step 4", type: "tool", dependencies: ["step2"], condition: "result==success" },
+          {
+            id: "step4",
+            name: "Step 4",
+            type: "tool",
+            dependencies: ["step2"],
+            condition: "result==success",
+          },
         ],
         createdAt: Date.now(),
       };

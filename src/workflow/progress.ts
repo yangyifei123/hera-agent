@@ -7,7 +7,7 @@
 import type { WorkflowStep } from "../types.js";
 
 export interface WorkflowStepResult {
-  status: 'success' | 'failure' | 'skipped';
+  status: "success" | "failure" | "skipped";
   output?: unknown;
   error?: string;
   duration: number;
@@ -35,13 +35,13 @@ export class ConcurrencyLimiter {
 
   constructor(private maxConcurrent: number) {
     if (maxConcurrent <= 0) {
-      throw new Error('maxConcurrent must be positive');
+      throw new Error("maxConcurrent must be positive");
     }
   }
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     while (this.running >= this.maxConcurrent) {
-      await new Promise<void>(resolve => this.queue.push(resolve));
+      await new Promise<void>((resolve) => this.queue.push(resolve));
     }
 
     this.running++;

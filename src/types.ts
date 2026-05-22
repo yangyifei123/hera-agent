@@ -3,6 +3,8 @@ import type { OpenCodeClient } from "./types/client.js";
 
 export type AgentMode = "primary" | "subagent" | "all";
 
+export type WorkflowContext = Record<string, unknown>;
+
 export interface HeraMemory {
   id: string;
   type:
@@ -35,16 +37,19 @@ export interface SkillDefinition {
 // v3.0 SkillPackage system
 export interface SkillPackage {
   name: string;
-  version: string;
+  version?: string;
   description: string;
-  trigger: SkillTrigger;
-  dependencies: SkillRef[];
-  chains: SkillChain[];
-  files: SkillFile[];
-  config: Record<string, any>;
-  scripts: SkillScript[];
+  trigger: string | SkillTrigger;
+  category?: "builtin" | "user";
+  intensity?: SkillDefinition["intensity"];
+  createdAt?: number;
+  dependencies?: SkillRef[];
+  chains?: SkillChain[];
+  files?: SkillFile[];
+  config?: Record<string, unknown>;
+  scripts?: SkillScript[];
   prompt: string;
-  metadata: SkillMetadata;
+  metadata?: SkillMetadata;
 }
 
 export interface SkillTrigger {
@@ -67,7 +72,7 @@ export interface SkillChain {
 
 export interface SkillFile {
   path: string;
-  type: "script" | "config" | "reference" | "template";
+  type?: "script" | "config" | "reference" | "template";
   content: string;
 }
 
@@ -131,7 +136,7 @@ export interface WorkflowStep {
   name: string;
   type: "agent" | "tool" | "decision" | "approval";
   executor?: string;
-  input?: Record<string, any>;
+  input?: WorkflowContext | string;
   dependencies?: string[];
   condition?: string;
   timeout?: number;
@@ -148,7 +153,7 @@ export interface WorkflowDefinition {
   mode: WorkflowMode;
   steps: WorkflowStep[];
   createdAt: number;
-  metadata?: Record<string, any>;
+  metadata?: WorkflowContext;
 }
 
 export interface WorkflowExecution {
@@ -156,7 +161,8 @@ export interface WorkflowExecution {
   workflowId: string;
   status: "pending" | "running" | "paused" | "completed" | "failed";
   currentStep?: string;
-  stepResults: Record<string, any>;
+  stepResults: Record<string, unknown>;
+  context: WorkflowContext;
   startedAt: number;
   completedAt?: number;
   error?: string;
@@ -300,7 +306,6 @@ export interface PluginContext {
 type MemoryStore = import("./memory/store.js").MemoryStore;
 type SkillManager = import("./skills/manager.js").SkillManager;
 type TeamManager = import("./team/manager.js").TeamManager;
-type DistillationEngine = import("./distillation/engine.js").DistillationEngine;
 type AgentRegistry = import("./agents/registry.js").AgentRegistry;
 
 export interface AgentToolCtx {
@@ -321,7 +326,7 @@ export interface TeamToolCtx {
   teamManager: TeamManager;
   store: MemoryStore;
   registeredAgents: Map<string, AgentDefinition>;
-  client: OpenCodeClient;
+  client: OpenCodeClient | undefined;
   config: HeraConfig;
 }
 

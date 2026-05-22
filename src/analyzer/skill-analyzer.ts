@@ -147,7 +147,7 @@ function escapeRegex(s: string): string {
 export class SkillAnalyzer {
   analyze(skill: SkillPackage): AnalysisResult {
     const capabilities = this.extractCapabilities(skill);
-    const dependencies = skill.dependencies.map((d) => d.name);
+    const dependencies = (skill.dependencies ?? []).map((d) => d.name);
     const complexity = this.assessComplexity(skill);
     const recommendations = this.generateRecommendations(skill, capabilities, dependencies);
 
@@ -166,11 +166,14 @@ export class SkillAnalyzer {
       name: `${skill.name}--${cap.replace(/\s+/g, "-")}`,
       description: `[${cap}] ${skill.description}`,
       prompt: this.filterPromptForCapability(skill.prompt, cap),
-      dependencies: [...skill.dependencies],
-      files: this.filterFilesForCapability(skill.files, cap),
-      scripts: this.filterScriptsForCapability(skill.scripts, cap),
-      metadata: { ...skill.metadata, tags: [...(skill.metadata.tags ?? []), "atomic", cap] },
-      config: { ...skill.config, decomposed: true, parentSkill: skill.name },
+      dependencies: [...(skill.dependencies ?? [])],
+      files: this.filterFilesForCapability(skill.files ?? [], cap),
+      scripts: this.filterScriptsForCapability(skill.scripts ?? [], cap),
+      metadata: {
+        ...(skill.metadata ?? {}),
+        tags: [...(skill.metadata?.tags ?? []), "atomic", cap],
+      },
+      config: { ...(skill.config ?? {}), decomposed: true, parentSkill: skill.name },
     }));
   }
 
@@ -238,7 +241,11 @@ export class SkillAnalyzer {
    * by canonical label (e.g., "test" and "testing" both produce "testing").
    */
   private extractCapabilities(skill: SkillPackage): string[] {
-    const text = `${skill.prompt} ${skill.description} ${(skill.trigger.keywords ?? []).join(" ")}`;
+    const triggerText =
+      typeof skill.trigger === "string"
+        ? skill.trigger
+        : `${skill.trigger.keywords.join(" ")} ${skill.trigger.patterns.join(" ")}`;
+    const text = `${skill.prompt} ${skill.description} ${triggerText}`;
     const matches = text.match(KEYWORD_REGEX);
     if (!matches) return [];
 
@@ -257,9 +264,9 @@ export class SkillAnalyzer {
   }
 
   private assessComplexity(skill: SkillPackage): "simple" | "medium" | "complex" {
-    const fileCount = skill.files.length;
-    const scriptCount = skill.scripts.length;
-    const depCount = skill.dependencies.length;
+    const fileCount = skill.files?.length ?? 0;
+    const scriptCount = skill.scripts?.length ?? 0;
+    const depCount = skill.dependencies?.length ?? 0;
 
     if (fileCount <= 2 && scriptCount === 0 && depCount === 0) return "simple";
     if (fileCount <= 5 && scriptCount <= 2 && depCount <= 3) return "medium";
@@ -273,22 +280,26 @@ export class SkillAnalyzer {
   ): string[] {
     const recs: string[] = [];
 
-    if (skill.scripts.length === 0 && capabilities.length > 1) {
+    if ((skill.scripts?.length ?? 0) === 0 && capabilities.length > 1) {
       recs.push("Consider adding automation scripts for multi-capability skill");
     }
-    if (skill.files.length === 0) {
+    if ((skill.files?.length ?? 0) === 0) {
       recs.push("Add reference files or templates to improve skill reliability");
     }
     if (dependencies.length > 5) {
       recs.push("Reduce dependency count to improve portability");
     }
-    if (skill.files.length > 5) {
+    if ((skill.files?.length ?? 0) > 5) {
       recs.push("Consider decomposing this skill into smaller atomic skills");
     }
     if (capabilities.length === 0) {
       recs.push("No clear capabilities detected — improve prompt with specific action keywords");
     }
-    if (skill.trigger.keywords.length === 0 && skill.trigger.patterns.length === 0) {
+    const triggerHasNoStructuredHints =
+      typeof skill.trigger === "string"
+        ? skill.trigger.length === 0
+        : skill.trigger.keywords.length === 0 && skill.trigger.patterns.length === 0;
+    if (triggerHasNoStructuredHints) {
       recs.push("Add trigger keywords or patterns so agents can auto-activate this skill");
     }
 
@@ -306,10 +317,11 @@ export class SkillAnalyzer {
       return true;
     }
 
-    if (a.dependencies.length !== b.dependencies.length) return false;
+    const aDeps = a.dependencies ?? [];
+    const bDeps = b.dependencies ?? [];
+    if (aDeps.length !== bDeps.length) return false;
     const depsMatch =
-      a.dependencies.length === 0 ||
-      a.dependencies.every((da) => b.dependencies.some((db) => db.name === da.name));
+      aDeps.length === 0 || aDeps.every((da) => bDeps.some((db) => db.name === da.name));
     if (!depsMatch) return false;
 
     const capsA = new Set(this.extractCapabilities(a));
@@ -337,13 +349,14 @@ export class SkillAnalyzer {
     files: SkillPackage["files"],
     _capability: string
   ): SkillPackage["files"] {
-    return files.filter((f) => f.type === "config" || f.type === "reference");
+    return (files ?? []).filter((f) => f.type === "config" || f.type === "reference");
   }
 
   private filterScriptsForCapability(
     scripts: SkillPackage["scripts"],
     _capability: string
   ): SkillPackage["scripts"] {
-    return scripts.length > 0 ? [scripts[0]] : [];
+    const [firstScript] = scripts ?? [];
+    return firstScript ? [firstScript] : [];
   }
 }

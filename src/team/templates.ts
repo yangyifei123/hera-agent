@@ -51,7 +51,7 @@ export type TeamTemplateName = keyof typeof TEAM_TEMPLATES;
  * Get a team template by name.
  */
 export function getTeamTemplate(name: string): TeamTemplate | undefined {
-  return TEAM_TEMPLATES[name];
+  return TEAM_TEMPLATES[name as TeamTemplateName];
 }
 
 /**

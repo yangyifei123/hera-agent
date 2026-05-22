@@ -274,22 +274,22 @@ describe("SkillAnalyzer", () => {
     test("decomposed skills keep original dependencies", () => {
       const result = analyzer.decompose(complexSkill);
       for (const sub of result) {
-        expect(sub.dependencies.length).toBe(complexSkill.dependencies.length);
+        expect((sub.dependencies ?? []).length).toBe((complexSkill.dependencies ?? []).length);
       }
     });
 
     test("decomposed skills have decomposed config flag", () => {
       const result = analyzer.decompose(complexSkill);
       for (const sub of result) {
-        expect(sub.config.decomposed).toBe(true);
-        expect(sub.config.parentSkill).toBe(complexSkill.name);
+        expect(sub.config?.decomposed).toBe(true);
+        expect(sub.config?.parentSkill).toBe(complexSkill.name);
       }
     });
 
     test("decomposed skills have atomic tag in metadata", () => {
       const result = analyzer.decompose(complexSkill);
       for (const sub of result) {
-        expect(sub.metadata.tags).toContain("atomic");
+        expect(sub.metadata?.tags).toContain("atomic");
       }
     });
 

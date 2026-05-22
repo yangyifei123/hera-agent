@@ -3,7 +3,7 @@ import { SkillManager } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, rmSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import type { SkillPackage, SkillDefinition } from "../types.js";
 
 const TEST_DIR = join(tmpdir(), "hera-skill-manager-test");

@@ -1,6 +1,12 @@
 import { writeFile, mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AgentDefinition, AgentMode, SkillDefinition, EvolutionEntry } from "../types.js";
+import type {
+  AgentDefinition,
+  AgentMode,
+  SkillDefinition,
+  EvolutionEntry,
+  AgentTemplateName,
+} from "../types.js";
 import { buildAgentPrompt } from "./hera.js";
 import { getDefaultSkills, getDefaultPermission } from "../helpers.js";
 import { heraLog } from "../logger.js";
@@ -19,10 +25,10 @@ export class AgentRegistry {
   async register(
     def: AgentDefinition,
     skills: Map<string, SkillDefinition>
-  ): Promise<{ config: Record<string, any>; fileWritten: string }> {
+  ): Promise<{ config: Record<string, unknown>; fileWritten: string }> {
     const resolvedSkills = def.skills
       .map((name) => skills.get(name))
-      .filter(Boolean) as SkillDefinition[];
+      .filter((skill): skill is SkillDefinition => skill !== undefined);
 
     const fullPrompt = buildAgentPrompt(def, resolvedSkills);
 
@@ -31,7 +37,7 @@ export class AgentRegistry {
     const filePath = join(this.agentsDir, `${def.name}.md`);
     await writeFile(filePath, content, "utf-8");
 
-    const config: Record<string, any> = {
+    const config: Record<string, unknown> = {
       description: def.description,
       mode: def.mode,
       prompt: fullPrompt,
@@ -57,7 +63,11 @@ export class AgentRegistry {
   /**
    * Ensure hera.md exists for OpenCode native discovery (opencode agent list)
    */
-  async ensureHeraMd(config: any): Promise<void> {
+  getAgentsDir(): string {
+    return this.agentsDir;
+  }
+
+  async ensureHeraMd(config: { default_model?: string }): Promise<void> {
     const filePath = join(this.agentsDir, "hera.md");
     // Always overwrite to ensure correct content
     const modelLine = config.default_model ? `model: ${config.default_model}` : "";
@@ -177,6 +187,11 @@ export class AgentRegistry {
       return m?.[1]?.trim()?.replace(/^"(.*)"$/, "$1");
     };
 
+    const maxSteps = get("maxSteps");
+    const createdAt = get("createdAt");
+    const evolvedAt = get("evolvedAt");
+    const template = get("template");
+
     return {
       name: get("name") ?? "unknown",
       description: get("description") ?? "",
@@ -184,10 +199,10 @@ export class AgentRegistry {
       prompt: body.trim(),
       model: get("model"),
       skills: getDefaultSkills(),
-      maxSteps: get("maxSteps") ? parseInt(get("maxSteps")!) : 30,
-      template: get("template") as any,
-      createdAt: get("createdAt") ? parseInt(get("createdAt")!) : undefined,
-      evolvedAt: get("evolvedAt") ? parseInt(get("evolvedAt")!) : undefined,
+      maxSteps: maxSteps ? parseInt(maxSteps, 10) : 30,
+      template: isAgentTemplateName(template) ? template : undefined,
+      createdAt: createdAt ? parseInt(createdAt, 10) : undefined,
+      evolvedAt: evolvedAt ? parseInt(evolvedAt, 10) : undefined,
       evolutionLog: [],
     };
   }
@@ -216,4 +231,19 @@ export class AgentRegistry {
     }
     return content + block;
   }
+}
+
+function isAgentTemplateName(value: string | undefined): value is AgentTemplateName {
+  return (
+    value === "general" ||
+    value === "coder" ||
+    value === "reviewer" ||
+    value === "researcher" ||
+    value === "coordinator" ||
+    value === "architect" ||
+    value === "debugger" ||
+    value === "tester" ||
+    value === "documenter" ||
+    value === "optimizer"
+  );
 }

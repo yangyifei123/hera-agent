@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, readdir, stat, rm } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import type { SkillDefinition, SkillPackage, SkillFile } from "../types.js";
+import type { SkillDefinition, SkillPackage, SkillFile, SkillTrigger } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
 import { CAVEMAN_SKILL } from "./caveman.js";
 import { INIT_SKILL } from "./init.js";
@@ -70,7 +70,18 @@ function toPackage(skill: SkillDefinition | SkillPackage): SkillPackage {
     prompt: def.prompt,
     category: def.category,
     intensity: def.intensity,
+    config: {},
+    files: [],
+    dependencies: [],
+    chains: [],
+    scripts: [],
+    metadata: {},
   };
+}
+
+function triggerToString(trigger: string | SkillTrigger): string {
+  if (typeof trigger === "string") return trigger;
+  return [...trigger.patterns, ...trigger.keywords, ...(trigger.toolCalls ?? [])].join(", ");
 }
 
 /**
@@ -80,9 +91,9 @@ function packageToDefinition(pkg: SkillPackage): SkillDefinition {
   return {
     name: pkg.name,
     description: pkg.description,
-    trigger: pkg.trigger,
+    trigger: triggerToString(pkg.trigger),
     prompt: pkg.prompt,
-    category: pkg.category,
+    category: pkg.category ?? "user",
     intensity: pkg.intensity,
   };
 }
@@ -335,13 +346,17 @@ export class SkillManager {
     return {
       name: (metadata.name as string) ?? name,
       description: (metadata.description as string) ?? "",
-      trigger: (metadata.trigger as string) ?? "",
+      trigger: (metadata.trigger as string | SkillTrigger) ?? "",
       prompt,
       category: (metadata.category as "builtin" | "user") ?? "user",
       intensity: metadata.intensity as SkillPackage["intensity"],
-      config,
-      files: extraFiles.length > 0 ? extraFiles : undefined,
+      config: config ?? {},
+      files: extraFiles,
       createdAt: metadata.createdAt as number | undefined,
+      dependencies: [],
+      chains: [],
+      scripts: [],
+      metadata: {},
     };
   }
 }

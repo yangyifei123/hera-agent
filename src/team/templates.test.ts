@@ -1,10 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import {
-  TEAM_TEMPLATES,
-  getTeamTemplate,
-  getTeamTemplateNames,
-  type TeamTemplateName,
-} from "./templates.js";
+import { TEAM_TEMPLATES, getTeamTemplate, getTeamTemplateNames } from "./templates.js";
 
 describe("TEAM_TEMPLATES", () => {
   test("has code-review template", () => {
@@ -20,7 +15,7 @@ describe("TEAM_TEMPLATES", () => {
   });
 
   test("all templates have required fields", () => {
-    for (const [name, tpl] of Object.entries(TEAM_TEMPLATES)) {
+    for (const tpl of Object.values(TEAM_TEMPLATES)) {
       expect(tpl.description).toBeTruthy();
       expect(Array.isArray(tpl.members)).toBe(true);
       expect(tpl.members.length).toBeGreaterThan(0);

@@ -12,6 +12,7 @@ import { TeamManager } from "../team/manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { SkillManager } from "../skills/manager.js";
 import { DistillationEngine } from "../distillation/engine.js";
+import { WorkflowManager } from "../workflow/manager.js";
 import type { AgentDefinition, PluginContext } from "../types.js";
 
 export interface TestHarness {
@@ -42,7 +43,10 @@ export async function makeTestHarness(): Promise<TestHarness> {
   const teamManager = new TeamManager(store, undefined);
   await teamManager.init();
 
-  const distillation = new DistillationEngine();
+  const workflowManager = new WorkflowManager(store, teamManager, undefined);
+  await workflowManager.init();
+
+  const distillation = new DistillationEngine(store);
 
   const registeredAgents = new Map<string, AgentDefinition>();
 
@@ -50,6 +54,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
     store,
     skillManager,
     teamManager,
+    workflowManager,
     distillation,
     agentRegistry,
     registeredAgents,

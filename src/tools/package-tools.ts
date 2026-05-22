@@ -1,7 +1,7 @@
 import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import { heraLog } from "../logger.js";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import { readdir, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -99,9 +99,7 @@ async function createTarGz(sourceDir: string, outputPath: string, files?: string
   const gzip = createGzip();
   const output = createWriteStream(outputPath);
 
-  const packStream = files
-    ? pack(sourceDir, { entries: files })
-    : pack(sourceDir);
+  const packStream = files ? pack(sourceDir, { entries: files }) : pack(sourceDir);
 
   await pipeline(packStream, gzip, output);
 }
@@ -117,14 +115,21 @@ async function extractTarGz(archivePath: string, targetDir: string): Promise<voi
   await pipeline(input, gunzip, extractStream);
 }
 
-export function createPackageTools(ctx: PluginContext) {
+export function createPackageTools(_ctx: PluginContext) {
   return {
     hera_package_agent: tool({
-      description: "Package an agent for migration/distribution. Creates a .tar.gz file containing the agent's plugin code (if plugin mode), .md file (if md mode), and optionally related memory data.",
+      description:
+        "Package an agent for migration/distribution. Creates a .tar.gz file containing the agent's plugin code (if plugin mode), .md file (if md mode), and optionally related memory data.",
       args: {
         name: z.string().describe("Agent name to package"),
-        includeMemory: z.boolean().optional().describe("Include related memory data (default: false)"),
-        outputName: z.string().optional().describe("Custom output filename (without extension, default: <agent-name>-package)"),
+        includeMemory: z
+          .boolean()
+          .optional()
+          .describe("Include related memory data (default: false)"),
+        outputName: z
+          .string()
+          .optional()
+          .describe("Custom output filename (without extension, default: <agent-name>-package)"),
       },
       async execute(args) {
         const agentName = args.name;
@@ -197,7 +202,8 @@ export function createPackageTools(ctx: PluginContext) {
             if (memoryFiles.length > 0) {
               const memoryStaging = join(stagingDir, "memory");
 
-              const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+              const configRoot =
+                process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
               const memoryDir = join(configRoot, "hera-data", "memory");
 
               for (const relPath of memoryFiles) {
@@ -213,10 +219,7 @@ export function createPackageTools(ctx: PluginContext) {
           }
 
           // Write manifest
-          await writeFile(
-            join(stagingDir, "manifest.json"),
-            JSON.stringify(manifest, null, 2)
-          );
+          await writeFile(join(stagingDir, "manifest.json"), JSON.stringify(manifest, null, 2));
           manifest.files.push("manifest.json");
 
           // Create tar.gz
@@ -241,22 +244,25 @@ export function createPackageTools(ctx: PluginContext) {
             `To share this agent, send the .tar.gz file.`,
             `To import: use hera_unpack_agent with the file path.`,
           ].join("\n");
-
-        } catch (err: any) {
+        } catch (err: unknown) {
           // Clean up on error
           try {
             await rm(stagingDir, { recursive: true, force: true });
           } catch {}
-          return `Error packaging agent: ${err?.message ?? String(err)}`;
+          return `Error packaging agent: ${errorMessage(err)}`;
         }
       },
     }),
 
     hera_unpack_agent: tool({
-      description: "Unpack and install a packaged agent from a .tar.gz file. Restores the agent's plugin code or .md file, and optionally memory data.",
+      description:
+        "Unpack and install a packaged agent from a .tar.gz file. Restores the agent's plugin code or .md file, and optionally memory data.",
       args: {
         packagePath: z.string().describe("Path to the .tar.gz package file"),
-        installPlugin: z.boolean().optional().describe("If plugin mode, run 'bun add' to install (default: true)"),
+        installPlugin: z
+          .boolean()
+          .optional()
+          .describe("If plugin mode, run 'bun add' to install (default: true)"),
       },
       async execute(args) {
         const packagePath = args.packagePath;
@@ -287,7 +293,8 @@ export function createPackageTools(ctx: PluginContext) {
 
           const { agentName, mode, includesMemory } = manifest;
 
-          const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+          const configRoot =
+            process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
           const results: string[] = [];
 
           // Restore agent files
@@ -339,13 +346,12 @@ export function createPackageTools(ctx: PluginContext) {
             ``,
             `Agent is now available. Restart OpenCode or reload agents to use it.`,
           ].join("\n");
-
-        } catch (err: any) {
+        } catch (err: unknown) {
           // Clean up on error
           try {
             await rm(extractDir, { recursive: true, force: true });
           } catch {}
-          return `Error unpacking agent: ${err?.message ?? String(err)}`;
+          return `Error unpacking agent: ${errorMessage(err)}`;
         }
       },
     }),
@@ -359,7 +365,7 @@ export function createPackageTools(ctx: PluginContext) {
         try {
           await mkdir(packageDir, { recursive: true });
           const files = await readdir(packageDir);
-          const packages = files.filter(f => f.endsWith(".tar.gz"));
+          const packages = files.filter((f) => f.endsWith(".tar.gz"));
 
           if (packages.length === 0) {
             return "No packaged agents found.";
@@ -379,12 +385,16 @@ export function createPackageTools(ctx: PluginContext) {
           results.push(`Location: ${packageDir}`);
 
           return results.join("\n");
-        } catch (err: any) {
-          return `Error listing packages: ${err?.message ?? String(err)}`;
+        } catch (err: unknown) {
+          return `Error listing packages: ${errorMessage(err)}`;
         }
       },
     }),
   };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

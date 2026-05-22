@@ -9,7 +9,7 @@
  */
 
 import type { WorkflowDefinition, WorkflowStep } from "../types.js";
-import { CircularDependencyError, WorkflowValidationError } from "../errors.js";
+import { WorkflowValidationError } from "../errors.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -26,24 +26,24 @@ export class WorkflowValidator {
     const warnings: string[] = [];
 
     // Basic validation
-    if (!def.id || def.id.trim() === '') {
-      errors.push('Workflow ID is required');
+    if (!def.id || def.id.trim() === "") {
+      errors.push("Workflow ID is required");
     }
 
-    if (!def.name || def.name.trim() === '') {
-      errors.push('Workflow name is required');
+    if (!def.name || def.name.trim() === "") {
+      errors.push("Workflow name is required");
     }
 
     if (!def.steps || def.steps.length === 0) {
-      errors.push('Workflow must have at least one step');
+      errors.push("Workflow must have at least one step");
     }
 
     if (def.steps) {
       // Step ID uniqueness
       const stepIds = new Set<string>();
       for (const step of def.steps) {
-        if (!step.id || step.id.trim() === '') {
-          errors.push('All steps must have an ID');
+        if (!step.id || step.id.trim() === "") {
+          errors.push("All steps must have an ID");
           continue;
         }
 
@@ -53,12 +53,12 @@ export class WorkflowValidator {
         stepIds.add(step.id);
 
         // Step name validation
-        if (!step.name || step.name.trim() === '') {
+        if (!step.name || step.name.trim() === "") {
           warnings.push(`Step ${step.id} has no name`);
         }
 
         // Executor validation
-        if (step.type === 'agent' && !step.executor) {
+        if (step.type === "agent" && !step.executor) {
           warnings.push(`Agent step ${step.id} has no executor specified`);
         }
       }
@@ -88,15 +88,15 @@ export class WorkflowValidator {
       }
 
       // Mode-specific validation
-      if (def.mode === 'dag') {
-        const hasDeps = def.steps.some(s => s.dependencies && s.dependencies.length > 0);
+      if (def.mode === "dag") {
+        const hasDeps = def.steps.some((s) => s.dependencies && s.dependencies.length > 0);
         if (!hasDeps) {
-          warnings.push('DAG mode workflow has no dependencies - consider using parallel mode');
+          warnings.push("DAG mode workflow has no dependencies - consider using parallel mode");
         }
       }
 
-      if (def.mode === 'serial' && def.steps.length === 1) {
-        warnings.push('Serial workflow with single step - consider simplifying');
+      if (def.mode === "serial" && def.steps.length === 1) {
+        warnings.push("Serial workflow with single step - consider simplifying");
       }
 
       // Timeout validation
@@ -110,10 +110,14 @@ export class WorkflowValidator {
       for (const step of def.steps) {
         if (step.retryPolicy) {
           if (step.retryPolicy.maxAttempts < 0) {
-            errors.push(`Step ${step.id} has invalid retry maxAttempts: ${step.retryPolicy.maxAttempts}`);
+            errors.push(
+              `Step ${step.id} has invalid retry maxAttempts: ${step.retryPolicy.maxAttempts}`
+            );
           }
           if (step.retryPolicy.backoffMs < 0) {
-            errors.push(`Step ${step.id} has invalid retry backoffMs: ${step.retryPolicy.backoffMs}`);
+            errors.push(
+              `Step ${step.id} has invalid retry backoffMs: ${step.retryPolicy.backoffMs}`
+            );
           }
         }
       }
@@ -141,7 +145,7 @@ export class WorkflowValidator {
    */
   private static detectCycles(steps: WorkflowStep[]): string[] {
     const graph = new Map<string, string[]>();
-    steps.forEach(s => graph.set(s.id, s.dependencies || []));
+    steps.forEach((s) => graph.set(s.id, s.dependencies || []));
 
     const visited = new Set<string>();
     const recStack = new Set<string>();
@@ -162,7 +166,7 @@ export class WorkflowValidator {
           // Found a cycle
           const cycleStart = path.indexOf(dep);
           const cycle = [...path.slice(cycleStart), dep];
-          cycles.push(cycle.join(' → '));
+          cycles.push(cycle.join(" → "));
           return true;
         }
       }
@@ -184,7 +188,7 @@ export class WorkflowValidator {
    * Check if a workflow has any approval steps
    */
   static hasApprovalSteps(def: WorkflowDefinition): boolean {
-    return def.steps.some(s => s.type === 'approval');
+    return def.steps.some((s) => s.type === "approval");
   }
 
   /**
@@ -194,18 +198,18 @@ export class WorkflowValidator {
     const dependents = new Set<string>();
     for (const step of def.steps) {
       if (step.dependencies) {
-        step.dependencies.forEach(dep => dependents.add(dep));
+        step.dependencies.forEach((dep) => dependents.add(dep));
       }
     }
 
-    return def.steps.filter(s => !dependents.has(s.id));
+    return def.steps.filter((s) => !dependents.has(s.id));
   }
 
   /**
    * Get all root steps (steps with no dependencies)
    */
   static getRootSteps(def: WorkflowDefinition): WorkflowStep[] {
-    return def.steps.filter(s => !s.dependencies || s.dependencies.length === 0);
+    return def.steps.filter((s) => !s.dependencies || s.dependencies.length === 0);
   }
 
   /**
@@ -222,20 +226,20 @@ export class WorkflowValidator {
     score += Math.min(totalDeps * 3, 20);
 
     // Mode complexity
-    if (def.mode === 'dag') score += 20;
-    else if (def.mode === 'parallel') score += 10;
+    if (def.mode === "dag") score += 20;
+    else if (def.mode === "parallel") score += 10;
     else score += 5;
 
     // Approval steps add complexity
-    const approvalCount = def.steps.filter(s => s.type === 'approval').length;
+    const approvalCount = def.steps.filter((s) => s.type === "approval").length;
     score += approvalCount * 5;
 
     // Conditional steps add complexity
-    const conditionalCount = def.steps.filter(s => s.condition).length;
+    const conditionalCount = def.steps.filter((s) => s.condition).length;
     score += conditionalCount * 3;
 
     // Retry policies add complexity
-    const retryCount = def.steps.filter(s => s.retryPolicy).length;
+    const retryCount = def.steps.filter((s) => s.retryPolicy).length;
     score += retryCount * 2;
 
     return Math.min(score, 100);

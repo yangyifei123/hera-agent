@@ -4,7 +4,8 @@ export const WORKFLOW_TEMPLATES: Record<string, WorkflowDefinition> = {
   "coder-workflow": {
     id: "coder-workflow",
     name: "Code Development Workflow",
-    description: "Standard workflow for code changes: analyze → implement → test → review → approve",
+    description:
+      "Standard workflow for code changes: analyze → implement → test → review → approve",
     mode: "serial",
     steps: [
       {

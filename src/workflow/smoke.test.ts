@@ -7,6 +7,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+function isApprovalResult(value: unknown): value is { type: "approval_required" } {
+  return typeof value === "object" && value !== null && "type" in value;
+}
+
 describe("Workflow Smoke Tests", () => {
   let tempDir: string;
   let store: MemoryStore;
@@ -94,11 +98,29 @@ describe("Workflow Smoke Tests", () => {
         mode: "dag",
         steps: [
           { id: "setup", name: "Setup", type: "tool", executor: "setup" },
-          { id: "compile", name: "Compile", type: "tool", executor: "compiler", dependencies: ["setup"] },
+          {
+            id: "compile",
+            name: "Compile",
+            type: "tool",
+            executor: "compiler",
+            dependencies: ["setup"],
+          },
           { id: "lint", name: "Lint", type: "tool", executor: "linter", dependencies: ["setup"] },
           { id: "test", name: "Test", type: "tool", executor: "tester", dependencies: ["compile"] },
-          { id: "docs", name: "Generate Docs", type: "tool", executor: "docgen", dependencies: ["compile"] },
-          { id: "package", name: "Package", type: "tool", executor: "packager", dependencies: ["test", "docs", "lint"] },
+          {
+            id: "docs",
+            name: "Generate Docs",
+            type: "tool",
+            executor: "docgen",
+            dependencies: ["compile"],
+          },
+          {
+            id: "package",
+            name: "Package",
+            type: "tool",
+            executor: "packager",
+            dependencies: ["test", "docs", "lint"],
+          },
         ],
         createdAt: Date.now(),
       };
@@ -129,9 +151,26 @@ describe("Workflow Smoke Tests", () => {
         mode: "serial",
         steps: [
           { id: "build", name: "Build", type: "tool", executor: "builder" },
-          { id: "staging", name: "Deploy to Staging", type: "tool", executor: "deployer", condition: "env==staging" },
-          { id: "prod-check", name: "Production Check", type: "approval", condition: "env==production" },
-          { id: "prod", name: "Deploy to Production", type: "tool", executor: "deployer", condition: "env==production" },
+          {
+            id: "staging",
+            name: "Deploy to Staging",
+            type: "tool",
+            executor: "deployer",
+            condition: "env==staging",
+          },
+          {
+            id: "prod-check",
+            name: "Production Check",
+            type: "approval",
+            condition: "env==production",
+          },
+          {
+            id: "prod",
+            name: "Deploy to Production",
+            type: "tool",
+            executor: "deployer",
+            condition: "env==production",
+          },
         ],
         createdAt: Date.now(),
       };
@@ -177,8 +216,13 @@ describe("Workflow Smoke Tests", () => {
       expect(Object.keys(result.stepResults)).toHaveLength(5);
 
       // Verify approval steps were executed
-      expect(result.stepResults.review1.type).toBe("approval_required");
-      expect(result.stepResults.review2.type).toBe("approval_required");
+      const review1 = result.stepResults.review1;
+      const review2 = result.stepResults.review2;
+      if (!isApprovalResult(review1) || !isApprovalResult(review2)) {
+        throw new Error("Expected approval step results");
+      }
+      expect(review1.type).toBe("approval_required");
+      expect(review2.type).toBe("approval_required");
     });
 
     test("workflow persistence and recovery", async () => {
@@ -315,9 +359,7 @@ describe("Workflow Smoke Tests", () => {
         name: "Cleanup Test",
         description: "Test cleanup",
         mode: "serial",
-        steps: [
-          { id: "step1", name: "Step 1", type: "tool", executor: "tool1" },
-        ],
+        steps: [{ id: "step1", name: "Step 1", type: "tool", executor: "tool1" }],
         createdAt: Date.now(),
       };
 
@@ -347,13 +389,43 @@ describe("Workflow Smoke Tests", () => {
         mode: "dag",
         steps: [
           { id: "checkout", name: "Checkout Code", type: "tool", executor: "git" },
-          { id: "install", name: "Install Dependencies", type: "tool", executor: "npm", dependencies: ["checkout"] },
+          {
+            id: "install",
+            name: "Install Dependencies",
+            type: "tool",
+            executor: "npm",
+            dependencies: ["checkout"],
+          },
           { id: "lint", name: "Lint", type: "tool", executor: "eslint", dependencies: ["install"] },
-          { id: "test", name: "Run Tests", type: "tool", executor: "jest", dependencies: ["install"] },
-          { id: "build", name: "Build", type: "tool", executor: "webpack", dependencies: ["lint", "test"] },
-          { id: "security", name: "Security Scan", type: "tool", executor: "snyk", dependencies: ["build"] },
+          {
+            id: "test",
+            name: "Run Tests",
+            type: "tool",
+            executor: "jest",
+            dependencies: ["install"],
+          },
+          {
+            id: "build",
+            name: "Build",
+            type: "tool",
+            executor: "webpack",
+            dependencies: ["lint", "test"],
+          },
+          {
+            id: "security",
+            name: "Security Scan",
+            type: "tool",
+            executor: "snyk",
+            dependencies: ["build"],
+          },
           { id: "approve", name: "Approve Deploy", type: "approval", dependencies: ["security"] },
-          { id: "deploy", name: "Deploy", type: "tool", executor: "k8s", dependencies: ["approve"] },
+          {
+            id: "deploy",
+            name: "Deploy",
+            type: "tool",
+            executor: "k8s",
+            dependencies: ["approve"],
+          },
         ],
         createdAt: Date.now(),
       };

@@ -4,6 +4,19 @@ import { proposeEvolution } from "../evolution/auto-evolve.js";
 
 const z = tool.schema;
 
+interface SessionPart {
+  text?: string;
+}
+
+interface SessionMessage {
+  info?: { role?: string };
+  parts?: SessionPart[];
+}
+
+function isSessionMessage(message: unknown): message is SessionMessage {
+  return typeof message === "object" && message !== null;
+}
+
 export function createEvolutionTools(ctx: PluginContext) {
   const { agentRegistry, registeredAgents, store, skillManager } = ctx;
 
@@ -99,10 +112,16 @@ export function createEvolutionTools(ctx: PluginContext) {
             const response = await client.session.messages({ path: { id: args.session_id } });
             const raw = response.data ?? [];
             messages = raw
-              .filter((m: any) => m.role && m.parts?.length)
-              .map((m: any) => ({
-                role: m.role,
-                content: m.parts.map((p: any) => p.text ?? "").join(""),
+              .filter(isSessionMessage)
+              .filter(
+                (m) =>
+                  typeof m.info?.role === "string" && Array.isArray(m.parts) && m.parts.length > 0
+              )
+              .map((m) => ({
+                role: m.info?.role ?? "unknown",
+                content: (m.parts ?? [])
+                  .map((p) => ("text" in p && typeof p.text === "string" ? p.text : ""))
+                  .join(""),
               }));
           }
         } catch {

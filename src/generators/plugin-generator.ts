@@ -97,7 +97,13 @@ export class PluginGenerator {
     type: string;
     main: string;
     types: string;
-    exports: Record<string, any>;
+    exports: {
+      ".": {
+        types: string;
+        import: string;
+        default: string;
+      };
+    };
     scripts: Record<string, string>;
     dependencies: Record<string, string>;
     files: string[];

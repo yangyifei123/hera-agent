@@ -35,3 +35,10 @@ export function buildSkillPromptEmbedding(skills: SkillDefinition[]): string {
   if (skills.length === 0) return "";
   return skills.map((s) => `## Skill: ${s.name}\n${s.prompt}`).join("\n\n");
 }
+
+/**
+ * Converts unknown caught values into readable error text.
+ */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

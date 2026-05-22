@@ -4,7 +4,7 @@
  * Powers the hera_upgrade_to_agent enhancement and new analysis tools.
  */
 
-import type { SkillDefinition, SkillPackage, AgentMode } from "../types.js";
+import type { SkillDefinition, AgentMode } from "../types.js";
 
 // --- Analysis Types ---
 
@@ -63,7 +63,7 @@ export class SkillAnalyzer {
   /**
    * Extract capabilities from skill prompt, description, and trigger.
    */
-  private static extractCapabilities(skill: SkillDefinition): Capability[] {
+  static extractCapabilities(skill: SkillDefinition): Capability[] {
     const capabilities: Capability[] = [];
     const text = `${skill.prompt} ${skill.description} ${skill.trigger}`.toLowerCase();
 

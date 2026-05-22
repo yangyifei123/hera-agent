@@ -38,7 +38,7 @@ export default [
       "@typescript-eslint/no-non-null-assertion": "warn",
 
       // General
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "no-unused-vars": "off", // TypeScript-aware rule above handles TS syntax correctly
       "no-console": "off", // Allow console in this project (heraLog wraps it)
       "no-debugger": "error",
       "no-empty": ["error", { allowEmptyCatch: true }],
@@ -54,6 +54,7 @@ export default [
     files: ["**/*.test.ts"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
       "no-console": "off",
     },
   },

@@ -199,11 +199,7 @@ export class WorkflowError extends HeraError {
 
 export class WorkflowNotFoundError extends WorkflowError {
   constructor(workflowId: string) {
-    super(
-      ErrorCode.WORKFLOW_NOT_FOUND,
-      `Workflow '${workflowId}' not found`,
-      { workflowId }
-    );
+    super(ErrorCode.WORKFLOW_NOT_FOUND, `Workflow '${workflowId}' not found`, { workflowId });
   }
 }
 
@@ -211,7 +207,7 @@ export class WorkflowValidationError extends WorkflowError {
   constructor(workflowId: string, validationErrors: string[]) {
     super(
       ErrorCode.WORKFLOW_VALIDATION_FAILED,
-      `Workflow '${workflowId}' validation failed: ${validationErrors.join(', ')}`,
+      `Workflow '${workflowId}' validation failed: ${validationErrors.join(", ")}`,
       { workflowId, validationErrors }
     );
   }
@@ -229,6 +225,6 @@ export class WorkflowExecutionError extends WorkflowError {
 
 export class CircularDependencyError extends WorkflowValidationError {
   constructor(workflowId: string, cycle: string[]) {
-    super(workflowId, [`Circular dependency detected: ${cycle.join(' → ')}`]);
+    super(workflowId, [`Circular dependency detected: ${cycle.join(" → ")}`]);
   }
 }

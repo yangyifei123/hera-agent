@@ -99,7 +99,8 @@ export class MemoryStore {
   ): Promise<HeraMemory[]> {
     let all = await this.list(type);
     if (options?.since != null) {
-      all = all.filter((m) => m.timestamp >= options.since!);
+      const since = options.since;
+      all = all.filter((m) => m.timestamp >= since);
     }
     const lower = query.toLowerCase();
     const wordBoundaryRe = new RegExp(`\\b${escapeRegex(lower)}`, "i");

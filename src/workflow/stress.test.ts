@@ -1,16 +1,23 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { WorkflowManager } from "./manager";
-import { MemoryStore } from "../memory/store";
-import type { WorkflowDefinition, WorkflowStep } from "../types";
+import { WorkflowManager } from "./manager.js";
+import { MemoryStore } from "../memory/store.js";
+import { TeamManager } from "../team/manager.js";
+import type { WorkflowDefinition, WorkflowStep } from "../types.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("Workflow Stress Tests", () => {
   let manager: WorkflowManager;
   let store: MemoryStore;
+  let tempDir: string;
 
   beforeEach(async () => {
-    store = new MemoryStore("test-workflows-stress");
+    tempDir = await mkdtemp(join(tmpdir(), "hera-workflows-stress-"));
+    store = new MemoryStore(tempDir);
     await store.init();
-    manager = new WorkflowManager(store);
+    const teamManager = new TeamManager(store, undefined);
+    manager = new WorkflowManager(store, teamManager, undefined);
   });
 
   afterEach(async () => {
@@ -18,6 +25,7 @@ describe("Workflow Stress Tests", () => {
     for (const wf of workflows) {
       await manager.deleteWorkflow(wf.id);
     }
+    await rm(tempDir, { recursive: true, force: true });
   });
 
   describe("Large DAG Workflows", () => {
@@ -35,12 +43,12 @@ describe("Workflow Stress Tests", () => {
 
         // Add dependencies to create a complex DAG
         if (i > 0) {
-          step.dependsOn = [];
+          step.dependencies = [];
           // Each step depends on 1-3 previous steps
           const numDeps = Math.min(1 + (i % 3), i);
           for (let j = 0; j < numDeps; j++) {
             const depIndex = Math.max(0, i - 1 - j * 5);
-            step.dependsOn.push(`step${depIndex}`);
+            step.dependencies.push(`step${depIndex}`);
           }
         }
 
@@ -64,9 +72,7 @@ describe("Workflow Stress Tests", () => {
     }, 30000);
 
     test("handles wide DAG with 30 parallel branches", async () => {
-      const steps: WorkflowStep[] = [
-        { id: "init", name: "Init", type: "tool", executor: "init" },
-      ];
+      const steps: WorkflowStep[] = [{ id: "init", name: "Init", type: "tool", executor: "init" }];
 
       // Create 30 parallel branches
       for (let i = 0; i < 30; i++) {
@@ -75,7 +81,7 @@ describe("Workflow Stress Tests", () => {
           name: `Branch ${i}`,
           type: "tool",
           executor: `branch${i}`,
-          dependsOn: ["init"],
+          dependencies: ["init"],
         });
       }
 
@@ -85,7 +91,7 @@ describe("Workflow Stress Tests", () => {
         name: "Merge",
         type: "tool",
         executor: "merge",
-        dependsOn: steps.slice(1).map((s) => s.id),
+        dependencies: steps.slice(1).map((s) => s.id),
       });
 
       const workflow: WorkflowDefinition = {
@@ -117,7 +123,7 @@ describe("Workflow Stress Tests", () => {
         };
 
         if (i > 0) {
-          step.dependsOn = [`level${i - 1}`];
+          step.dependencies = [`level${i - 1}`];
         }
 
         steps.push(step);
@@ -277,8 +283,8 @@ describe("Workflow Stress Tests", () => {
         ];
 
         if (mode === "dag") {
-          steps[1].dependsOn = ["step1"];
-          steps[2].dependsOn = ["step1"];
+          steps[1]!.dependencies = ["step1"];
+          steps[2]!.dependencies = ["step1"];
         }
 
         workflows.push({
@@ -348,9 +354,7 @@ describe("Workflow Stress Tests", () => {
           name: `Rapid ${i}`,
           description: `Workflow ${i}`,
           mode: "serial",
-          steps: [
-            { id: "step1", name: "Step 1", type: "tool", executor: "tool1" },
-          ],
+          steps: [{ id: "step1", name: "Step 1", type: "tool", executor: "tool1" }],
           createdAt: Date.now(),
         });
       }

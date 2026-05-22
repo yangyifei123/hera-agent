@@ -60,7 +60,7 @@ describe("getDefaultPermission", () => {
     const b = getDefaultPermission();
     expect(a).not.toBe(b);
     (a as any).edit = "deny";
-    expect(b.edit).toBe("allow");
+    expect(b?.edit).toBe("allow");
   });
 });
 
