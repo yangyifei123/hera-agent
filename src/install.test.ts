@@ -1,7 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "path";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 
 describe("Installation Tests", () => {
   describe("Build Verification", () => {
@@ -137,6 +137,35 @@ describe("Installation Tests", () => {
         const output = String((err as { stdout?: Buffer | string }).stdout ?? "");
         expect(output).toContain("Refusing to purge Hera data without confirmation");
       }
+    });
+
+    test("doctor fails when OpenCode CLI is not available", () => {
+      try {
+        execFileSync(process.execPath, ["bin/hera.js", "doctor"], {
+          encoding: "utf-8",
+          cwd: process.cwd(),
+          stdio: "pipe",
+          env: { ...process.env, PATH: "" },
+        });
+        throw new Error("Expected doctor to fail without OpenCode in PATH");
+      } catch (err) {
+        const output = String((err as { stdout?: Buffer | string }).stdout ?? "");
+        expect(output).toContain("opencode CLI not found in PATH");
+        expect(output).toContain("Some checks failed");
+      }
+    });
+
+    test("help reports all inherited built-in skills", () => {
+      const output = execSync("node bin/hera.js help", {
+        encoding: "utf-8",
+        cwd: process.cwd(),
+        stdio: "pipe",
+      });
+
+      expect(output).toContain("Built-in Skills (11)");
+      expect(output).toContain("workflow-orchestration");
+      expect(output).toContain("brainstorming");
+      expect(output).toContain("skill-creator");
     });
   });
 

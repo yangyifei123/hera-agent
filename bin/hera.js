@@ -23,10 +23,13 @@ function getVersion() {
 const VERSION = getVersion();
 
 function getConfigRoot() {
+  // Keep this logic in sync with src/constants.ts resolveOpenCodeConfigRoot().
   if (process.platform === "win32") {
-    return path.join(process.env.USERPROFILE || process.env.HOME, ".config", "opencode");
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
+    return path.join(home, ".config", "opencode");
   }
-  return path.join(process.env.HOME, ".config", "opencode");
+  const home = process.env.HOME ?? "/root";
+  return path.join(home, ".config", "opencode");
 }
 
 function checkBun() {
@@ -72,6 +75,10 @@ function quotePath(p) {
 function shellPaths(configRoot = getConfigRoot()) {
   const npmRoot = process.platform === "win32" ? quotePath(configRoot) : "~/.config/opencode";
   const cdRoot = process.platform === "win32" ? `cd ${quotePath(configRoot)}` : "cd ~/.config/opencode";
+  const cliPath =
+    process.platform === "win32"
+      ? `node ${quotePath(path.join(configRoot, "node_modules", "hera-agent", "bin", "hera.js"))}`
+      : "node ~/.config/opencode/node_modules/hera-agent/bin/hera.js";
   const removeData =
     process.platform === "win32"
       ? [
@@ -84,7 +91,7 @@ function shellPaths(configRoot = getConfigRoot()) {
           "rm -rf ~/.config/opencode/agents/hera/",
           "rm -f ~/.config/opencode/hera.json",
         ];
-  return { npmRoot, cdRoot, removeData };
+  return { npmRoot, cdRoot, removeData, cliPath };
 }
 
 function hasPurgeConfirmation() {
@@ -233,7 +240,10 @@ switch (cmd) {
       console.log(`[✓] opencode CLI installed (${opencodeVersion})`);
       pass++;
     } else {
-      console.log("[!] opencode CLI not found in PATH — install OpenCode before using @hera");
+      console.log(
+        "[✗] opencode CLI not found in PATH — install OpenCode before using Hera: https://github.com/opencode-ai/opencode"
+      );
+      fail++;
     }
 
     // 2. Check opencode.json has hera-agent
@@ -294,7 +304,11 @@ switch (cmd) {
     if (fail === 0) {
       console.log("All checks passed. Hera is healthy.");
     } else {
-      console.log("Some checks failed. Install with npm first: cd ~/.config/opencode; npm install hera-agent");
+      const paths = shellPaths(configRoot);
+      console.log(
+        `Some checks failed. Install with npm first: npm install --prefix ${paths.npmRoot} hera-agent`
+      );
+      console.log(`Then verify with: ${paths.cliPath} doctor`);
     }
     process.exit(fail > 0 ? 1 : 0);
     break;
@@ -460,6 +474,9 @@ If you installed with Bun, replace npm uninstall with:
       ["subagent", "Delegate to specialized agents"],
       ["communicate", "Team coordination via messaging"],
       ["auto-compact", "Context window discipline"],
+      ["workflow-orchestration", "Multi-step workflow planning"],
+      ["brainstorming", "Requirement exploration before implementation"],
+      ["skill-creator", "Create and refine reusable skills"],
     ];
     console.log("Built-in skills (always available):");
     for (const [name, desc] of builtins) {
@@ -546,7 +563,7 @@ Usage:
   opencode --agent <agent-name>      Start a Hera-created agent
   opencode run --agent hera "..."    Run a single command
 
-Built-in Skills (8):
+Built-in Skills (11):
   caveman       Ultra-compressed communication (~75% token savings)
   init          Environment awareness and project detection
   memory        Autonomous memory management
@@ -555,6 +572,9 @@ Built-in Skills (8):
   subagent      Delegate to specialized agents
   communicate   Team coordination via messaging
   auto-compact  Context window discipline
+  workflow-orchestration Multi-step workflow planning
+  brainstorming Requirement exploration before implementation
+  skill-creator Create and refine reusable skills
 
 Agent Templates (10):
   general, coder, reviewer, researcher, coordinator,

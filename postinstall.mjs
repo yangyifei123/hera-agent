@@ -3,10 +3,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 function getConfigRoot() {
+  // Keep this logic in sync with src/constants.ts resolveOpenCodeConfigRoot().
   if (process.platform === "win32") {
-    return join(process.env.USERPROFILE || "C:/Users/Administrator", ".config", "opencode");
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
+    return join(home, ".config", "opencode");
   }
-  return join(process.env.HOME || "/root", ".config", "opencode");
+  const home = process.env.HOME ?? "/root";
+  return join(home, ".config", "opencode");
 }
 
 function ensureDirectories(configRoot) {
