@@ -14,6 +14,8 @@ import {
   MAX_SKILL_DESC_LENGTH,
   MAX_RECALL_RESULTS,
   MAX_RESULT_PREVIEW_LENGTH,
+  resolveOpenCodeConfigRoot,
+  TEAM_MANAGEMENT_DESCRIPTIONS,
 } from "./constants.js";
 
 describe("Constants", () => {
@@ -78,6 +80,53 @@ describe("Constants", () => {
     test("DEFAULT_SKILLS is readonly (as const)", () => {
       // TypeScript as const makes this a readonly tuple
       expect(Object.isFrozen(DEFAULT_SKILLS) || Array.isArray(DEFAULT_SKILLS)).toBe(true);
+    });
+  });
+
+  describe("Config Root", () => {
+    test("resolves Windows config root from USERPROFILE", () => {
+      expect(
+        resolveOpenCodeConfigRoot(
+          { USERPROFILE: "C:/Users/Ada", HOME: "C:/Users/Fallback" },
+          "win32"
+        ).replace(/\\/g, "/")
+      ).toBe("C:/Users/Ada/.config/opencode");
+    });
+
+    test("falls back to HOME on Windows when USERPROFILE is missing", () => {
+      expect(
+        resolveOpenCodeConfigRoot({ HOME: "C:/Users/HomeOnly" }, "win32").replace(/\\/g, "/")
+      ).toBe("C:/Users/HomeOnly/.config/opencode");
+    });
+
+    test("uses stable Windows fallback when no home env exists", () => {
+      expect(resolveOpenCodeConfigRoot({}, "win32").replace(/\\/g, "/")).toBe(
+        "C:/Users/Administrator/.config/opencode"
+      );
+    });
+
+    test("resolves Unix config root from HOME", () => {
+      expect(resolveOpenCodeConfigRoot({ HOME: "/home/ada" }, "linux").replace(/\\/g, "/")).toBe(
+        "/home/ada/.config/opencode"
+      );
+    });
+
+    test("uses /root fallback on Unix when HOME is missing", () => {
+      expect(resolveOpenCodeConfigRoot({}, "linux").replace(/\\/g, "/")).toBe(
+        "/root/.config/opencode"
+      );
+    });
+  });
+
+  describe("Team Management Descriptions", () => {
+    test("documents all team management modes", () => {
+      expect(Object.keys(TEAM_MANAGEMENT_DESCRIPTIONS).sort()).toEqual([
+        "control",
+        "okr",
+        "simple",
+        "tree",
+      ]);
+      expect(TEAM_MANAGEMENT_DESCRIPTIONS.control).toContain("approval");
     });
   });
 

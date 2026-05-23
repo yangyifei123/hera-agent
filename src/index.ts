@@ -7,9 +7,9 @@ import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
-import { join } from "node:path";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
-import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS } from "./constants.js";
+import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
+import { join } from "node:path";
 import { heraLog } from "./logger.js";
 import { extractMemories } from "./memory/smart-extractor.js";
 import { randomUUID } from "node:crypto";
@@ -275,12 +275,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 };
 
 function resolveConfigRoot(_projectDir: string): string {
-  if (process.platform === "win32") {
-    const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
-    return join(home, ".config", "opencode");
-  }
-  const home = process.env.HOME ?? "/root";
-  return join(home, ".config", "opencode");
+  return getConfigRoot();
 }
 
 export default HeraPlugin;

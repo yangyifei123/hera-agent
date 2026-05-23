@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 /**
  * Hera Constants - Centralized configuration values
  * All magic numbers extracted to this file for maintainability
@@ -43,6 +45,41 @@ export const DEFAULT_SKILLS = [
   "brainstorming",
   "skill-creator",
 ] as const;
+
+// === Runtime Paths ===
+
+export type ConfigRootPlatform = NodeJS.Platform;
+
+export type ConfigRootEnv = NodeJS.ProcessEnv | { USERPROFILE?: string; HOME?: string };
+
+/** Resolve the OpenCode config root used by Hera's plugin runtime and CLI helpers. */
+export function resolveOpenCodeConfigRoot(
+  env: ConfigRootEnv = process.env,
+  platform: ConfigRootPlatform = process.platform
+): string {
+  if (platform === "win32") {
+    const home = env.USERPROFILE ?? env.HOME ?? "C:/Users/Administrator";
+    return join(home, ".config", "opencode");
+  }
+  const home = env.HOME ?? "/root";
+  return join(home, ".config", "opencode");
+}
+
+/** Canonical OpenCode config root for the current process. */
+export function getConfigRoot(): string {
+  return resolveOpenCodeConfigRoot();
+}
+
+// === Team Management UX ===
+
+export type TeamManagementMode = "simple" | "okr" | "tree" | "control";
+
+export const TEAM_MANAGEMENT_DESCRIPTIONS: Record<TeamManagementMode, string> = {
+  simple: "flat team with no extra tracking; coordinate freely with peers",
+  okr: "objectives and key results for progress tracking; use objectives to report outcomes",
+  tree: "hierarchical delegation view; root member delegates and workers report upward",
+  control: "approval checkpoints and gates for review-heavy work",
+};
 
 // === Default Permissions ===
 
