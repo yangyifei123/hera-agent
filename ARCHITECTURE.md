@@ -72,6 +72,8 @@ graph TD
 | **Control Manager** | `src/team/control-manager.ts` | Control-point team management |
 | **Test Harness** | `src/tools/test-harness.ts` | Shared PluginContext factory for tool integration tests |
 
+Team management modes are intentionally separate from coordination modes. Coordination (`parallel`, `sequential`, `adaptive`) controls how sessions are spawned. Management (`simple`, `okr`, `tree`, `control`) controls the team's tracking model: flat collaboration, objectives/key results, hierarchy view, or approval checkpoints. Team members also share a blackboard-style workspace through `hera_team_remember` / `hera_team_recall`; message inboxes (`hera_team_message`, `hera_get_team_messages`, `hera_ack_team_messages`) remain separate from durable shared context.
+
 ### Tool Domains (Split from Monolith)
 
 | Domain | File | Tools |

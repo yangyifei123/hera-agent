@@ -75,7 +75,7 @@ opencode run --agent hera "create my-reviewer, mode: all, template: coder"
 **What happens**:
 
 - Hera creates `my-reviewer` agent as a `.md` file in `~/.config/opencode/agents/`.
-- Agent inherits 8 built-in skills: caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact.
+- Agent inherits 11 built-in skills: caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact, workflow-orchestration, brainstorming, skill-creator.
 - Agent is immediately available via `--agent my-reviewer`.
 
 **Expected output**: Confirmation that agent was created and registered.
@@ -117,8 +117,17 @@ opencode run --agent hera "create review-team with my-reviewer and a bug-hunter,
 **What happens**:
 
 - Hera creates a team with parallel coordination.
+- Team members share a blackboard-style workspace via `hera_team_remember` / `hera_team_recall` and an inbox via `hera_team_message` / `hera_get_team_messages` / `hera_ack_team_messages`.
 - Team spawns real OpenCode sessions for each member when a client exists.
 - Results are coordinated and returned.
+
+Optional skill upgrade preview:
+
+```bash
+opencode run --agent hera "upgrade skills memory, communicate to team coordination-lab, coordination: parallel, management: control, dry_run: true"
+```
+
+This preview shows the member agents Hera would create before anything is persisted.
 
 ## Step 7: Verify Team Works (10 seconds)
 

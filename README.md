@@ -66,7 +66,7 @@ opencode run --agent hera "recall: coding style"
 | **Self-Evolution** | Agents reflect on sessions and append improvement directives |
 | **Team Coordination** | Parallel, sequential, or DAG execution with real OpenCode sessions |
 | **Plugin Export** | Agents and teams export as standalone OpenCode plugins |
-| **Skill Composition** | 8 built-in skills inherited by every agent |
+| **Skill Composition** | 11 built-in skills inherited by every agent |
 | **Workflow Engine** | Auto-detects task complexity; proposes workflows for multi-step tasks |
 | **Session Distillation** | Extract structured knowledge from conversations |
 | **Agent Packaging** | Package/export/import agents with memory as `.tar.gz` |
@@ -165,7 +165,7 @@ opencode run --agent hera "remember: our API follows REST conventions with snake
 
 ## Built-in Skills
 
-Every agent created by Hera inherits these 8 skills:
+Every agent created by Hera inherits these 11 skills:
 
 | Skill | What it does |
 |-------|-------------|
@@ -177,6 +177,42 @@ Every agent created by Hera inherits these 8 skills:
 | **subagent** | Delegate sub-tasks to specialized agents |
 | **communicate** | Message passing between team members |
 | **auto-compact** | Automatic context window compression |
+| **workflow-orchestration** | Plan and coordinate multi-step workflows |
+| **brainstorming** | Explore requirements before implementation |
+| **skill-creator** | Create and refine reusable skills |
+
+## Skill Upgrade Workflows
+
+Hera can turn reusable skills into persistent agents or teams. Use `dry_run: true` first when you want a preview without writing files.
+
+```bash
+# Inspect a skill before conversion
+opencode run --agent hera "analyze skill security"
+
+# Preview skill -> agent
+opencode run --agent hera "upgrade skill security to agent security-reviewer, dry_run: true"
+
+# Create the agent after reviewing the preview
+opencode run --agent hera "upgrade skill security to agent security-reviewer, mode: all"
+
+# Preview skill -> team; each skill becomes one member agent
+opencode run --agent hera "upgrade skills security, perf to team audit-team, coordination: parallel, management: control, dry_run: true"
+```
+
+Upgrade previews show the member agent names Hera would create, inherited default skills, management mode, and naming conflicts before anything is persisted. If a generated member name already exists, Hera rejects the upgrade and suggests an alternative name.
+
+## Team Management Modes and Workspace
+
+Coordination controls execution order: `parallel`, `sequential`, or `adaptive`. Management controls how a team tracks work:
+
+| Management | Meaning |
+|------------|---------|
+| `simple` | Flat team with no required tracking; members coordinate freely. |
+| `okr` | Objectives and key results for progress tracking. |
+| `tree` | Hierarchical delegation view: root member delegates, workers report upward. |
+| `control` | Approval checkpoints/gates for review-heavy work. |
+
+All teams also have a shared workspace, or blackboard. Members send direct/broadcast messages with `hera_team_message`, read them with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and publish durable shared context with `hera_team_remember` / `hera_team_recall`.
 
 ## Agent Templates
 
@@ -245,7 +281,7 @@ Hera creates `~/.config/opencode/hera.json` on first load:
 |-------|----------|
 | `bun: command not found` | Use the npm path: `npm install --prefix ~/.config/opencode hera-agent` |
 | `npm: command not found` | Install Node.js LTS, then retry Option A |
-| `opencode: command not found` | Install from [opencode-ai/opencode](https://github.com/opencode-ai/opencode) |
+| `opencode: command not found` | Install from [opencode-ai/opencode](https://github.com/opencode-ai/opencode), ensure `opencode` is on PATH, then rerun `node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor` |
 | Hera not appearing | Restart OpenCode or run `opencode agent reload` |
 | Agent says "not found" | Create with `mode: "all"`, not `mode: "subagent"` |
 | `fetch() cannot be empty string` | Upgrade to v2.0+ (zero network deps) |
@@ -270,6 +306,18 @@ hera list teams       # List teams
 hera create agent NAME --template coder  # Create agent
 hera status           # System status
 hera version          # Show version
+```
+
+When installed with `npm install --prefix ~/.config/opencode`, the `hera` binary may not be on PATH. The always-correct form is:
+
+```bash
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+Windows PowerShell:
+
+```powershell
+node "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
 ```
 
 See [Tool Reference](#tool-reference) for all 43 management tools.
@@ -299,8 +347,8 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 - `hera_create_skill` - Create a reusable skill
 - `hera_list_skills` - List all skills
 - `hera_delete_skill` - Delete a user-created skill
-- `hera_upgrade_to_agent` - Upgrade skills into a full agent
-- `hera_upgrade_to_team` - Upgrade skills into a coordinated agent team
+- `hera_upgrade_to_agent` - Upgrade skills into a full agent; supports `dry_run` preview
+- `hera_upgrade_to_team` - Upgrade skills into a coordinated agent team; supports `dry_run` preview
 
 </details>
 
@@ -315,8 +363,8 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 - `hera_team_message` - Send message between team members
 - `hera_get_team_messages` - Read queued team messages for a member
 - `hera_ack_team_messages` - Mark handled team messages as acknowledged
-- `hera_team_remember` - Store team-scoped shared memory
-- `hera_team_recall` - Search team-scoped shared memory
+- `hera_team_remember` - Write to the team's shared workspace / blackboard
+- `hera_team_recall` - Read from the team's shared workspace / blackboard
 - `hera_quick_team` - Create team from template
 
 </details>
