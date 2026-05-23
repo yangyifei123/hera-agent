@@ -197,10 +197,10 @@ npm uninstall --prefix ~/.config/opencode hera-agent
 # Remove "hera-agent" from ~/.config/opencode/opencode.json plugin array if needed.
 ```
 
-Full uninstall, including Hera-created data:
+Full uninstall, including Hera-created data. The automated command requires explicit confirmation with `--yes`:
 
 ```bash
-hera uninstall --run --purge
+hera uninstall --run --purge --yes
 # or manually:
 npm uninstall --prefix ~/.config/opencode hera-agent
 rm -rf ~/.config/opencode/hera-data/

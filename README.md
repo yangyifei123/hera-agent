@@ -300,6 +300,7 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 - `hera_list_skills` - List all skills
 - `hera_delete_skill` - Delete a user-created skill
 - `hera_upgrade_to_agent` - Upgrade skills into a full agent
+- `hera_upgrade_to_team` - Upgrade skills into a coordinated agent team
 
 </details>
 
@@ -313,6 +314,7 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 - `hera_spawn_team` - Launch team task
 - `hera_team_message` - Send message between team members
 - `hera_get_team_messages` - Read queued team messages for a member
+- `hera_ack_team_messages` - Mark handled team messages as acknowledged
 - `hera_team_remember` - Store team-scoped shared memory
 - `hera_team_recall` - Search team-scoped shared memory
 - `hera_quick_team` - Create team from template
@@ -378,8 +380,10 @@ cd ~/.config/opencode && npm uninstall hera-agent
 # Remove "hera-agent" from opencode.json plugin array if needed
 ```
 
-**Full uninstall (remove everything)**:
+**Full uninstall (remove everything; confirmation required)**:
 ```bash
+hera uninstall --run --purge --yes
+# or manually:
 cd ~/.config/opencode && npm uninstall hera-agent
 rm -rf ~/.config/opencode/hera-data/ ~/.config/opencode/agents/hera/ ~/.config/opencode/hera.json
 ```
