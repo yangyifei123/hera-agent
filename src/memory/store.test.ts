@@ -106,4 +106,11 @@ describe("MemoryStore", () => {
     const results = await store.search("zzznotfound");
     expect(results).toHaveLength(0);
   });
+
+  test("rejects unsafe memory ids", async () => {
+    await expect(
+      store.save({ id: "../escape", type: "session", content: "bad", timestamp: 1000 })
+    ).rejects.toThrow("path traversal");
+    await expect(store.load("session", "nested/path")).rejects.toThrow("path traversal");
+  });
 });

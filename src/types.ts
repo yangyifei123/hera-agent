@@ -19,7 +19,10 @@ export interface HeraMemory {
     | "preference"
     | "context"
     | "skill-package"
-    | "workflow";
+    | "workflow"
+    | "team-message"
+    | "team-session"
+    | "team-memory";
   content: string;
   timestamp: number;
   metadata?: Record<string, unknown>;

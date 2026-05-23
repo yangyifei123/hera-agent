@@ -25,18 +25,23 @@ export class MemoryStore {
       "patterns",
       "preferences",
       "contexts",
+      "team-messages",
+      "team-sessions",
+      "team-memory",
     ]) {
       await mkdir(join(this.dir, sub), { recursive: true });
     }
   }
 
   async save(memory: HeraMemory): Promise<void> {
+    assertSafeMemoryId(memory.id);
     const dirName = getSubdir(memory.type);
     const filePath = join(this.dir, dirName, `${memory.id}.json`);
     await writeFile(filePath, JSON.stringify(memory, null, 2), "utf-8");
   }
 
   async load(type: HeraMemory["type"], id: string): Promise<HeraMemory | null> {
+    assertSafeMemoryId(id);
     try {
       const dirName = getSubdir(type);
       const filePath = join(this.dir, dirName, `${id}.json`);
@@ -61,6 +66,9 @@ export class MemoryStore {
       pattern: "patterns",
       preference: "preferences",
       context: "contexts",
+      "team-message": "team-messages",
+      "team-session": "team-sessions",
+      "team-memory": "team-memory",
     };
     const types = type ? [typeMap[type] ?? type] : Object.values(typeMap);
     const results: HeraMemory[] = [];
@@ -82,6 +90,7 @@ export class MemoryStore {
   }
 
   async delete(type: HeraMemory["type"], id: string): Promise<boolean> {
+    assertSafeMemoryId(id);
     try {
       const dirName = getSubdir(type);
       await unlink(join(this.dir, dirName, `${id}.json`));
@@ -116,6 +125,12 @@ export class MemoryStore {
   }
 }
 
+function assertSafeMemoryId(id: string): void {
+  if (!id || id.includes("..") || /[\\/\0]/.test(id)) {
+    throw new Error("Memory id must not contain path traversal characters.");
+  }
+}
+
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -133,6 +148,9 @@ function getSubdir(type: string): string {
     pattern: "patterns",
     preference: "preferences",
     context: "contexts",
+    "team-message": "team-messages",
+    "team-session": "team-sessions",
+    "team-memory": "team-memory",
   };
   return map[type] ?? `${type}s`;
 }
