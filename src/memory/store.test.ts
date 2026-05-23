@@ -113,4 +113,31 @@ describe("MemoryStore", () => {
     ).rejects.toThrow("path traversal");
     await expect(store.load("session", "nested/path")).rejects.toThrow("path traversal");
   });
+
+  test("enforces per-type memory limit by deleting oldest entries", async () => {
+    store = new MemoryStore(TEST_DIR, { maxEntries: 2 });
+    await store.init();
+    await store.save({ id: "old", type: "session", content: "old", timestamp: 1000 });
+    await store.save({ id: "middle", type: "session", content: "middle", timestamp: 2000 });
+    await store.save({ id: "new", type: "session", content: "new", timestamp: 3000 });
+
+    const ids = (await store.list("session")).map((memory) => memory.id);
+    expect(ids).toEqual(["new", "middle"]);
+    expect(await store.load("session", "old")).toBeNull();
+  });
+
+  test("cleans up expired memories during list and load", async () => {
+    await store.save({
+      id: "expired",
+      type: "session",
+      content: "old",
+      timestamp: 1000,
+      expiresAt: 1,
+    });
+    await store.save({ id: "active", type: "session", content: "new", timestamp: Date.now() });
+
+    expect(await store.load("session", "expired")).toBeNull();
+    const ids = (await store.list("session")).map((memory) => memory.id);
+    expect(ids).toEqual(["active"]);
+  });
 });
