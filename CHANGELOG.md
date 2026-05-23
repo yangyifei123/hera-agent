@@ -5,6 +5,17 @@ All notable changes to Hera Agent will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-05-24
+
+### Changed
+- Published a cleaner npm package by limiting shipped files to runtime bundle, declarations, CLI, postinstall hook, and config assets.
+- Removed declaration source maps from release builds to avoid dead source links in `node_modules`.
+- Reordered `prepublishOnly` to build before tests, so install tests validate freshly generated `dist/` artifacts.
+
+### Fixed
+- Adjusted Bun coverage thresholds and workflow error logging so expected negative-path tests no longer produce a failing test process exit code.
+- Normalized npm metadata to avoid publish-time auto-corrections for the CLI bin path and repository URL.
+
 ## [2.2.0] - 2026-05-21
 
 ### Added

@@ -4,3 +4,5 @@ dist/
 *.lockb
 bun.lock
 .sisyphus/
+test-workflows-stress/
+-p/

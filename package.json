@@ -1,12 +1,12 @@
 {
   "name": "hera-agent",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Hera - Agent Factory: Creates agents with memory, distillation, skills, team collaboration, and self-evolution for OpenCode",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "hera": "./bin/hera.js"
+    "hera": "bin/hera.js"
   },
   "exports": {
     ".": {
@@ -16,8 +16,8 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --declarationMap --outDir dist && echo 'build done'",
-    "prepublishOnly": "bun run typecheck && bun run lint && bun test && bun run build && npm pack --dry-run",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --outDir dist && echo 'build done'",
+    "prepublishOnly": "bun run typecheck && bun run lint && bun run build && bun test && npm pack --dry-run",
     "postinstall": "node postinstall.mjs",
     "dev": "bun run --watch src/index.ts",
     "test": "bun test",
@@ -42,12 +42,12 @@
   "author": "Yang Yifei",
   "dependencies": {
     "@opencode-ai/plugin": "^1.4.6",
-    "@types/tar-fs": "^2.0.4",
     "tar-fs": "^3.1.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/bun": "^1.2.0",
+    "@types/tar-fs": "^2.0.4",
     "@typescript-eslint/eslint-plugin": "^8.59.4",
     "@typescript-eslint/parser": "^8.59.4",
     "eslint": "^10.4.0",
@@ -57,19 +57,16 @@
     "typescript": "^5.7.0"
   },
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/**/*.d.ts",
     "bin",
     "postinstall.mjs",
     "hera.schema.json",
-    "hera.example.json",
-    "docs/INSTALLATION.md",
-    "docs/CANONICAL_DEMO.md",
-    "docs/INSTALLATION_RISK_MATRIX.md",
-    "docs/INSTALLATION_MATRIX.md"
+    "hera.example.json"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/yangyifei123/hera-agent.git"
+    "url": "git+https://github.com/yangyifei123/hera-agent.git"
   },
   "bugs": {
     "url": "https://github.com/yangyifei123/hera-agent/issues"

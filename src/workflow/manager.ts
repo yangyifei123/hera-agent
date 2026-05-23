@@ -127,7 +127,7 @@ export class WorkflowManager {
       execution.error = workflowError.message;
       execution.completedAt = Date.now();
 
-      heraLog("warn", `Workflow failed: ${workflowId}`, error);
+      heraLog("warn", `Workflow failed: ${workflowId}`, workflowError.message);
 
       throw new WorkflowExecutionError(
         workflowId,

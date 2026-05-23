@@ -2,7 +2,7 @@
 
 > Create persistent AI agents with memory and teams inside OpenCode.
 
-[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.2.0)
+[![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.2.1)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Plugin-orange.svg)](https://github.com/opencode-ai/opencode)
 
@@ -444,4 +444,4 @@ MIT
 
 ---
 
-**Current Version**: v2.2.0 | **License**: MIT | **Status**: Production Ready
+**Current Version**: v2.2.1 | **License**: MIT | **Status**: Production Ready

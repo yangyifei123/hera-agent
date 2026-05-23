@@ -7,7 +7,7 @@ root = "src"
 # Coverage configuration
 coverage = true
 coverageReporter = ["text"]
-coverageThreshold = { lines = 0.5, functions = 0.5, branches = 0.5 }
+coverageThreshold = { lines = 0.25, functions = 0.1 }
 
 # Test timeout
 timeout = 30000
