@@ -38,7 +38,7 @@
 - **URL**: https://github.com/sebflipper/awesome-typescript
 - **Audience fit**: Medium — TypeScript developers, some may use OpenCode
 - **Submission type**: PR to developer tools section
-- **Snippet**: "Hera — TypeScript agent factory plugin for OpenCode with 8 built-in skills and 43 management tools"
+- **Snippet**: "Hera — TypeScript agent factory plugin for OpenCode with 11 built-in skills and 43 management tools"
 - **Status**: Not yet submitted
 
 ### r/OpenCode (if subreddit exists)

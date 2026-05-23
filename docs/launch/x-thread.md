@@ -15,9 +15,11 @@ Stop re-typing the same prompts. Create AI agents that remember, evolve, and coo
 
 Hera turns these patterns into persistent agents.
 
-**3/7** Install in one command:
+**3/7** Install with npm into your OpenCode config:
 ```
-cd ~/.config/opencode && bun add hera-agent
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ```
 
 Create your first agent in 2 minutes:
@@ -41,10 +43,11 @@ opencode run --agent hera "create review-team with code-reviewer and bug-hunter,
 ✅ Agents export as standalone plugins
 ✅ Team coordination (serial, parallel, DAG)
 ✅ Self-evolution via session reflection
+✅ 11 built-in skills inherited by every agent
 ✅ MIT licensed
 
 **7/7** Try it: github.com/yangyifei123/hera-agent
 
-2-minute demo: docs/CANONICAL_DEMO.md
+2-minute demo: github.com/yangyifei123/hera-agent/blob/master/docs/CANONICAL_DEMO.md
 
 Questions? Drop them below 👇

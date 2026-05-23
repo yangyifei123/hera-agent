@@ -22,7 +22,9 @@ I've been building Hera, an agent factory plugin for OpenCode. It creates AI age
 
 ```bash
 # Install
-cd ~/.config/opencode && bun add hera-agent
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 
 # Create agent
 opencode run --agent hera "create my-reviewer, mode: all, template: coder"
@@ -41,7 +43,7 @@ opencode run --agent hera "recall: coding style"
 - No orchestrator server to run — agents use real OpenCode sessions.
 
 **Architecture:**
-- 8 built-in skills inherited by every agent (caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact)
+- 11 built-in skills inherited by every agent (caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact, workflow-orchestration, brainstorming, skill-creator)
 - 43 management tools (create, delete, export, package, team coordination, workflow, etc.)
 - Team modes: parallel, sequential, DAG
 - Agents export as standalone plugins

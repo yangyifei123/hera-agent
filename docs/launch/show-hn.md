@@ -15,10 +15,12 @@ Hera turns those recurring patterns into persistent agents. Each agent:
 - **Coordinates** as teams (parallel, sequential, or DAG workflows)
 - **Exports** as standalone OpenCode plugins
 
-One command to install:
+Recommended npm install path:
 
 ```
-cd ~/.config/opencode && bun add hera-agent
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ```
 
 Two minutes to your first agent:
@@ -33,7 +35,7 @@ The memory system means your agents learn your project conventions over time. Th
 Hera is an OpenCode plugin — no Python, no API server, no new runtime. If you're already in the OpenCode ecosystem, it plugs right in.
 
 Repo: https://github.com/yangyifei123/hera-agent
-Demo: docs/CANONICAL_DEMO.md
+Demo: https://github.com/yangyifei123/hera-agent/blob/master/docs/CANONICAL_DEMO.md
 
 Happy to answer questions about the architecture, memory model, or team coordination system.
 
@@ -42,7 +44,7 @@ Happy to answer questions about the architecture, memory model, or team coordina
 - Why not CrewAI/AutoGen? Those are Python frameworks. Hera is native to OpenCode. Different ecosystem, different trade-offs.
 - Memory is JSON-based, persistent across sessions, shared between all agents.
 - Teams use real OpenCode sessions, not simulated orchestration.
-- 8 built-in skills are inherited by every agent: caveman (token compression), init (environment), memory, evolution, skill-combo, subagent, communicate, auto-compact.
+- 11 built-in skills are inherited by every agent: caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact, workflow-orchestration, brainstorming, and skill-creator.
 - 43 management tools for lifecycle, packaging, migration.
 - MIT licensed, zero network dependencies (works offline/in internal networks from v2.0).
 

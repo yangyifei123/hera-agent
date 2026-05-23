@@ -10,28 +10,32 @@
 # Run all gates in sequence
 cd /path/to/hera-agent
 
-# 1. Lint
-bun run lint
-# Expected: 0 errors, 0 warnings
+# 1. Format check
+bun run format:check
+# Expected: clean (no errors)
 
-# 2. Type Check
+# 2. Lint
+bun run lint
+# Expected: clean exit; warnings should be reviewed before broad launch
+
+# 3. Type Check
 bun run typecheck
 # Expected: clean (no errors)
 
-# 3. Tests
+# 4. Tests
 bun test
-# Expected: 609+ pass, 0 fail
+# Expected: 645+ pass, 0 fail
 
-# 4. Build
+# 5. Build
 bun run build
 # Expected: clean exit, dist/index.js and dist/index.d.ts exist
 
-# 5. Pack
+# 6. Pack
 npm pack --dry-run
 # Expected: includes dist/index.js, dist/index.d.ts, package.json
 ```
 
-**Pass criteria**: All 5 commands exit 0 with expected output.
+**Pass criteria**: All 6 commands exit 0 with expected output.
 
 ### Gate 2: README Conversion
 
@@ -108,12 +112,14 @@ If a release causes widespread issues:
 
 ## Launch Checklist
 
-- [ ] Gate 1: Technical quality (all 5 commands pass)
+- [ ] Gate 1: Technical quality (all 6 commands pass)
 - [ ] Gate 2: README conversion (all sections present)
 - [ ] Gate 3: Governance baseline (all files exist)
 - [ ] Gate 4: Demo reproducibility (both docs exist)
 - [ ] Launch assets ready (show-hn.md, x-thread.md, reddit.md)
 - [ ] Discovery map populated
-- [ ] Version tag created (v2.2.0)
+- [ ] Version tag created (v2.2.1)
 - [ ] GitHub release draft prepared
+- [ ] npm publish completed and `npm view hera-agent version` returns `2.2.1`
+- [ ] Clean environment smoke test completed from `docs/launch/CLEAN_ENV_SMOKE_TEST.md`
 - [ ] Post-launch monitoring plan defined
