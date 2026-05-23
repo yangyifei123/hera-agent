@@ -189,6 +189,7 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
     expect(tools.hera_create_team).toBeDefined();
     expect(tools.hera_delete_team).toBeDefined();
     expect(tools.hera_get_team_messages).toBeDefined();
+    expect(tools.hera_ack_team_messages).toBeDefined();
     expect(tools.hera_export_team).toBeDefined();
     expect(tools.hera_upgrade_to_agent).toBeDefined();
     expect(tools.hera_upgrade_to_team).toBeDefined();
@@ -206,6 +207,14 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
     const tools = hooks.tool as Record<string, unknown>;
     expect(tools.hera_create_team).toBeDefined();
     expect(tools.hera_delete_team).toBeUndefined();
+  });
+
+  it("config hook injects team membership context into member agents", async () => {
+    const hooks = await HeraPlugin(makePluginInput(tmp), undefined);
+    const input: any = { agent: {} };
+    await (hooks.config as any)(input);
+    expect(input.agent["architect"].prompt).toContain("## Hera Team Membership");
+    expect(input.agent["architect"].prompt).toContain("hera_ack_team_messages");
   });
 
   it("system.transform hook appends sections to the Hera system prompt", async () => {

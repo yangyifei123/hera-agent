@@ -65,6 +65,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         auto_evolve: false,
         auto_memory: false,
         memory_limit: DEFAULT_MEMORY_LIMIT,
+        memory_ttl_ms: 0,
         team_defaults: {
           coordination: "parallel",
           timeout: DEFAULT_TEAM_TIMEOUT_MS,
@@ -85,7 +86,10 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     agentsDir: join(configRoot, "agents", "hera"),
   };
 
-  const store = new MemoryStore(paths.memoryDir);
+  const store = new MemoryStore(paths.memoryDir, {
+    maxEntries: config.memory_limit ?? DEFAULT_MEMORY_LIMIT,
+    ttlMs: config.memory_ttl_ms,
+  });
   await store.init();
 
   const skillManager = new SkillManager(store, paths.skillsDir);
@@ -182,7 +186,10 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           }
         }
 
-        const fullPrompt = `${def.prompt}\n\n${skillPrompts}${evolutionBlock}`;
+        const teamBlock = teamManager.getAgentTeamContext(name);
+        const fullPrompt = [def.prompt, skillPrompts, teamBlock, evolutionBlock]
+          .filter((part) => part.trim().length > 0)
+          .join("\n\n");
 
         const childConfig = createChildAgentConfig(
           name,

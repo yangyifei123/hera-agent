@@ -106,6 +106,17 @@ export async function upgradeSkillsToTeam(
     };
   }
 
+  const conflictingAgents = args.skillNames
+    .map((skillName) => memberAgentNameForSkill(args.teamName, skillName))
+    .filter((agentName) => args.registeredAgents.has(agentName));
+  if (conflictingAgents.length > 0) {
+    return {
+      ok: false,
+      error: `Member agent names already exist: ${conflictingAgents.join(", ")}. Choose a different team name or delete the existing agents first.`,
+      createdAgents: [],
+    };
+  }
+
   // Create one member agent per skill, persisted via the standard path so
   // built-in skill embedding + .md file + in-memory registration all happen.
   const skillsMap = args.skillManager.getSkillMap();
