@@ -105,7 +105,7 @@ describe("Installation Tests", () => {
       });
 
       expect(output).toContain("hera update --run");
-      expect(output).toContain("npm update --prefix ~/.config/opencode hera-agent");
+      expect(output).toContain("npm update --prefix");
     });
 
     test("uninstall command exposes safe run and purge modes", () => {
@@ -116,8 +116,27 @@ describe("Installation Tests", () => {
       });
 
       expect(output).toContain("hera uninstall --run");
-      expect(output).toContain("hera uninstall --run --purge");
-      expect(output).toContain("npm uninstall --prefix ~/.config/opencode hera-agent");
+      expect(output).toContain("hera uninstall --run --purge --yes");
+      expect(output).toContain("npm uninstall --prefix");
+      if (process.platform === "win32") {
+        expect(output).toContain("Remove-Item");
+      } else {
+        expect(output).toContain("rm -rf");
+      }
+    });
+
+    test("purge run requires explicit confirmation", () => {
+      try {
+        execSync("node bin/hera.js uninstall --run --purge", {
+          encoding: "utf-8",
+          cwd: process.cwd(),
+          stdio: "pipe",
+        });
+        throw new Error("Expected purge command to fail without confirmation");
+      } catch (err) {
+        const output = String((err as { stdout?: Buffer | string }).stdout ?? "");
+        expect(output).toContain("Refusing to purge Hera data without confirmation");
+      }
     });
   });
 
