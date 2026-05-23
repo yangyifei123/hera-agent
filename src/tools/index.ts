@@ -9,7 +9,7 @@ import { createPackageTools } from "./package-tools.js";
 import { createWorkflowTools } from "./workflow-tools.js";
 
 export function createAllTools(ctx: PluginContext) {
-  return {
+  const tools = {
     ...createAgentTools(ctx),
     ...createSkillTools(ctx),
     ...createTeamTools(ctx),
@@ -19,4 +19,7 @@ export function createAllTools(ctx: PluginContext) {
     ...createPackageTools(ctx),
     ...createWorkflowTools(ctx),
   };
+  const disabled = new Set(ctx.config.disabled_tools ?? []);
+  if (disabled.size === 0) return tools;
+  return Object.fromEntries(Object.entries(tools).filter(([name]) => !disabled.has(name)));
 }

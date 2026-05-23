@@ -187,11 +187,25 @@ describe("HeraPlugin (default export) — 4 hooks", () => {
     expect(tools.hera_create_agent).toBeDefined();
     expect(tools.hera_list_agents).toBeDefined();
     expect(tools.hera_create_team).toBeDefined();
+    expect(tools.hera_delete_team).toBeDefined();
+    expect(tools.hera_get_team_messages).toBeDefined();
     expect(tools.hera_export_team).toBeDefined();
     expect(tools.hera_upgrade_to_agent).toBeDefined();
     expect(tools.hera_upgrade_to_team).toBeDefined();
+    expect(tools.hera_upgrade_agents_to_team).toBeDefined();
+    expect(tools.hera_team_remember).toBeDefined();
+    expect(tools.hera_team_recall).toBeDefined();
     expect(tools.hera_remember).toBeDefined();
     expect(tools.hera_recall).toBeDefined();
+  });
+
+  it("tool hook honors disabled_tools from hera.json", async () => {
+    const hooks = await HeraPlugin(makePluginInput(tmp), {
+      disabled_tools: ["hera_delete_team"],
+    } as any);
+    const tools = hooks.tool as Record<string, unknown>;
+    expect(tools.hera_create_team).toBeDefined();
+    expect(tools.hera_delete_team).toBeUndefined();
   });
 
   it("system.transform hook appends sections to the Hera system prompt", async () => {
