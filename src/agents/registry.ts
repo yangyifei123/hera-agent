@@ -165,6 +165,13 @@ export class AgentRegistry {
     if (def.template) lines.push(`template: ${def.template}`);
     if (def.createdAt) lines.push(`createdAt: ${def.createdAt}`);
     if (def.evolvedAt) lines.push(`evolvedAt: ${def.evolvedAt}`);
+    if (def.skills.length > 0) lines.push(`skillsJson: ${jsonFrontmatter(def.skills)}`);
+    if (def.tools) lines.push(`toolsJson: ${jsonFrontmatter(def.tools)}`);
+    if (def.permission) lines.push(`permissionJson: ${jsonFrontmatter(def.permission)}`);
+    if (def.evolutionLog && def.evolutionLog.length > 0) {
+      lines.push(`evolutionLogJson: ${jsonFrontmatter(def.evolutionLog)}`);
+    }
+    if (def.workflow) lines.push(`workflowJson: ${jsonFrontmatter(def.workflow)}`);
     lines.push("---", "");
     return lines.join("\n");
   }
@@ -191,6 +198,20 @@ export class AgentRegistry {
     const createdAt = get("createdAt");
     const evolvedAt = get("evolvedAt");
     const template = get("template");
+    const parsedSkills = parseJsonField<string[]>(get("skillsJson"), isStringArray);
+    const parsedTools = parseJsonField<Record<string, boolean>>(get("toolsJson"), isBooleanRecord);
+    const parsedPermission = parseJsonField<AgentDefinition["permission"]>(
+      get("permissionJson"),
+      isPermissionConfig
+    );
+    const parsedEvolutionLog = parseJsonField<EvolutionEntry[]>(
+      get("evolutionLogJson"),
+      isEvolutionEntryArray
+    );
+    const parsedWorkflow = parseJsonField<AgentDefinition["workflow"]>(
+      get("workflowJson"),
+      isWorkflowDefinition
+    );
 
     return {
       name: get("name") ?? "unknown",
@@ -198,12 +219,15 @@ export class AgentRegistry {
       mode: (get("mode") as AgentMode) ?? "subagent",
       prompt: body.trim(),
       model: get("model"),
-      skills: getDefaultSkills(),
+      skills: parsedSkills ?? getDefaultSkills(),
+      tools: parsedTools,
+      permission: parsedPermission,
       maxSteps: maxSteps ? parseInt(maxSteps, 10) : 30,
       template: isAgentTemplateName(template) ? template : undefined,
       createdAt: createdAt ? parseInt(createdAt, 10) : undefined,
       evolvedAt: evolvedAt ? parseInt(evolvedAt, 10) : undefined,
-      evolutionLog: [],
+      evolutionLog: parsedEvolutionLog ?? [],
+      workflow: parsedWorkflow,
     };
   }
 
@@ -231,6 +255,70 @@ export class AgentRegistry {
     }
     return content + block;
   }
+}
+
+function jsonFrontmatter(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function parseJsonField<T>(
+  raw: string | undefined,
+  guard: (value: unknown) => value is T
+): T | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return guard(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isBooleanRecord(value: unknown): value is Record<string, boolean> {
+  return isObjectLike(value) && Object.values(value).every((item) => typeof item === "boolean");
+}
+
+function isPermissionConfig(value: unknown): value is NonNullable<AgentDefinition["permission"]> {
+  const allowed = new Set(["allow", "ask", "deny"]);
+  return (
+    isObjectLike(value) &&
+    Object.values(value).every((item) => typeof item === "string" && allowed.has(item))
+  );
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEvolutionEntryArray(value: unknown): value is EvolutionEntry[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isObjectLike(entry) &&
+        typeof entry.timestamp === "number" &&
+        typeof entry.trigger === "string" &&
+        typeof entry.observation === "string" &&
+        typeof entry.directive === "string" &&
+        typeof entry.rolledBack === "boolean"
+    )
+  );
+}
+
+function isWorkflowDefinition(value: unknown): value is NonNullable<AgentDefinition["workflow"]> {
+  return (
+    isObjectLike(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    (value.mode === "serial" || value.mode === "parallel" || value.mode === "dag") &&
+    Array.isArray(value.steps) &&
+    typeof value.createdAt === "number"
+  );
 }
 
 function isAgentTemplateName(value: string | undefined): value is AgentTemplateName {
