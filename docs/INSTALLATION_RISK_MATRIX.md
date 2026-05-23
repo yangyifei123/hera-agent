@@ -34,6 +34,7 @@ Hera is not:
 |---------|--------------|------------------|
 | `bun: command not found` | User followed old Bun-only docs | Use npm path; Bun is optional |
 | `npm: command not found` | Node.js not installed | Install Node.js LTS first |
+| `opencode: command not found` | OpenCode CLI missing or not on PATH | Install OpenCode, open a new terminal, and rerun doctor; doctor must fail non-zero until this is fixed |
 | package installs but Hera not visible | OpenCode did not reload plugin config | Restart OpenCode or run `opencode agent reload` if supported |
 | `opencode.json` not updated | postinstall lacked permissions or config was invalid JSON | Manually add `"hera-agent"` to plugin array |
 | `dist/index.js` missing | broken package/build output | Reinstall package; verify `npm pack --dry-run` includes dist |
@@ -75,7 +76,7 @@ Use:
 
 - "Install the Hera OpenCode plugin."
 - "Add Hera to your OpenCode config."
-- "Verify the OpenCode plugin with `hera doctor`."
+- "Verify the OpenCode plugin with `node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor`."
 
 Avoid:
 

@@ -27,7 +27,7 @@ What this does:
 1. Installs `hera-agent` into the OpenCode config directory.
 2. Runs `postinstall.mjs`, which creates Hera data directories.
 3. Adds `hera-agent` to `opencode.json` when possible.
-4. Lets you verify with `hera doctor`.
+4. Lets you verify with `node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor`.
 
 ## Linux One-Shot Install
 
@@ -165,7 +165,7 @@ If Hera does not appear, restart OpenCode and verify that `opencode.json` includ
 Use npm by default, matching the recommended install path:
 
 ```bash
-hera update --run
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js update --run
 # or manually:
 npm update --prefix ~/.config/opencode hera-agent
 node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
@@ -191,7 +191,7 @@ If you installed with Bun, `cd ~/.config/opencode && bun update hera-agent` is s
 Keep agents, skills, and memory for a later reinstall:
 
 ```bash
-hera uninstall --run
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js uninstall --run
 # or manually:
 npm uninstall --prefix ~/.config/opencode hera-agent
 # Remove "hera-agent" from ~/.config/opencode/opencode.json plugin array if needed.
@@ -200,7 +200,7 @@ npm uninstall --prefix ~/.config/opencode hera-agent
 Full uninstall, including Hera-created data. The automated command requires explicit confirmation with `--yes`:
 
 ```bash
-hera uninstall --run --purge --yes
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js uninstall --run --purge --yes
 # or manually:
 npm uninstall --prefix ~/.config/opencode hera-agent
 rm -rf ~/.config/opencode/hera-data/
@@ -236,6 +236,28 @@ sudo apt-get install -y nodejs
 node --version
 npm --version
 ```
+
+### `opencode: command not found`
+
+Hera is an OpenCode plugin, so `opencode` must be installed and available on PATH before Hera can run inside OpenCode.
+
+1. Install OpenCode from https://github.com/opencode-ai/opencode.
+2. Open a new terminal so PATH changes take effect.
+3. Verify:
+
+```bash
+opencode --version
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+Windows PowerShell:
+
+```powershell
+opencode --version
+node "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
+```
+
+If `npm install --prefix` did not place `hera` on PATH, use the explicit `node .../bin/hera.js` command above for doctor/update/uninstall.
 
 ### Config file not created
 
