@@ -55,6 +55,8 @@ export interface UpgradeSkillsToTeamArgs {
   management?: "simple" | "okr" | "tree" | "control";
   /** Override the agent mode for every member (default: subagent). */
   memberMode?: "primary" | "subagent" | "all";
+  /** Preview planned agents/team without writing anything. */
+  dryRun?: boolean;
 
   skillManager: SkillManager;
   teamManager: TeamManager;
@@ -68,6 +70,8 @@ export interface UpgradeSkillsToTeamResult {
   error?: string;
   createdAgents: string[];
   team?: TeamDefinition;
+  preview?: string;
+  warnings?: string[];
 }
 
 /**
@@ -81,9 +85,22 @@ function buildMemberPrompt(skillName: string, role: string): string {
     `You are a ${role} specializing in the "${skillName}" skill.`,
     "",
     "Within the team, focus on tasks aligned with your specialty. Coordinate",
-    "with peers via team messaging (`hera_team_message`) and use shared memory",
-    "(`hera_remember` / `hera_recall`) to publish results.",
+    "with peers via team messaging (`hera_team_message`) and use the team shared workspace",
+    "(`hera_team_remember` / `hera_team_recall`) to publish decisions, context, and results.",
   ].join("\n");
+}
+
+function suggestAvailableMemberAgentName(
+  baseName: string,
+  registeredAgents: Map<string, AgentDefinition>
+): string {
+  let suffix = 2;
+  let candidate = `${baseName}-${suffix}`;
+  while (registeredAgents.has(candidate)) {
+    suffix++;
+    candidate = `${baseName}-${suffix}`;
+  }
+  return candidate;
 }
 
 export async function upgradeSkillsToTeam(
@@ -110,9 +127,12 @@ export async function upgradeSkillsToTeam(
     .map((skillName) => memberAgentNameForSkill(args.teamName, skillName))
     .filter((agentName) => args.registeredAgents.has(agentName));
   if (conflictingAgents.length > 0) {
+    const suggestions = conflictingAgents.map(
+      (name) => `${name} → ${suggestAvailableMemberAgentName(name, args.registeredAgents)}`
+    );
     return {
       ok: false,
-      error: `Member agent names already exist: ${conflictingAgents.join(", ")}. Choose a different team name or delete the existing agents first.`,
+      error: `Member agent names already exist: ${conflictingAgents.join(", ")}. Choose a different team name, delete the existing agents first, or use suggested alternatives: ${suggestions.join(", ")}.`,
       createdAgents: [],
     };
   }
@@ -122,6 +142,12 @@ export async function upgradeSkillsToTeam(
   const skillsMap = args.skillManager.getSkillMap();
   const createdAgents: string[] = [];
   const members: TeamMember[] = [];
+  const warnings = args.skillNames
+    .filter((skillName) => args.skillManager.isBuiltin(skillName))
+    .map(
+      (skillName) =>
+        `Skill "${skillName}" is built in and already inherited by Hera agents; creating a specialist anyway because you requested it.`
+    );
 
   for (const skillName of args.skillNames) {
     const agentName = memberAgentNameForSkill(args.teamName, skillName);
@@ -136,7 +162,6 @@ export async function upgradeSkillsToTeam(
       createdAt: Date.now(),
       evolutionLog: [],
     };
-    await persistAgent(def, skillsMap, args.registeredAgents, args.agentRegistry, args.store);
     createdAgents.push(agentName);
     members.push({
       agentName,
@@ -144,6 +169,9 @@ export async function upgradeSkillsToTeam(
       subscriptions: ["message", "task", "result"],
       backendType: "in-process",
     });
+    if (!args.dryRun) {
+      await persistAgent(def, skillsMap, args.registeredAgents, args.agentRegistry, args.store);
+    }
   }
 
   const team: TeamDefinition = {
@@ -155,7 +183,21 @@ export async function upgradeSkillsToTeam(
     sharedMemory: [],
     createdAt: Date.now(),
   };
+  if (args.dryRun) {
+    return {
+      ok: true,
+      createdAgents,
+      team,
+      warnings,
+      preview: [
+        `Preview only: would create team "${args.teamName}" (${team.coordination}, ${team.management}).`,
+        `Would create member agents: ${createdAgents.join(", ")}.`,
+        `Each member would inherit Hera default skills plus its specialist skill.`,
+      ].join("\n"),
+    };
+  }
+
   await args.teamManager.createTeam(team);
 
-  return { ok: true, createdAgents, team };
+  return { ok: true, createdAgents, team, warnings };
 }

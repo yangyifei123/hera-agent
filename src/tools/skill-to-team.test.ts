@@ -133,6 +133,75 @@ describe("upgradeSkillsToTeam (integration)", () => {
     expect(registeredAgents.size).toBe(0);
   });
 
+  it("previews planned team upgrade without persisting agents or team", async () => {
+    const result = await upgradeSkillsToTeam({
+      skillNames: ["security", "perf"],
+      teamName: "preview-team",
+      description: "Preview team",
+      coordination: "adaptive",
+      management: "control",
+      dryRun: true,
+      skillManager,
+      teamManager,
+      agentRegistry,
+      store,
+      registeredAgents,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.preview).toContain("Preview only");
+    expect(result.createdAgents).toEqual(["preview-team-security", "preview-team-perf"]);
+    expect(registeredAgents.size).toBe(0);
+    expect(teamManager.getTeam("preview-team")).toBeUndefined();
+  });
+
+  it("suggests alternative member names when generated agents already exist", async () => {
+    registeredAgents.set("audit-team-security", {
+      name: "audit-team-security",
+      description: "existing",
+      mode: "subagent",
+      prompt: "existing",
+      skills: [],
+      maxSteps: 1,
+      createdAt: Date.now(),
+      evolutionLog: [],
+    });
+
+    const result = await upgradeSkillsToTeam({
+      skillNames: ["security"],
+      teamName: "audit-team",
+      description: "Security audit team",
+      coordination: "parallel",
+      skillManager,
+      teamManager,
+      agentRegistry,
+      store,
+      registeredAgents,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("suggested alternatives");
+    expect(result.error).toContain("audit-team-security-2");
+  });
+
+  it("warns when explicitly upgrading a built-in skill", async () => {
+    const result = await upgradeSkillsToTeam({
+      skillNames: ["memory"],
+      teamName: "memory-specialists",
+      description: "Memory specialist team",
+      coordination: "parallel",
+      dryRun: true,
+      skillManager,
+      teamManager,
+      agentRegistry,
+      store,
+      registeredAgents,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings?.[0]).toContain("already inherited");
+  });
+
   it("rejects empty skill list", async () => {
     const result = await upgradeSkillsToTeam({
       skillNames: [],
