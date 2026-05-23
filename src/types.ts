@@ -223,7 +223,9 @@ export interface TeamDefinition {
   description: string;
   members: TeamMember[];
   coordination: "parallel" | "sequential" | "adaptive";
+  /** Management mode: simple=flat, okr=objectives/key results, tree=hierarchy, control=approval gates. */
   management?: "simple" | "okr" | "tree" | "control";
+  /** Shared workspace entries (blackboard pattern). Members write via hera_team_remember and read via hera_team_recall. */
   sharedMemory?: string[];
   createdAt?: number;
   /** OKR objectives (used when management="okr") */

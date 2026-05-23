@@ -2,7 +2,11 @@ import type { TeamDefinition } from "../types.js";
 import type { OpenCodeClient } from "../types/client.js";
 import type { MemoryStore } from "../memory/store.js";
 import { randomUUID } from "node:crypto";
-import { TEAM_POLL_MAX_ATTEMPTS, TEAM_POLL_INTERVAL_MS } from "../constants.js";
+import {
+  TEAM_MANAGEMENT_DESCRIPTIONS,
+  TEAM_POLL_MAX_ATTEMPTS,
+  TEAM_POLL_INTERVAL_MS,
+} from "../constants.js";
 import { errorMessage } from "../helpers.js";
 
 export interface TeamMessage {
@@ -379,7 +383,7 @@ export class TeamManager {
     if (teams.length === 0) return "";
     return [
       "## Hera Team Membership",
-      "You are part of the following Hera team(s). Coordinate with peers via `hera_team_message`, check your inbox with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and use `hera_team_remember` / `hera_team_recall` for shared team memory.",
+      "You are part of the following Hera team(s). Coordinate with peers via `hera_team_message`, check your inbox with `hera_get_team_messages`, and acknowledge handled messages with `hera_ack_team_messages`. Use `hera_team_remember` to publish to the team's shared workspace (visible to all members) and `hera_team_recall` to read what others have published. Treat this workspace as the team blackboard for decisions, context, and results.",
       "",
       ...teams.map((team) => this.buildTeamContext(team.name)),
     ].join("\n");
@@ -389,6 +393,7 @@ export class TeamManager {
     const team = this.teams.get(teamName);
     if (!team) return "";
     const members = team.members.map((m) => `- **${m.agentName}** (${m.role})`).join("\n");
+    const management = team.management ?? "simple";
     const sessions = this.spawnedSessions.get(teamName) ?? [];
     const sessionInfo =
       sessions.length > 0
@@ -398,6 +403,8 @@ export class TeamManager {
       `## Team: ${team.name}`,
       `Description: ${team.description}`,
       `Coordination: ${team.coordination}`,
+      `Management: ${management} — ${TEAM_MANAGEMENT_DESCRIPTIONS[management]}`,
+      `Shared Workspace: use hera_team_remember/hera_team_recall as the team blackboard.`,
       `Members:`,
       members,
       sessionInfo,

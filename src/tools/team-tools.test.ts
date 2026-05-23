@@ -92,7 +92,7 @@ describe("createTeamTools (integration)", () => {
       expect(team!.members.map((m) => m.agentName)).toEqual(["alpha", "beta"]);
     });
 
-    it("supports management mode and writes team-aware prompts to upgraded agents", async () => {
+    it("supports management mode without writing stale static team prompts", async () => {
       await makeAgent("alpha", "all");
       await makeAgent("beta", "all");
 
@@ -114,8 +114,39 @@ describe("createTeamTools (integration)", () => {
       expect(team!.management).toBe("okr");
       const alpha = harness.ctx.registeredAgents.get("alpha");
       expect(alpha!.mode).toBe("subagent");
-      expect(alpha!.prompt).toContain("## Hera Team Awareness");
-      expect(alpha!.prompt).toContain("hera_ack_team_messages");
+      expect(alpha!.prompt).not.toContain("## Hera Team Awareness");
+      expect(harness.ctx.teamManager.getAgentTeamContext("alpha")).toContain(
+        "hera_ack_team_messages"
+      );
+      expect(harness.ctx.teamManager.getAgentTeamContext("alpha")).toContain("team blackboard");
+    });
+
+    it("removes legacy static team awareness blocks when deleting a team", async () => {
+      await makeAgent("legacy", "all");
+      const legacy = harness.ctx.registeredAgents.get("legacy")!;
+      harness.ctx.registeredAgents.set("legacy", {
+        ...legacy,
+        prompt: `${legacy.prompt}\n\n## Hera Team Awareness\nOld static team block.`,
+      });
+      await teamTools.hera_create_team.execute(
+        {
+          name: "legacy-team",
+          description: "Legacy team",
+          coordination: "parallel",
+          members: [{ agent_name: "legacy", role: "member" }],
+        } as any,
+        {} as any
+      );
+
+      const result = await teamTools.hera_delete_team.execute(
+        { name: "legacy-team" } as any,
+        {} as any
+      );
+
+      expect(String(result)).toContain("Legacy static team prompt blocks were removed");
+      expect(harness.ctx.registeredAgents.get("legacy")!.prompt).not.toContain(
+        "## Hera Team Awareness"
+      );
     });
 
     it("rejects missing agents", async () => {
@@ -151,6 +182,7 @@ describe("createTeamTools (integration)", () => {
       );
       const listed = await teamTools.hera_list_teams.execute({} as any, {} as any);
       expect(String(listed)).toContain("solo-team");
+      expect(String(listed)).toContain("parallel, simple");
 
       await teamTools.hera_delete_team.execute({ name: "solo-team" } as any, {} as any);
       const after = await teamTools.hera_list_teams.execute({} as any, {} as any);
@@ -184,6 +216,8 @@ describe("createTeamTools (integration)", () => {
       );
       expect(String(result)).toContain("info-team");
       expect(String(result)).toContain("adaptive");
+      expect(String(result)).toContain("flat team");
+      expect(String(result)).toContain("Shared workspace");
       expect(String(result)).toContain("planner");
     });
 
@@ -349,7 +383,7 @@ describe("createTeamTools (integration)", () => {
         {} as any
       );
 
-      await teamTools.hera_team_remember.execute(
+      const remembered = await teamTools.hera_team_remember.execute(
         {
           team_name: "memory-team",
           key: "style",
@@ -358,11 +392,13 @@ describe("createTeamTools (integration)", () => {
         } as any,
         {} as any
       );
+      expect(String(remembered)).toContain("shared workspace");
       const recalled = await teamTools.hera_team_recall.execute(
         { team_name: "memory-team", query: "strict TypeScript" } as any,
         {} as any
       );
 
+      expect(String(recalled)).toContain("Team workspace for memory-team");
       expect(String(recalled)).toContain("strict TypeScript");
     });
 
@@ -391,7 +427,7 @@ describe("createTeamTools (integration)", () => {
         {} as any
       );
 
-      expect(String(remembered)).toContain("Remembered team memory");
+      expect(String(remembered)).toContain("shared workspace");
       expect(String(recalled)).toContain("unsafe path characters");
     });
   });

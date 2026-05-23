@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 import type { PluginContext, AgentDefinition, SkillDefinition } from "../types.js";
-import { MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
+import { MAX_RESULT_PREVIEW_LENGTH, TEAM_MANAGEMENT_DESCRIPTIONS } from "../constants.js";
 import { TEAM_TEMPLATES } from "../team/templates.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { persistAgent } from "../persistence.js";
@@ -36,7 +36,9 @@ export function createTeamTools(ctx: PluginContext) {
         management: z
           .enum(["simple", "okr", "tree", "control"])
           .optional()
-          .describe("Management mode (default: simple)"),
+          .describe(
+            "Management mode: simple=flat collaboration, okr=objectives/key results, tree=hierarchical delegation view, control=approval checkpoints (default: simple)"
+          ),
         members: z
           .array(
             z.object({
@@ -66,7 +68,7 @@ export function createTeamTools(ctx: PluginContext) {
           createdAt: Date.now(),
         };
         await teamManager.createTeam(team);
-        return `Team "${args.name}" created with ${args.members.length} members (${args.coordination}).`;
+        return `Team "${args.name}" created with ${args.members.length} members (${args.coordination}, ${team.management} management). Members share a workspace via hera_team_remember/hera_team_recall.`;
       },
     }),
 
@@ -80,7 +82,9 @@ export function createTeamTools(ctx: PluginContext) {
         management: z
           .enum(["simple", "okr", "tree", "control"])
           .optional()
-          .describe("Management mode (default: simple)"),
+          .describe(
+            "Management mode: simple=flat collaboration, okr=objectives/key results, tree=hierarchical delegation view, control=approval checkpoints (default: simple)"
+          ),
         member_mode: z
           .enum(["primary", "subagent", "all"])
           .optional()
@@ -112,21 +116,14 @@ export function createTeamTools(ctx: PluginContext) {
         for (const agentName of args.agent_names) {
           const def = registeredAgents.get(agentName);
           if (!def) continue;
-          const teamPrompt = buildTeamAwarenessPrompt(
-            args.name,
-            args.coordination,
-            args.management ?? "simple"
-          );
           const nextDef = {
             ...def,
             mode: args.member_mode ?? def.mode,
-            prompt: def.prompt.includes("## Hera Team Awareness")
-              ? def.prompt
-              : `${def.prompt}\n\n${teamPrompt}`,
+            prompt: stripLegacyTeamAwarenessPrompt(def.prompt),
           };
           await persistAgent(nextDef, skillsMap, registeredAgents, agentRegistry, store);
         }
-        return `Agents [${args.agent_names.join(", ")}] upgraded into team "${args.name}" (${args.coordination}, ${team.management}).`;
+        return `Agents [${args.agent_names.join(", ")}] upgraded into team "${args.name}" (${args.coordination}, ${team.management} management). Members share a workspace via hera_team_remember/hera_team_recall.`;
       },
     }),
 
@@ -139,7 +136,7 @@ export function createTeamTools(ctx: PluginContext) {
         return teams
           .map((t) => {
             const members = t.members.map((m) => `${m.agentName}(${m.role})`).join(", ");
-            return `- **${t.name}** (${t.coordination}): ${t.description} — Members: ${members}`;
+            return `- **${t.name}** (${t.coordination}, ${t.management ?? "simple"}): ${t.description} — Members: ${members}`;
           })
           .join("\n");
       },
@@ -149,9 +146,24 @@ export function createTeamTools(ctx: PluginContext) {
       description: "Delete a team.",
       args: { name: z.string().describe("Team name") },
       async execute(args) {
+        const team = teamManager.getTeam(args.name);
+        if (team) {
+          const skillsMap = skillManager.getSkillMap();
+          for (const member of team.members) {
+            const def = registeredAgents.get(member.agentName);
+            if (!def || !def.prompt.includes("## Hera Team Awareness")) continue;
+            await persistAgent(
+              { ...def, prompt: stripLegacyTeamAwarenessPrompt(def.prompt) },
+              skillsMap,
+              registeredAgents,
+              agentRegistry,
+              store
+            );
+          }
+        }
         const ok = await teamManager.deleteTeam(args.name);
         return ok
-          ? `Team "${args.name}" deleted.`
+          ? `Team "${args.name}" deleted. Legacy static team prompt blocks were removed from member agents when present.`
           : `Team "${args.name}" not found. Use hera_list_teams to see available teams.`;
       },
     }),
@@ -268,7 +280,8 @@ export function createTeamTools(ctx: PluginContext) {
     }),
 
     hera_team_remember: tool({
-      description: "Store team-scoped shared memory using Hera's persistent memory store.",
+      description:
+        "Write to the team's shared workspace (blackboard). All team members can read this via hera_team_recall. Use this to publish decisions, context, and results that other members need.",
       args: {
         team_name: z.string().describe("Team name"),
         key: z.string().describe("Memory key within the team namespace"),
@@ -291,12 +304,13 @@ export function createTeamTools(ctx: PluginContext) {
             writtenBy: args.written_by ?? "user",
           },
         });
-        return `Remembered team memory "${args.key}" for ${args.team_name}.`;
+        return `Stored "${args.key}" in ${args.team_name}'s shared workspace. All team members can recall this with hera_team_recall.`;
       },
     }),
 
     hera_team_recall: tool({
-      description: "Search team-scoped shared memory.",
+      description:
+        "Read from the team's shared workspace (blackboard). Returns team memories written by any member via hera_team_remember. Check this before starting work to avoid duplicating effort.",
       args: {
         team_name: z.string().describe("Team name"),
         query: z.string().describe("Search query"),
@@ -311,8 +325,11 @@ export function createTeamTools(ctx: PluginContext) {
             (m) => m.content.toLowerCase().includes(lower) || m.id.toLowerCase().includes(lower)
           )
           .slice(0, limit);
-        if (filtered.length === 0) return `No team memory found for ${args.team_name}.`;
-        return filtered.map((m) => m.content.slice(0, MAX_RESULT_PREVIEW_LENGTH)).join("\n---\n");
+        if (filtered.length === 0) return `No team workspace entries found for ${args.team_name}.`;
+        return [
+          `Team workspace for ${args.team_name} (${filtered.length} entries):`,
+          filtered.map((m) => m.content.slice(0, MAX_RESULT_PREVIEW_LENGTH)).join("\n---\n"),
+        ].join("\n");
       },
     }),
 
@@ -365,6 +382,7 @@ export function createTeamTools(ctx: PluginContext) {
           name: args.name,
           description: tpl.description,
           coordination: tpl.coordination,
+          management: tpl.management ?? "simple",
           members: tpl.members.map((m) => ({
             agentName: m.role,
             role: m.role,
@@ -378,7 +396,8 @@ export function createTeamTools(ctx: PluginContext) {
 
         const lines = [
           `Team "${args.name}" created (template: ${args.template}).`,
-          `Coordination: ${tpl.coordination}. Members: ${tpl.members.map((m) => m.role).join(", ")}.`,
+          `Coordination: ${tpl.coordination}. Management: ${tpl.management ?? "simple"}. Members: ${tpl.members.map((m) => m.role).join(", ")}.`,
+          `Shared workspace: members publish decisions, context, and results with hera_team_remember/hera_team_recall.`,
           ``,
           `Agent setup:`,
           ...creationResults.map((r) => `  ${r}`),
@@ -636,11 +655,13 @@ export function createTeamTools(ctx: PluginContext) {
           return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
         const members = team.members.map((m) => `${m.agentName}(${m.role})`).join(", ");
 
+        const management = team.management ?? "simple";
         const lines = [
           `Team: **${team.name}**`,
           `Description: ${team.description}`,
           `Coordination: ${team.coordination}`,
-          `Management: ${team.management ?? "simple"}`,
+          `Management: ${management} — ${TEAM_MANAGEMENT_DESCRIPTIONS[management]}`,
+          `Shared workspace: hera_team_remember/hera_team_recall is the team's blackboard for decisions, context, and results.`,
           `Members: ${members}`,
         ];
 
@@ -666,7 +687,11 @@ export function createTeamTools(ctx: PluginContext) {
           (!team.objectives || team.objectives.length === 0) &&
           (!team.controlPoints || team.controlPoints.length === 0)
         ) {
-          lines.push("Progress: No objectives or control points defined yet.");
+          lines.push(
+            management === "simple"
+              ? "Progress: simple management has no required tracking. Add objectives or control points only if the team needs them."
+              : `Progress: No ${management} tracking entries defined yet.`
+          );
         }
 
         const sessions = teamManager.getSpawnedSessions(args.team_name);
@@ -691,14 +716,6 @@ function safeMemoryIdSegment(value: string): string {
   return Array.from(value, (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join("-");
 }
 
-function buildTeamAwarenessPrompt(
-  teamName: string,
-  coordination: "parallel" | "sequential" | "adaptive",
-  management: "simple" | "okr" | "tree" | "control"
-): string {
-  return [
-    "## Hera Team Awareness",
-    `You are a member of Hera team "${teamName}" (${coordination}, ${management}).`,
-    "Coordinate with peers using `hera_team_message`, read your inbox with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and publish durable shared context with `hera_team_remember` / `hera_team_recall`.",
-  ].join("\n");
+function stripLegacyTeamAwarenessPrompt(prompt: string): string {
+  return prompt.replace(/\n{0,2}## Hera Team Awareness\n[\s\S]*?(?=\n## |$)/g, "").trimEnd();
 }
