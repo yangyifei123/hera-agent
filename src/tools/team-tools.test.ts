@@ -92,6 +92,32 @@ describe("createTeamTools (integration)", () => {
       expect(team!.members.map((m) => m.agentName)).toEqual(["alpha", "beta"]);
     });
 
+    it("supports management mode and writes team-aware prompts to upgraded agents", async () => {
+      await makeAgent("alpha", "all");
+      await makeAgent("beta", "all");
+
+      const result = await teamTools.hera_upgrade_agents_to_team.execute(
+        {
+          name: "managed-team",
+          description: "Managed team",
+          coordination: "sequential",
+          management: "okr",
+          member_mode: "subagent",
+          agent_names: ["alpha", "beta"],
+        } as any,
+        {} as any
+      );
+
+      expect(String(result)).toContain("managed-team");
+      expect(String(result)).toContain("okr");
+      const team = harness.ctx.teamManager.getTeam("managed-team");
+      expect(team!.management).toBe("okr");
+      const alpha = harness.ctx.registeredAgents.get("alpha");
+      expect(alpha!.mode).toBe("subagent");
+      expect(alpha!.prompt).toContain("## Hera Team Awareness");
+      expect(alpha!.prompt).toContain("hera_ack_team_messages");
+    });
+
     it("rejects missing agents", async () => {
       const result = await teamTools.hera_upgrade_agents_to_team.execute(
         {
@@ -262,6 +288,51 @@ describe("createTeamTools (integration)", () => {
       );
 
       expect(pushed.some((entry) => entry.includes("active message"))).toBe(true);
+    });
+
+    it("acknowledges visible team messages and persists ack state", async () => {
+      await makeAgent("sender");
+      await makeAgent("receiver");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "ack-team",
+          description: "Ack test",
+          coordination: "parallel",
+          members: [
+            { agent_name: "sender", role: "sender" },
+            { agent_name: "receiver", role: "receiver" },
+          ],
+        } as any,
+        {} as any
+      );
+      const sent = await teamTools.hera_team_message.execute(
+        {
+          team_name: "ack-team",
+          from: "sender",
+          to: "receiver",
+          content: "please ack this",
+        } as any,
+        {} as any
+      );
+      const messageId = String(sent).match(/ID: ([0-9a-f-]+)/)?.[1];
+      expect(messageId).toBeDefined();
+
+      const ack = await teamTools.hera_ack_team_messages.execute(
+        { team_name: "ack-team", member_name: "receiver", message_ids: [messageId] } as any,
+        {} as any
+      );
+      expect(String(ack)).toContain("Acknowledged 1");
+      const messages = await teamTools.hera_get_team_messages.execute(
+        { team_name: "ack-team", member_name: "receiver" } as any,
+        {} as any
+      );
+      expect(String(messages)).toContain("ack:receiver");
+
+      const reloadedManager = new TeamManager(harness.ctx.store, undefined);
+      await reloadedManager.init();
+      expect(reloadedManager.getMessages("ack-team", "receiver")[0].acknowledgedBy).toContain(
+        "receiver"
+      );
     });
   });
 

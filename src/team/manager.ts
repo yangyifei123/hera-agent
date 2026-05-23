@@ -13,6 +13,8 @@ export interface TeamMessage {
   content: string;
   timestamp: number;
   kind: "message" | "task" | "result" | "shutdown_request";
+  acknowledgedBy?: string[];
+  acknowledgedAt?: Record<string, number>;
 }
 
 export interface SpawnedSession {
@@ -49,6 +51,8 @@ export class TeamManager {
     for (const mem of storedMessages) {
       try {
         const msg = JSON.parse(mem.content) as TeamMessage;
+        msg.acknowledgedBy = msg.acknowledgedBy ?? [];
+        msg.acknowledgedAt = msg.acknowledgedAt ?? {};
         const queue = this.messageQueue.get(msg.teamName) ?? [];
         queue.push(msg);
         this.messageQueue.set(msg.teamName, queue);
@@ -276,6 +280,8 @@ export class TeamManager {
       content,
       timestamp: Date.now(),
       kind,
+      acknowledgedBy: [],
+      acknowledgedAt: {},
     };
     const queue = this.messageQueue.get(teamName) ?? [];
     queue.push(msg);
@@ -333,8 +339,50 @@ export class TeamManager {
       .slice(-limit);
   }
 
+  async acknowledgeMessages(
+    teamName: string,
+    memberName: string,
+    messageIds?: string[]
+  ): Promise<number> {
+    const queue = this.messageQueue.get(teamName) ?? [];
+    const idFilter = messageIds && messageIds.length > 0 ? new Set(messageIds) : undefined;
+    const timestamp = Date.now();
+    let count = 0;
+    for (const msg of queue) {
+      const visible = msg.to === memberName || msg.to === "broadcast";
+      if (!visible || (idFilter && !idFilter.has(msg.id))) continue;
+      msg.acknowledgedBy = msg.acknowledgedBy ?? [];
+      msg.acknowledgedAt = msg.acknowledgedAt ?? {};
+      if (msg.acknowledgedBy.includes(memberName)) continue;
+      msg.acknowledgedBy.push(memberName);
+      msg.acknowledgedAt[memberName] = timestamp;
+      count++;
+      await this.store.save({
+        id: `team-message-${msg.id}`,
+        type: "team-message",
+        content: JSON.stringify(msg),
+        timestamp: msg.timestamp,
+        metadata: { teamName, from: msg.from, to: msg.to, kind: msg.kind },
+      });
+    }
+    return count;
+  }
+
   getSpawnedSessions(teamName: string): SpawnedSession[] {
     return this.spawnedSessions.get(teamName) ?? [];
+  }
+
+  getAgentTeamContext(agentName: string): string {
+    const teams = this.getAllTeams().filter((team) =>
+      team.members.some((member) => member.agentName === agentName)
+    );
+    if (teams.length === 0) return "";
+    return [
+      "## Hera Team Membership",
+      "You are part of the following Hera team(s). Coordinate with peers via `hera_team_message`, check your inbox with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and use `hera_team_remember` / `hera_team_recall` for shared team memory.",
+      "",
+      ...teams.map((team) => this.buildTeamContext(team.name)),
+    ].join("\n");
   }
 
   buildTeamContext(teamName: string): string {

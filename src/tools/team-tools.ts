@@ -77,6 +77,14 @@ export function createTeamTools(ctx: PluginContext) {
         name: z.string().describe("Team name"),
         description: z.string().describe("Team purpose"),
         coordination: z.enum(["parallel", "sequential", "adaptive"]).describe("Coordination mode"),
+        management: z
+          .enum(["simple", "okr", "tree", "control"])
+          .optional()
+          .describe("Management mode (default: simple)"),
+        member_mode: z
+          .enum(["primary", "subagent", "all"])
+          .optional()
+          .describe("Optional mode to apply to existing member agents"),
         agent_names: z.array(z.string()).describe("Existing agents to include in the team"),
       },
       async execute(args) {
@@ -90,16 +98,35 @@ export function createTeamTools(ctx: PluginContext) {
           subscriptions: ["message", "task", "result"],
           backendType: "in-process" as const,
         }));
-        await teamManager.createTeam({
+        const team = {
           name: args.name,
           description: args.description,
           coordination: args.coordination,
-          management: "simple",
+          management: args.management ?? "simple",
           members,
           sharedMemory: [],
           createdAt: Date.now(),
-        });
-        return `Agents [${args.agent_names.join(", ")}] upgraded into team "${args.name}" (${args.coordination}).`;
+        };
+        await teamManager.createTeam(team);
+        const skillsMap = skillManager.getSkillMap();
+        for (const agentName of args.agent_names) {
+          const def = registeredAgents.get(agentName);
+          if (!def) continue;
+          const teamPrompt = buildTeamAwarenessPrompt(
+            args.name,
+            args.coordination,
+            args.management ?? "simple"
+          );
+          const nextDef = {
+            ...def,
+            mode: args.member_mode ?? def.mode,
+            prompt: def.prompt.includes("## Hera Team Awareness")
+              ? def.prompt
+              : `${def.prompt}\n\n${teamPrompt}`,
+          };
+          await persistAgent(nextDef, skillsMap, registeredAgents, agentRegistry, store);
+        }
+        return `Agents [${args.agent_names.join(", ")}] upgraded into team "${args.name}" (${args.coordination}, ${team.management}).`;
       },
     }),
 
@@ -205,9 +232,38 @@ export function createTeamTools(ctx: PluginContext) {
         return messages
           .map(
             (m) =>
-              `[${new Date(m.timestamp).toISOString()}] ${m.kind} ${m.from} -> ${m.to}: ${m.content}`
+              `[${new Date(m.timestamp).toISOString()}] ${m.kind} ${m.from} -> ${m.to} (${m.acknowledgedBy?.length ? `ack:${m.acknowledgedBy.join(",")}` : "unread"}) ID:${m.id}: ${m.content}`
           )
           .join("\n");
+      },
+    }),
+
+    hera_ack_team_messages: tool({
+      description: "Acknowledge queued team messages after a member has handled them.",
+      args: {
+        team_name: z.string().describe("Team name"),
+        member_name: z.string().describe("Team member acknowledging messages"),
+        message_ids: z
+          .array(z.string())
+          .optional()
+          .describe(
+            "Specific message IDs to acknowledge. If omitted, acknowledges all visible messages."
+          ),
+      },
+      async execute(args) {
+        const team = teamManager.getTeam(args.team_name);
+        if (!team)
+          return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
+        const memberNames = team.members.map((m) => m.agentName);
+        if (!memberNames.includes(args.member_name)) {
+          return `Error: "${args.member_name}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}.`;
+        }
+        const count = await teamManager.acknowledgeMessages(
+          args.team_name,
+          args.member_name,
+          args.message_ids
+        );
+        return `Acknowledged ${count} message(s) for ${args.member_name} in ${args.team_name}.`;
       },
     }),
 
@@ -633,4 +689,16 @@ export function createTeamTools(ctx: PluginContext) {
 
 function safeMemoryIdSegment(value: string): string {
   return Array.from(value, (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join("-");
+}
+
+function buildTeamAwarenessPrompt(
+  teamName: string,
+  coordination: "parallel" | "sequential" | "adaptive",
+  management: "simple" | "okr" | "tree" | "control"
+): string {
+  return [
+    "## Hera Team Awareness",
+    `You are a member of Hera team "${teamName}" (${coordination}, ${management}).`,
+    "Coordinate with peers using `hera_team_message`, read your inbox with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and publish durable shared context with `hera_team_remember` / `hera_team_recall`.",
+  ].join("\n");
 }

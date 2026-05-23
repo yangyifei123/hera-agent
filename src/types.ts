@@ -25,6 +25,7 @@ export interface HeraMemory {
     | "team-memory";
   content: string;
   timestamp: number;
+  expiresAt?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -261,6 +262,7 @@ export interface HeraConfig {
   auto_evolve?: boolean;
   auto_memory?: boolean;
   memory_limit?: number;
+  memory_ttl_ms?: number;
   team_defaults?: {
     coordination?: "parallel" | "sequential" | "adaptive";
     timeout?: number;
