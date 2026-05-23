@@ -12,6 +12,9 @@ describe("getDefaultSkills", () => {
     "subagent",
     "communicate",
     "auto-compact",
+    "workflow-orchestration",
+    "brainstorming",
+    "skill-creator",
   ];
 
   it("returns default skills without additional", () => {

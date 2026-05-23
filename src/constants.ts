@@ -39,6 +39,9 @@ export const DEFAULT_SKILLS = [
   "subagent",
   "communicate",
   "auto-compact",
+  "workflow-orchestration",
+  "brainstorming",
+  "skill-creator",
 ] as const;
 
 // === Default Permissions ===
