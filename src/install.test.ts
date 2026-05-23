@@ -96,6 +96,31 @@ describe("Installation Tests", () => {
     });
   });
 
+  describe("CLI lifecycle guidance", () => {
+    test("update command exposes npm-first run mode", () => {
+      const output = execSync("node bin/hera.js update", {
+        encoding: "utf-8",
+        cwd: process.cwd(),
+        stdio: "pipe",
+      });
+
+      expect(output).toContain("hera update --run");
+      expect(output).toContain("npm update --prefix ~/.config/opencode hera-agent");
+    });
+
+    test("uninstall command exposes safe run and purge modes", () => {
+      const output = execSync("node bin/hera.js uninstall", {
+        encoding: "utf-8",
+        cwd: process.cwd(),
+        stdio: "pipe",
+      });
+
+      expect(output).toContain("hera uninstall --run");
+      expect(output).toContain("hera uninstall --run --purge");
+      expect(output).toContain("npm uninstall --prefix ~/.config/opencode hera-agent");
+    });
+  });
+
   describe("Source Files", () => {
     test("main entry point exists", () => {
       const pkgPath = join(process.cwd(), "package.json");

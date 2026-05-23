@@ -307,10 +307,14 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 <summary><strong>Team Management</strong></summary>
 
 - `hera_create_team` - Create team with members and coordination mode
+- `hera_upgrade_agents_to_team` - Convert existing agents into a team
 - `hera_list_teams` - List all teams
 - `hera_delete_team` - Remove a team
 - `hera_spawn_team` - Launch team task
 - `hera_team_message` - Send message between team members
+- `hera_get_team_messages` - Read queued team messages for a member
+- `hera_team_remember` - Store team-scoped shared memory
+- `hera_team_recall` - Search team-scoped shared memory
 - `hera_quick_team` - Create team from template
 
 </details>

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 const cmd = args[0] || "help";
+const flags = new Set(args.slice(1));
 
 // Read version from package.json so CLI never drifts from npm metadata.
 function getVersion() {
@@ -50,6 +51,26 @@ function runCmd(command, options = {}) {
   try {
     const result = execSync(command, { encoding: "utf8", stdio: "pipe", ...options });
     return { ok: true, output: result.trim() };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+}
+
+function quotePath(p) {
+  return `"${p.replace(/"/g, '\\"')}"`;
+}
+
+function removePluginRegistration(configRoot) {
+  const opencodeJson = path.join(configRoot, "opencode.json");
+  if (!fs.existsSync(opencodeJson)) return { ok: true, changed: false };
+  try {
+    const content = JSON.parse(fs.readFileSync(opencodeJson, "utf8"));
+    const plugins = Array.isArray(content.plugin) ? content.plugin : [];
+    const nextPlugins = plugins.filter((plugin) => plugin !== "hera-agent");
+    if (nextPlugins.length === plugins.length) return { ok: true, changed: false };
+    content.plugin = nextPlugins;
+    fs.writeFileSync(opencodeJson, JSON.stringify(content, null, 2) + "\n");
+    return { ok: true, changed: true };
   } catch (err) {
     return { ok: false, error: err.message || String(err) };
   }
@@ -241,24 +262,44 @@ switch (cmd) {
   }
 
   case "update":
-  case "upgrade":
+  case "upgrade": {
+    const configRoot = getConfigRoot();
+    if (flags.has("--run")) {
+      console.log("Hera Agent Factory — Updating via npm...\n");
+      const result = runCmd(`npm update --prefix ${quotePath(configRoot)} hera-agent`);
+      if (!result.ok) {
+        console.log(`[✗] Update failed: ${result.error}`);
+        process.exit(1);
+      }
+      console.log("[✓] hera-agent updated via npm");
+      console.log("    Restart OpenCode, then run: hera doctor");
+      break;
+    }
     console.log(`
 Hera Agent Factory — Update
 
+Run automatically:
+  hera update --run
+
 Update from npm:
-  cd ~/.config/opencode
-  bun update hera-agent
+  npm update --prefix ~/.config/opencode hera-agent
 
 Or force reinstall latest:
-  bun remove hera-agent && bun add hera-agent@latest
+  npm uninstall --prefix ~/.config/opencode hera-agent
+  npm install --prefix ~/.config/opencode hera-agent@latest
+
+Install a specific version or rollback:
+  npm install --prefix ~/.config/opencode hera-agent@${VERSION}
+
+If you installed with Bun:
+  cd ~/.config/opencode
+  bun update hera-agent
 
 Update from local source:
   1. cd /path/to/hera-agent
   2. git pull origin master (if from git)
-  3. bun install && bun run build
-  4. cd ~/.config/opencode
-  5. bun remove hera-agent
-  6. bun add file:///path/to/hera-agent
+  3. npm install && npm run build
+  4. npm install --prefix ~/.config/opencode /path/to/hera-agent
 
 Check current version:
   hera version
@@ -272,24 +313,69 @@ After update:
   3. Check: hera version
 `);
     break;
+  }
 
-  case "uninstall":
+  case "uninstall": {
+    const configRoot = getConfigRoot();
+    if (flags.has("--run")) {
+      const purge = flags.has("--purge");
+      console.log(`Hera Agent Factory — Uninstalling${purge ? " (purge)" : " (keep data)"}...\n`);
+      const unregister = removePluginRegistration(configRoot);
+      if (!unregister.ok) {
+        console.log(`[✗] Could not update opencode.json: ${unregister.error}`);
+        process.exit(1);
+      }
+      console.log(
+        unregister.changed
+          ? "[✓] Removed hera-agent from opencode.json"
+          : "[i] opencode.json did not need changes"
+      );
+      const result = runCmd(`npm uninstall --prefix ${quotePath(configRoot)} hera-agent`);
+      if (!result.ok) {
+        console.log(`[✗] npm uninstall failed: ${result.error}`);
+        process.exit(1);
+      }
+      console.log("[✓] hera-agent package removed via npm");
+      if (purge) {
+        for (const target of [
+          path.join(configRoot, "hera-data"),
+          path.join(configRoot, "agents", "hera"),
+          path.join(configRoot, "hera.json"),
+        ]) {
+          fs.rmSync(target, { recursive: true, force: true });
+        }
+        console.log("[✓] Hera data, agents, and hera.json removed");
+      } else {
+        console.log("[i] Hera data preserved. Reinstall later to restore agents, skills, and memory.");
+      }
+      break;
+    }
     console.log(`
 Hera Agent Factory — Uninstall
 
+Run automatically, keeping Hera data:
+  hera uninstall --run
+
+Run automatically and remove Hera data:
+  hera uninstall --run --purge
+
+Keep Data (reinstall later):
+  1. Edit ~/.config/opencode/opencode.json - remove "hera-agent" from plugin array
+  2. npm uninstall --prefix ~/.config/opencode hera-agent
+  (Your agents, skills, and memory will be preserved)
+
 Complete Uninstall (removes everything):
   1. Edit ~/.config/opencode/opencode.json - remove "hera-agent" from plugin array
-  2. cd ~/.config/opencode && bun remove hera-agent
+  2. npm uninstall --prefix ~/.config/opencode hera-agent
   3. rm -rf ~/.config/opencode/hera-data/
   4. rm -rf ~/.config/opencode/agents/hera/
   5. rm -f ~/.config/opencode/hera.json
 
-Keep Data (reinstall later):
-  1. Edit ~/.config/opencode/opencode.json - remove "hera-agent" from plugin array
-  2. cd ~/.config/opencode && bun remove hera-agent
-  (Your agents, skills, and memory will be preserved)
+If you installed with Bun, replace npm uninstall with:
+  cd ~/.config/opencode && bun remove hera-agent
 `);
     break;
+  }
 
   case "list":
   case "list-agents": {

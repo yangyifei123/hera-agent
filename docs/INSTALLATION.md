@@ -160,6 +160,56 @@ hera (primary)
 
 If Hera does not appear, restart OpenCode and verify that `opencode.json` includes `hera-agent`.
 
+## Update
+
+Use npm by default, matching the recommended install path:
+
+```bash
+hera update --run
+# or manually:
+npm update --prefix ~/.config/opencode hera-agent
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
+```
+
+Force reinstall the latest published version:
+
+```bash
+npm uninstall --prefix ~/.config/opencode hera-agent
+npm install --prefix ~/.config/opencode hera-agent@latest
+```
+
+Install a specific version or roll back:
+
+```bash
+npm install --prefix ~/.config/opencode hera-agent@<version>
+```
+
+If you installed with Bun, `cd ~/.config/opencode && bun update hera-agent` is still supported.
+
+## Uninstall
+
+Keep agents, skills, and memory for a later reinstall:
+
+```bash
+hera uninstall --run
+# or manually:
+npm uninstall --prefix ~/.config/opencode hera-agent
+# Remove "hera-agent" from ~/.config/opencode/opencode.json plugin array if needed.
+```
+
+Full uninstall, including Hera-created data:
+
+```bash
+hera uninstall --run --purge
+# or manually:
+npm uninstall --prefix ~/.config/opencode hera-agent
+rm -rf ~/.config/opencode/hera-data/
+rm -rf ~/.config/opencode/agents/hera/
+rm -f ~/.config/opencode/hera.json
+```
+
+On Windows PowerShell, replace `~/.config/opencode` with `$env:USERPROFILE\.config\opencode` and use `Remove-Item -Recurse -Force` for the data directories.
+
 ## Troubleshooting
 
 ### `bun: command not found`
