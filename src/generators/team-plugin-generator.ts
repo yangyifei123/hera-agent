@@ -20,6 +20,7 @@ import {
 } from "./plugin-generator.js";
 import { buildAgentPrompt } from "../agents/hera.js";
 import { heraLog } from "../logger.js";
+import { TEAM_MANAGEMENT_DESCRIPTIONS } from "../constants.js";
 
 function camelCase(name: string): string {
   return name
@@ -39,6 +40,7 @@ function teamPluginName(teamName: string): string {
  */
 function buildTeamContext(team: TeamDefinition, selfName: string): string {
   const others = team.members.filter((m) => m.agentName !== selfName);
+  const management = team.management ?? "simple";
   const memberList = others.length
     ? others.map((m) => `- ${m.agentName} (role: ${m.role})`).join("\n")
     : "(you are the only member)";
@@ -48,14 +50,14 @@ function buildTeamContext(team: TeamDefinition, selfName: string): string {
     ``,
     `You are a member of the "${team.name}" team.`,
     `Coordination mode: ${team.coordination}.`,
-    team.management ? `Management style: ${team.management}.` : "",
+    `Management style: ${management} — ${TEAM_MANAGEMENT_DESCRIPTIONS[management]}.`,
     ``,
     `Other members:`,
     memberList,
     ``,
-    `Coordinate via shared memory: \`hera_remember\` writes are visible to all`,
-    `members. Use \`hera_recall\` to consult team-shared context before starting`,
-    `work to avoid duplicating effort.`,
+    `Shared workspace (blackboard): Use \`hera_remember\` to publish decisions,`,
+    `context, and results that all team members can see. Use \`hera_recall\` to`,
+    `read what others have published before starting work to avoid duplicating effort.`,
   ]
     .filter(Boolean)
     .join("\n");

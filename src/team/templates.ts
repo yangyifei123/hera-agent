@@ -4,6 +4,7 @@
  * Used by hera_quick_team for one-command team creation.
  */
 
+import type { TeamManagementMode } from "../constants.js";
 import type { AgentTemplateName } from "../types.js";
 
 export interface TeamTemplateMember {
@@ -15,6 +16,7 @@ export interface TeamTemplate {
   description: string;
   members: TeamTemplateMember[];
   coordination: "parallel" | "sequential" | "adaptive";
+  management?: TeamManagementMode;
 }
 
 export const TEAM_TEMPLATES = {
@@ -25,6 +27,7 @@ export const TEAM_TEMPLATES = {
       { role: "bug-hunter", template: "debugger" as AgentTemplateName },
     ],
     coordination: "parallel" as const,
+    management: "control" as const,
   },
   "dev-pipeline": {
     description: "Development pipeline: architect → coder → tester",
@@ -34,6 +37,7 @@ export const TEAM_TEMPLATES = {
       { role: "tester", template: "tester" as AgentTemplateName },
     ],
     coordination: "sequential" as const,
+    management: "okr" as const,
   },
   research: {
     description: "Research team: researcher → writer",
@@ -42,6 +46,7 @@ export const TEAM_TEMPLATES = {
       { role: "writer", template: "documenter" as AgentTemplateName },
     ],
     coordination: "sequential" as const,
+    management: "tree" as const,
   },
 } satisfies Record<string, TeamTemplate>;
 

@@ -20,6 +20,7 @@ describe("TEAM_TEMPLATES", () => {
       expect(Array.isArray(tpl.members)).toBe(true);
       expect(tpl.members.length).toBeGreaterThan(0);
       expect(["parallel", "sequential", "adaptive"]).toContain(tpl.coordination);
+      expect(["simple", "okr", "tree", "control"]).toContain(tpl.management);
       for (const member of tpl.members) {
         expect(member.role).toBeTruthy();
         expect(member.template).toBeTruthy();

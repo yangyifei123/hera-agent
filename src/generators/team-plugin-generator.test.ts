@@ -89,7 +89,7 @@ describe("TeamPluginGenerator", () => {
       expect(code).toContain("qa-engineer");
     });
 
-    it("each member's prompt embeds the 8 built-in skills (parity with md mode)", () => {
+    it("each member's prompt embeds the 11 built-in skills (parity with md mode)", () => {
       const team = makeTeam();
       const members = team.members.map((m) => makeAgent(m.agentName));
       const code = gen.generatePluginIndex(team, members, []);
@@ -103,6 +103,17 @@ describe("TeamPluginGenerator", () => {
       expect(code).toContain("Delegate to Specialized");
       expect(code).toContain("Team Coordination");
       expect(code).toContain("Context Window Discipline");
+      expect(code).toContain("Workflow Orchestration");
+      expect(code).toContain("Brainstorming");
+      expect(code).toContain("Skill Creator");
+    });
+
+    it("describes management mode and the shared workspace blackboard", () => {
+      const team = makeTeam({ management: "control" });
+      const members = team.members.map((m) => makeAgent(m.agentName));
+      const code = gen.generatePluginIndex(team, members, []);
+      expect(code).toContain("Management style: control");
+      expect(code).toContain("Shared workspace (blackboard)");
     });
 
     it("includes hera_remember and hera_recall memory tools", () => {
