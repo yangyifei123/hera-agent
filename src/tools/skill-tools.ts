@@ -149,6 +149,10 @@ export function createSkillTools(ctx: PluginContext) {
           .optional()
           .describe("Agent mode (auto-detected if omitted)"),
         model: z.string().optional().describe("Model override"),
+        dry_run: z
+          .boolean()
+          .optional()
+          .describe("Preview the agent that would be created without persisting it"),
       },
       async execute(args) {
         // Validate agent name
@@ -173,6 +177,11 @@ export function createSkillTools(ctx: PluginContext) {
             continue;
           }
           validSkills.push(skillName);
+          if (skillManager.isBuiltin(skillName)) {
+            analysisLines.push(
+              `Warning: Skill "${skillName}" is built in and already inherited by Hera agents; creating a specialist anyway because you requested it.`
+            );
+          }
 
           const analysis = SkillAnalyzer.analyze(skill);
 
@@ -235,6 +244,27 @@ export function createSkillTools(ctx: PluginContext) {
           createdAt: Date.now(),
           evolutionLog: [],
         };
+        if (args.dry_run === true) {
+          return [
+            "## Preview: skill upgrade to agent",
+            `Would create agent "${args.agent_name}" (${mode}).`,
+            `Description: ${args.description}`,
+            `Requested skills: ${args.skill_names.join(", ")}`,
+            `Valid specialist skills: ${validSkills.join(", ")}`,
+            `Inherited default skills are also included automatically.`,
+            `Max steps: ${maxSteps}`,
+            detectedTools
+              ? `Suggested tools: ${
+                  Object.entries(detectedTools)
+                    .filter(([, enabled]) => enabled)
+                    .map(([name]) => name)
+                    .join(", ") || "none"
+                }`
+              : "Suggested tools: none",
+            "",
+            ...analysisLines,
+          ].join("\n");
+        }
         const skillsMap = skillManager.getSkillMap();
         const { fileWritten } = await persistAgent(
           agentDef,
@@ -289,6 +319,10 @@ export function createSkillTools(ctx: PluginContext) {
           .enum(["primary", "subagent", "all"])
           .optional()
           .describe("Agent mode for every member (default: subagent)"),
+        dry_run: z
+          .boolean()
+          .optional()
+          .describe("Preview the team and member agents without persisting anything"),
       },
       async execute(args) {
         const result = await upgradeSkillsToTeam({
@@ -298,6 +332,7 @@ export function createSkillTools(ctx: PluginContext) {
           coordination: args.coordination,
           management: args.management,
           memberMode: args.member_mode,
+          dryRun: args.dry_run,
           skillManager,
           teamManager,
           agentRegistry,
@@ -309,10 +344,23 @@ export function createSkillTools(ctx: PluginContext) {
           return `Error: ${result.error ?? "Failed to upgrade skills to team."}`;
         }
 
+        if (args.dry_run === true) {
+          return [
+            result.preview ?? `Preview only: would create team "${args.team_name}".`,
+            ...(result.warnings && result.warnings.length > 0
+              ? ["", "Warnings:", ...result.warnings.map((warning) => `- ${warning}`)]
+              : []),
+          ].join("\n");
+        }
+
         return [
-          `Team "${args.team_name}" created with ${result.createdAgents.length} member agents (${args.coordination}).`,
+          `Team "${args.team_name}" created with ${result.createdAgents.length} member agents (${args.coordination}, ${result.team?.management ?? "simple"} management).`,
           `Members: ${result.createdAgents.join(", ")}.`,
+          ...(result.warnings && result.warnings.length > 0
+            ? [`Warnings: ${result.warnings.join(" ")}`]
+            : []),
           ``,
+          `Shared workspace: members publish decisions, context, and results with hera_team_remember/hera_team_recall.`,
           `Each member is now available via @${result.createdAgents[0]} (etc.) or in the team via hera_spawn_team team_name="${args.team_name}".`,
           `To export the team as a plugin: hera_export_team team_name="${args.team_name}" auto_install=true.`,
         ].join("\n");
