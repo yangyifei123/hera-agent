@@ -18,7 +18,7 @@ export interface TeamMessage {
 export interface SpawnedSession {
   agentName: string;
   sessionId: string;
-  status: "pending" | "running" | "completed" | "error";
+  status: "pending" | "running" | "completed" | "error" | "unknown";
   result?: string;
 }
 
@@ -45,13 +45,43 @@ export class TeamManager {
         // skip
       }
     }
+    const storedMessages = await this.store.list("team-message");
+    for (const mem of storedMessages) {
+      try {
+        const msg = JSON.parse(mem.content) as TeamMessage;
+        const queue = this.messageQueue.get(msg.teamName) ?? [];
+        queue.push(msg);
+        this.messageQueue.set(msg.teamName, queue);
+      } catch {
+        // skip malformed messages
+      }
+    }
+
+    const storedSessions = await this.store.list("team-session");
+    for (const mem of storedSessions) {
+      try {
+        const parsed = JSON.parse(mem.content) as { teamName: string; sessions: SpawnedSession[] };
+        this.spawnedSessions.set(
+          parsed.teamName,
+          parsed.sessions.map((session) => ({
+            ...session,
+            status:
+              session.status === "running" || session.status === "pending"
+                ? "unknown"
+                : session.status,
+          }))
+        );
+      } catch {
+        // skip malformed sessions
+      }
+    }
   }
 
   async createTeam(team: TeamDefinition): Promise<void> {
     this.teams.set(team.name, team);
     this.messageQueue.set(team.name, []);
     await this.store.save({
-      id: `team-${team.name}`,
+      id: teamMemoryId(team.name),
       type: "team",
       content: JSON.stringify(team),
       timestamp: Date.now(),
@@ -63,7 +93,7 @@ export class TeamManager {
     this.teams.delete(name);
     this.messageQueue.delete(name);
     this.spawnedSessions.delete(name);
-    return this.store.delete("team", `team-${name}`);
+    return this.store.delete("team", teamMemoryId(name));
   }
 
   getTeam(name: string): TeamDefinition | undefined {
@@ -157,6 +187,13 @@ export class TeamManager {
     }
 
     this.spawnedSessions.set(teamName, sessions);
+    await this.store.save({
+      id: teamSessionMemoryId(teamName),
+      type: "team-session",
+      content: JSON.stringify({ teamName, sessions }),
+      timestamp: Date.now(),
+      metadata: { sessionCount: sessions.length },
+    });
     return sessions;
   }
 
@@ -224,13 +261,13 @@ export class TeamManager {
     return "(timeout)";
   }
 
-  sendMessage(
+  async sendMessage(
     teamName: string,
     from: string,
     to: string | "broadcast",
     content: string,
     kind: TeamMessage["kind"] = "message"
-  ): TeamMessage {
+  ): Promise<TeamMessage> {
     const msg: TeamMessage = {
       id: randomUUID(),
       from,
@@ -243,12 +280,61 @@ export class TeamManager {
     const queue = this.messageQueue.get(teamName) ?? [];
     queue.push(msg);
     this.messageQueue.set(teamName, queue);
+    await this.store.save({
+      id: `team-message-${msg.id}`,
+      type: "team-message",
+      content: JSON.stringify(msg),
+      timestamp: msg.timestamp,
+      metadata: { teamName, from, to, kind },
+    });
+    await this.pushMessageToActiveSessions(msg);
     return msg;
   }
 
-  getMessages(teamName: string, memberName: string): TeamMessage[] {
+  private async pushMessageToActiveSessions(msg: TeamMessage): Promise<void> {
+    if (!this.client || typeof this.client.session?.promptAsync !== "function") return;
+    const sessions = this.spawnedSessions.get(msg.teamName) ?? [];
+    const targets = sessions.filter(
+      (session) =>
+        session.status === "running" && (msg.to === "broadcast" || msg.to === session.agentName)
+    );
+    await Promise.all(
+      targets.map(async (session) => {
+        try {
+          await this.client?.session.promptAsync({
+            path: { id: session.sessionId },
+            body: {
+              agent: session.agentName,
+              parts: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `Team message for ${session.agentName}`,
+                    `From: ${msg.from}`,
+                    `Kind: ${msg.kind}`,
+                    `Message: ${msg.content}`,
+                  ].join("\n"),
+                },
+              ],
+            },
+          });
+        } catch {
+          // Best-effort delivery only; persisted inbox remains source of truth.
+        }
+      })
+    );
+  }
+
+  getMessages(teamName: string, memberName: string, limit = 20): TeamMessage[] {
     const queue = this.messageQueue.get(teamName) ?? [];
-    return queue.filter((m) => m.to === memberName || m.to === "broadcast");
+    return queue
+      .filter((m) => m.to === memberName || m.to === "broadcast")
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-limit);
+  }
+
+  getSpawnedSessions(teamName: string): SpawnedSession[] {
+    return this.spawnedSessions.get(teamName) ?? [];
   }
 
   buildTeamContext(teamName: string): string {
@@ -269,4 +355,16 @@ export class TeamManager {
       sessionInfo,
     ].join("\n");
   }
+}
+
+function teamMemoryId(teamName: string): string {
+  return `team-${safeMemoryIdSegment(teamName)}`;
+}
+
+function teamSessionMemoryId(teamName: string): string {
+  return `team-session-${safeMemoryIdSegment(teamName)}`;
+}
+
+function safeMemoryIdSegment(value: string): string {
+  return Array.from(value, (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join("-");
 }

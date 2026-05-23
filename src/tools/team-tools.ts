@@ -4,6 +4,7 @@ import { MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
 import { TEAM_TEMPLATES } from "../team/templates.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { persistAgent } from "../persistence.js";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import {
@@ -66,6 +67,39 @@ export function createTeamTools(ctx: PluginContext) {
         };
         await teamManager.createTeam(team);
         return `Team "${args.name}" created with ${args.members.length} members (${args.coordination}).`;
+      },
+    }),
+
+    hera_upgrade_agents_to_team: tool({
+      description:
+        "Upgrade existing agents into a named team. This is a guided alias for hera_create_team with role inference and the same persistence semantics.",
+      args: {
+        name: z.string().describe("Team name"),
+        description: z.string().describe("Team purpose"),
+        coordination: z.enum(["parallel", "sequential", "adaptive"]).describe("Coordination mode"),
+        agent_names: z.array(z.string()).describe("Existing agents to include in the team"),
+      },
+      async execute(args) {
+        const missing = args.agent_names.filter((agentName) => !registeredAgents.has(agentName));
+        if (missing.length > 0) {
+          return `Error: Agents ${missing.join(", ")} don't exist yet. Create them first with hera_create_agent.`;
+        }
+        const members = args.agent_names.map((agentName) => ({
+          agentName,
+          role: registeredAgents.get(agentName)?.description || agentName,
+          subscriptions: ["message", "task", "result"],
+          backendType: "in-process" as const,
+        }));
+        await teamManager.createTeam({
+          name: args.name,
+          description: args.description,
+          coordination: args.coordination,
+          management: "simple",
+          members,
+          sharedMemory: [],
+          createdAt: Date.now(),
+        });
+        return `Agents [${args.agent_names.join(", ")}] upgraded into team "${args.name}" (${args.coordination}).`;
       },
     }),
 
@@ -137,8 +171,92 @@ export function createTeamTools(ctx: PluginContext) {
         if (!memberNames.includes(args.from))
           return `Error: "${args.from}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}. Use hera_create_team to update membership.`;
         const kind = args.kind ?? "message";
-        const msg = teamManager.sendMessage(args.team_name, args.from, args.to, args.content, kind);
+        const msg = await teamManager.sendMessage(
+          args.team_name,
+          args.from,
+          args.to,
+          args.content,
+          kind
+        );
         return `Message sent from ${args.from} to ${args.to} in ${args.team_name}. ID: ${msg.id}`;
+      },
+    }),
+
+    hera_get_team_messages: tool({
+      description:
+        "Read queued team messages for a member. Use this for pull-based team coordination and catch-up.",
+      args: {
+        team_name: z.string().describe("Team name"),
+        member_name: z.string().describe("Team member/agent name"),
+        limit: z.number().optional().describe("Maximum messages to return (default 20, max 50)"),
+      },
+      async execute(args) {
+        const team = teamManager.getTeam(args.team_name);
+        if (!team)
+          return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
+        const memberNames = team.members.map((m) => m.agentName);
+        if (!memberNames.includes(args.member_name)) {
+          return `Error: "${args.member_name}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}.`;
+        }
+        const limit = args.limit != null ? Math.min(args.limit, 50) : 20;
+        const messages = teamManager.getMessages(args.team_name, args.member_name, limit);
+        if (messages.length === 0)
+          return `No messages for ${args.member_name} in ${args.team_name}.`;
+        return messages
+          .map(
+            (m) =>
+              `[${new Date(m.timestamp).toISOString()}] ${m.kind} ${m.from} -> ${m.to}: ${m.content}`
+          )
+          .join("\n");
+      },
+    }),
+
+    hera_team_remember: tool({
+      description: "Store team-scoped shared memory using Hera's persistent memory store.",
+      args: {
+        team_name: z.string().describe("Team name"),
+        key: z.string().describe("Memory key within the team namespace"),
+        content: z.string().describe("Memory content"),
+        written_by: z.string().optional().describe("Agent or user writing this memory"),
+      },
+      async execute(args) {
+        const team = teamManager.getTeam(args.team_name);
+        if (!team)
+          return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
+        const id = `team-memory-${safeMemoryIdSegment(args.team_name)}-${safeMemoryIdSegment(args.key)}-${randomUUID().slice(0, 8)}`;
+        await store.save({
+          id,
+          type: "team-memory",
+          content: `[team:${args.team_name}] [key:${args.key}] ${args.content}`,
+          timestamp: Date.now(),
+          metadata: {
+            teamName: args.team_name,
+            key: args.key,
+            writtenBy: args.written_by ?? "user",
+          },
+        });
+        return `Remembered team memory "${args.key}" for ${args.team_name}.`;
+      },
+    }),
+
+    hera_team_recall: tool({
+      description: "Search team-scoped shared memory.",
+      args: {
+        team_name: z.string().describe("Team name"),
+        query: z.string().describe("Search query"),
+        limit: z.number().optional().describe("Maximum results (default 10, max 50)"),
+      },
+      async execute(args) {
+        const limit = args.limit != null ? Math.min(args.limit, 50) : 10;
+        const results = await store.search(`team:${args.team_name}`, "team-memory", { limit: 50 });
+        const lower = args.query.toLowerCase();
+        const filtered = results
+          .filter(
+            (m) => m.content.toLowerCase().includes(lower) || m.id.toLowerCase().includes(lower)
+          )
+          .slice(0, limit);
+        if (filtered.length === 0) return `No team memory found for ${args.team_name}.`;
+        return filtered.map((m) => m.content.slice(0, MAX_RESULT_PREVIEW_LENGTH)).join("\n---\n");
       },
     }),
 
@@ -495,8 +613,24 @@ export function createTeamTools(ctx: PluginContext) {
           lines.push("Progress: No objectives or control points defined yet.");
         }
 
+        const sessions = teamManager.getSpawnedSessions(args.team_name);
+        if (sessions.length > 0) {
+          lines.push(
+            "",
+            "## Sessions",
+            ...sessions.map(
+              (s) =>
+                `- ${s.agentName}: ${s.status} (${s.sessionId})${s.result ? ` — ${s.result.slice(0, MAX_RESULT_PREVIEW_LENGTH)}` : ""}`
+            )
+          );
+        }
+
         return lines.join("\n");
       },
     }),
   };
+}
+
+function safeMemoryIdSegment(value: string): string {
+  return Array.from(value, (char) => char.charCodeAt(0).toString(16).padStart(2, "0")).join("-");
 }

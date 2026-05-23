@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createTeamTools } from "./team-tools.js";
 import { createAgentTools } from "./agent-tools.js";
 import { makeTestHarness, type TestHarness } from "./test-harness.js";
+import { TeamManager } from "../team/manager.js";
 
 describe("createTeamTools (integration)", () => {
   let harness: TestHarness;
@@ -70,6 +71,43 @@ describe("createTeamTools (integration)", () => {
     });
   });
 
+  describe("hera_upgrade_agents_to_team", () => {
+    it("creates a team from existing agents with inferred roles", async () => {
+      await makeAgent("alpha");
+      await makeAgent("beta");
+
+      const result = await teamTools.hera_upgrade_agents_to_team.execute(
+        {
+          name: "upgraded-team",
+          description: "Agents upgraded to team",
+          coordination: "parallel",
+          agent_names: ["alpha", "beta"],
+        } as any,
+        {} as any
+      );
+
+      expect(String(result)).toContain("upgraded-team");
+      const team = harness.ctx.teamManager.getTeam("upgraded-team");
+      expect(team).toBeDefined();
+      expect(team!.members.map((m) => m.agentName)).toEqual(["alpha", "beta"]);
+    });
+
+    it("rejects missing agents", async () => {
+      const result = await teamTools.hera_upgrade_agents_to_team.execute(
+        {
+          name: "broken-upgrade",
+          description: "Broken",
+          coordination: "parallel",
+          agent_names: ["ghost"],
+        } as any,
+        {} as any
+      );
+
+      expect(String(result)).toContain("Error");
+      expect(harness.ctx.teamManager.getTeam("broken-upgrade")).toBeUndefined();
+    });
+  });
+
   describe("hera_list_teams + hera_delete_team", () => {
     it("lists empty, then created, then deleted", async () => {
       const empty = await teamTools.hera_list_teams.execute({} as any, {} as any);
@@ -129,6 +167,212 @@ describe("createTeamTools (integration)", () => {
         {} as any
       );
       expect(String(result)).toContain("not found");
+    });
+  });
+
+  describe("team messages", () => {
+    it("sends, retrieves, and persists team messages", async () => {
+      await makeAgent("sender");
+      await makeAgent("receiver");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "message-team",
+          description: "Message test",
+          coordination: "parallel",
+          members: [
+            { agent_name: "sender", role: "sender" },
+            { agent_name: "receiver", role: "receiver" },
+          ],
+        } as any,
+        {} as any
+      );
+
+      await teamTools.hera_team_message.execute(
+        {
+          team_name: "message-team",
+          from: "sender",
+          to: "receiver",
+          content: "please review this",
+          kind: "task",
+        } as any,
+        {} as any
+      );
+
+      const messages = await teamTools.hera_get_team_messages.execute(
+        { team_name: "message-team", member_name: "receiver" } as any,
+        {} as any
+      );
+      expect(String(messages)).toContain("please review this");
+
+      const reloadedManager = new TeamManager(harness.ctx.store, undefined);
+      await reloadedManager.init();
+      const reloaded = reloadedManager.getMessages("message-team", "receiver");
+      expect(reloaded).toHaveLength(1);
+      expect(reloaded[0].content).toBe("please review this");
+    });
+
+    it("best-effort pushes messages to active member sessions", async () => {
+      await makeAgent("sender");
+      await makeAgent("receiver");
+      const pushed: string[] = [];
+      const fakeClient = {
+        session: {
+          create: async () => ({ data: { id: "session-receiver" } }),
+          promptAsync: async (input: {
+            path: { id: string };
+            body: { parts: { text: string }[] };
+          }) => {
+            pushed.push(`${input.path.id}:${input.body.parts[0].text}`);
+            return { data: {} };
+          },
+        },
+      };
+      harness.ctx.teamManager = new TeamManager(
+        harness.ctx.store,
+        fakeClient as unknown as ConstructorParameters<typeof TeamManager>[1]
+      );
+      await harness.ctx.teamManager.init();
+      teamTools = createTeamTools(harness.ctx);
+
+      await teamTools.hera_create_team.execute(
+        {
+          name: "push-team",
+          description: "Push test",
+          coordination: "parallel",
+          members: [
+            { agent_name: "sender", role: "sender" },
+            { agent_name: "receiver", role: "receiver" },
+          ],
+        } as any,
+        {} as any
+      );
+      await teamTools.hera_spawn_team.execute(
+        { team_name: "push-team", task_prompt: "Start" } as any,
+        { sessionID: "parent", directory: harness.tmp } as any
+      );
+      await teamTools.hera_team_message.execute(
+        {
+          team_name: "push-team",
+          from: "sender",
+          to: "receiver",
+          content: "active message",
+          kind: "message",
+        } as any,
+        {} as any
+      );
+
+      expect(pushed.some((entry) => entry.includes("active message"))).toBe(true);
+    });
+  });
+
+  describe("team memory", () => {
+    it("stores and recalls team-scoped memory", async () => {
+      await makeAgent("memory-agent");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "memory-team",
+          description: "Memory test",
+          coordination: "parallel",
+          members: [{ agent_name: "memory-agent", role: "member" }],
+        } as any,
+        {} as any
+      );
+
+      await teamTools.hera_team_remember.execute(
+        {
+          team_name: "memory-team",
+          key: "style",
+          content: "Use strict TypeScript.",
+          written_by: "memory-agent",
+        } as any,
+        {} as any
+      );
+      const recalled = await teamTools.hera_team_recall.execute(
+        { team_name: "memory-team", query: "strict TypeScript" } as any,
+        {} as any
+      );
+
+      expect(String(recalled)).toContain("strict TypeScript");
+    });
+
+    it("stores team memory when team names or keys contain path separators", async () => {
+      await makeAgent("memory-agent");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "team/with/slash",
+          description: "Memory path safety test",
+          coordination: "parallel",
+          members: [{ agent_name: "memory-agent", role: "member" }],
+        } as any,
+        {} as any
+      );
+
+      const remembered = await teamTools.hera_team_remember.execute(
+        {
+          team_name: "team/with/slash",
+          key: "nested/key",
+          content: "Keep unsafe path characters out of filenames.",
+        } as any,
+        {} as any
+      );
+      const recalled = await teamTools.hera_team_recall.execute(
+        { team_name: "team/with/slash", query: "unsafe path" } as any,
+        {} as any
+      );
+
+      expect(String(remembered)).toContain("Remembered team memory");
+      expect(String(recalled)).toContain("unsafe path characters");
+    });
+  });
+
+  describe("team sessions", () => {
+    it("shows spawned local sessions in team progress", async () => {
+      await makeAgent("runner");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "session-team",
+          description: "Session test",
+          coordination: "parallel",
+          members: [{ agent_name: "runner", role: "runner" }],
+        } as any,
+        {} as any
+      );
+
+      await teamTools.hera_spawn_team.execute(
+        { team_name: "session-team", task_prompt: "Run smoke task" } as any,
+        { sessionID: "parent", directory: harness.tmp } as any
+      );
+      const progress = await teamTools.hera_get_team_progress.execute(
+        { team_name: "session-team" } as any,
+        {} as any
+      );
+
+      expect(String(progress)).toContain("## Sessions");
+      expect(String(progress)).toContain("runner");
+    });
+
+    it("marks restored non-terminal sessions as unknown", async () => {
+      await makeAgent("runner");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "restored-session-team",
+          description: "Session restore test",
+          coordination: "parallel",
+          members: [{ agent_name: "runner", role: "runner" }],
+        } as any,
+        {} as any
+      );
+      await teamTools.hera_spawn_team.execute(
+        { team_name: "restored-session-team", task_prompt: "Run smoke task" } as any,
+        { sessionID: "parent", directory: harness.tmp } as any
+      );
+
+      const reloadedManager = new TeamManager(harness.ctx.store, undefined);
+      await reloadedManager.init();
+      const sessions = reloadedManager.getSpawnedSessions("restored-session-team");
+
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].status).toBe("unknown");
     });
   });
 
