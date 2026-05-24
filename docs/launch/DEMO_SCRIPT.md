@@ -62,6 +62,8 @@ Narration:
 
 "Teams have two coordination layers: an inbox for messages and acknowledgements, and a shared workspace or blackboard for durable team context."
 
+"Teams can also carry an editable workflow recipe, so you can preview and change the order of work without learning the internal engine."
+
 ## Skill Upgrade Preview: 25 seconds
 
 ```bash

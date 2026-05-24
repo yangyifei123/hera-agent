@@ -18,13 +18,14 @@ Ask each tester to do exactly three tasks:
 
 1. Install Hera with the npm prefix path and run `doctor`.
 2. Create one persistent agent from a template and use it in a new OpenCode session.
-3. Create one two-member team, send a message, and store one item in the team workspace / blackboard.
+3. Create one two-member team, set or preview its workflow recipe, send a message, and store one item in the team workspace / blackboard.
 
 Feedback questions:
 
 - Did installation work on the first try?
 - Did `doctor` tell you what to do when something failed?
 - Was the difference between agent, skill, team, message inbox, and shared workspace clear?
+- Was the team workflow recipe easy to understand and edit?
 - What was the first moment where you felt confused?
 - Would you use this again in an OpenCode workflow? Why or why not?
 

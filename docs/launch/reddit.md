@@ -46,6 +46,7 @@ opencode run --agent hera "recall: coding style"
 - 11 built-in skills inherited by every agent (caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact, workflow-orchestration, brainstorming, skill-creator)
 - 43 management tools (create, delete, export, package, team coordination, workflow, etc.)
 - Team modes: parallel, sequential, DAG
+- Teams can also carry editable workflow recipes for step-by-step coordination
 - Agents export as standalone plugins
 
 Repo: https://github.com/yangyifei123/hera-agent

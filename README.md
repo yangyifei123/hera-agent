@@ -65,6 +65,7 @@ opencode run --agent hera "recall: coding style"
 | **Persistent Memory** | All agents share a JSON memory store that survives restarts |
 | **Self-Evolution** | Agents reflect on sessions and append improvement directives |
 | **Team Coordination** | Parallel, sequential, or DAG execution with real OpenCode sessions |
+| **Team Recipes** | Editable step-by-step recipes for team behavior, with preview and override support |
 | **Plugin Export** | Agents and teams export as standalone OpenCode plugins |
 | **Skill Composition** | 11 built-in skills inherited by every agent |
 | **Workflow Engine** | Auto-detects task complexity; proposes workflows for multi-step tasks |
@@ -214,6 +215,23 @@ Coordination controls execution order: `parallel`, `sequential`, or `adaptive`. 
 
 All teams also have a shared workspace, or blackboard. Members send direct/broadcast messages with `hera_team_message`, read them with `hera_get_team_messages`, acknowledge handled messages with `hera_ack_team_messages`, and publish durable shared context with `hera_team_remember` / `hera_team_recall`.
 
+## Team Workflow Recipes
+
+Each team can carry one editable workflow recipe. A recipe is a small step list that users can preview, save, and modify without learning the internal workflow engine.
+
+```bash
+# Create a team with a recipe
+opencode run --agent hera "create review-team with my-reviewer and bug-hunter, mode: parallel, workflow: recipe"
+
+# Update the recipe later
+opencode run --agent hera "set team review-team workflow: recipe"
+
+# Preview before saving
+opencode run --agent hera "preview team workflow: recipe"
+```
+
+The quick team templates now include starter recipes, and you can override them when you create or upgrade a team.
+
 ## Agent Templates
 
 | Template | Mode | Use for |
@@ -231,7 +249,7 @@ All teams also have a shared workspace, or blackboard. Members send direct/broad
 
 ## Workflow System
 
-Hera auto-detects complex tasks and proposes workflows:
+Hera still auto-detects complex tasks and proposes workflows for task execution. Team recipes are a separate, simpler layer for team behavior:
 
 ```bash
 # Simple task - executes directly

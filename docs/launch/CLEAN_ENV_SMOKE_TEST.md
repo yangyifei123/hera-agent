@@ -11,6 +11,7 @@ Run this after `hera-agent@2.2.0` is published to npm. Until npm publish succeed
 - Hera appears as an OpenCode agent after OpenCode reload/restart.
 - A `mode: all` agent can be created and invoked.
 - A team can be created, listed, messaged, and deleted.
+- A team can be created with a workflow recipe and the recipe shows up in team status.
 - Team shared workspace / blackboard can store and recall one item.
 - Uninstall removes the package while preserving data by default.
 
@@ -49,6 +50,7 @@ Then run the OpenCode path:
 opencode run --agent hera "create smoke-reviewer, mode: all, template: coder"
 opencode --agent smoke-reviewer "Say 'hera smoke agent ok' and recall any Hera project memory if available."
 opencode run --agent hera "create smoke-team with smoke-reviewer and bug-hunter, mode: parallel"
+opencode run --agent hera "set team smoke-team workflow: recipe"
 opencode run --agent hera "list teams"
 opencode run --agent hera "remember in smoke-team: smoke channel passed registry install"
 opencode run --agent hera "recall smoke-team memory: registry install"

@@ -13,6 +13,7 @@ Hera turns those recurring patterns into persistent agents. Each agent:
 - **Remembers** across sessions (shared memory pool)
 - **Evolves** by reflecting on past work (appends improvement directives)
 - **Coordinates** as teams (parallel, sequential, or DAG workflows)
+- **Coordinates** as teams with editable workflow recipes and existing execution modes
 - **Exports** as standalone OpenCode plugins
 
 Recommended npm install path:

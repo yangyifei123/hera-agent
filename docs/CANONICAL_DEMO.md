@@ -120,6 +120,7 @@ opencode run --agent hera "create review-team with my-reviewer and a bug-hunter,
 - Team members share a blackboard-style workspace via `hera_team_remember` / `hera_team_recall` and an inbox via `hera_team_message` / `hera_get_team_messages` / `hera_ack_team_messages`.
 - Team spawns real OpenCode sessions for each member when a client exists.
 - Results are coordinated and returned.
+- Teams can also carry an editable workflow recipe, which is stored with the team and shown in team status.
 
 Optional skill upgrade preview:
 
@@ -128,6 +129,12 @@ opencode run --agent hera "upgrade skills memory, communicate to team coordinati
 ```
 
 This preview shows the member agents Hera would create before anything is persisted.
+
+Optional team recipe preview:
+
+```bash
+opencode run --agent hera "preview team workflow: recipe"
+```
 
 ## Step 7: Verify Team Works (10 seconds)
 

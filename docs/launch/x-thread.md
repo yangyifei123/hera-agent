@@ -38,6 +38,8 @@ opencode run --agent hera "create review-team with code-reviewer and bug-hunter,
 ```
 → Real OpenCode sessions running in parallel.
 
+Teams can also carry editable workflow recipes, so you can preview and tweak steps without learning Hera's internal engine.
+
 **6/7** What makes Hera different:
 ✅ Zero network deps (works offline)
 ✅ Agents export as standalone plugins
