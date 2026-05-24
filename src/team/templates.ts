@@ -6,6 +6,7 @@
 
 import type { TeamManagementMode } from "../constants.js";
 import type { AgentTemplateName } from "../types.js";
+import type { TeamWorkflowRecipe } from "../types.js";
 
 export interface TeamTemplateMember {
   role: string;
@@ -17,6 +18,16 @@ export interface TeamTemplate {
   members: TeamTemplateMember[];
   coordination: "parallel" | "sequential" | "adaptive";
   management?: TeamManagementMode;
+  workflow?: TeamWorkflowRecipe;
+}
+
+function recipe(
+  id: string,
+  name: string,
+  description: string,
+  steps: TeamWorkflowRecipe["steps"]
+): TeamWorkflowRecipe {
+  return { id, name, description, mode: "recipe", steps };
 }
 
 export const TEAM_TEMPLATES = {
@@ -28,6 +39,16 @@ export const TEAM_TEMPLATES = {
     ],
     coordination: "parallel" as const,
     management: "control" as const,
+    workflow: recipe(
+      "code-review-workflow",
+      "Code Review Recipe",
+      "Parallel review recipe for style, security, and logic",
+      [
+        { id: "step-1", type: "agent", title: "Review style", actor: "reviewer" },
+        { id: "step-2", type: "agent", title: "Check security", actor: "bug-hunter" },
+        { id: "step-3", type: "approval", title: "Approve result" },
+      ]
+    ),
   },
   "dev-pipeline": {
     description: "Development pipeline: architect → coder → tester",
@@ -38,6 +59,23 @@ export const TEAM_TEMPLATES = {
     ],
     coordination: "sequential" as const,
     management: "okr" as const,
+    workflow: recipe(
+      "dev-pipeline-workflow",
+      "Dev Pipeline Recipe",
+      "Simple dev pipeline recipe for build-test-review",
+      [
+        { id: "step-1", type: "agent", title: "Plan changes", actor: "architect" },
+        {
+          id: "step-2",
+          type: "agent",
+          title: "Implement changes",
+          actor: "coder",
+          dependsOn: ["step-1"],
+        },
+        { id: "step-3", type: "tool", title: "Run tests", actor: "tester", dependsOn: ["step-2"] },
+        { id: "step-4", type: "approval", title: "Request approval", dependsOn: ["step-3"] },
+      ]
+    ),
   },
   research: {
     description: "Research team: researcher → writer",
@@ -47,6 +85,22 @@ export const TEAM_TEMPLATES = {
     ],
     coordination: "sequential" as const,
     management: "tree" as const,
+    workflow: recipe(
+      "research-workflow",
+      "Research Recipe",
+      "Research recipe for gather-analyze-write",
+      [
+        { id: "step-1", type: "agent", title: "Gather sources", actor: "researcher" },
+        {
+          id: "step-2",
+          type: "message",
+          title: "Hand off findings",
+          actor: "writer",
+          dependsOn: ["step-1"],
+        },
+        { id: "step-3", type: "approval", title: "Approve draft", dependsOn: ["step-2"] },
+      ]
+    ),
   },
 } satisfies Record<string, TeamTemplate>;
 

@@ -8,6 +8,7 @@ import {
   TEAM_POLL_INTERVAL_MS,
 } from "../constants.js";
 import { errorMessage } from "../helpers.js";
+import { summarizeTeamWorkflowRecipe } from "./workflow-recipe.js";
 
 export interface TeamMessage {
   id: string;
@@ -86,8 +87,12 @@ export class TeamManager {
   }
 
   async createTeam(team: TeamDefinition): Promise<void> {
+    const existingQueue = this.messageQueue.get(team.name);
+    const existingSessions = this.spawnedSessions.get(team.name);
     this.teams.set(team.name, team);
-    this.messageQueue.set(team.name, []);
+    if (existingQueue) this.messageQueue.set(team.name, existingQueue);
+    else this.messageQueue.set(team.name, []);
+    if (existingSessions) this.spawnedSessions.set(team.name, existingSessions);
     await this.store.save({
       id: teamMemoryId(team.name),
       type: "team",
@@ -121,6 +126,12 @@ export class TeamManager {
     const team = this.teams.get(teamName);
     if (!team) throw new Error(`Team "${teamName}" not found`);
 
+    const workflowSummary = team.workflow ? summarizeTeamWorkflowRecipe(team.workflow) : "";
+    const promptPrefix = workflowSummary
+      ? `## Team Workflow Recipe\n${workflowSummary}\n\nFollow this recipe as the team operates.\n\n`
+      : "";
+    const effectivePrompt = `${promptPrefix}${taskPrompt}`;
+
     const sessions: SpawnedSession[] = [];
     const hasClient = Boolean(this.client && typeof this.client.session?.create === "function");
 
@@ -129,7 +140,7 @@ export class TeamManager {
         const promises = team.members.map(async (member) => {
           const session = await this.spawnMemberSession(
             member.agentName,
-            taskPrompt,
+            effectivePrompt,
             parentSessionId,
             directory,
             hasClient
@@ -144,7 +155,7 @@ export class TeamManager {
         for (const member of team.members) {
           const session = await this.spawnMemberSession(
             member.agentName,
-            accumulated,
+            `${promptPrefix}${accumulated}`,
             parentSessionId,
             directory,
             hasClient
@@ -164,7 +175,7 @@ export class TeamManager {
         const planner = team.members[0];
         const planSession = await this.spawnMemberSession(
           planner.agentName,
-          taskPrompt,
+          effectivePrompt,
           parentSessionId,
           directory,
           hasClient
@@ -181,7 +192,7 @@ export class TeamManager {
           const promises = team.members.slice(1).map(async (member) => {
             const session = await this.spawnMemberSession(
               member.agentName,
-              plan,
+              `${promptPrefix}${plan}`,
               parentSessionId,
               directory,
               hasClient
@@ -405,6 +416,8 @@ export class TeamManager {
       `Coordination: ${team.coordination}`,
       `Management: ${management} — ${TEAM_MANAGEMENT_DESCRIPTIONS[management]}`,
       `Shared Workspace: use hera_team_remember/hera_team_recall as the team blackboard.`,
+      team.workflow ? `Workflow Recipe: ${team.workflow.name}` : "Workflow Recipe: not set",
+      team.workflow ? `## Workflow Recipe\n${summarizeTeamWorkflowRecipe(team.workflow)}` : "",
       `Members:`,
       members,
       sessionInfo,

@@ -55,6 +55,34 @@ describe("createTeamTools (integration)", () => {
       expect(team!.members).toHaveLength(2);
     });
 
+    it("stores an editable workflow recipe when provided", async () => {
+      await makeAgent("architect");
+
+      await teamTools.hera_create_team.execute(
+        {
+          name: "recipe-team",
+          description: "Recipe team",
+          coordination: "sequential",
+          workflow: {
+            id: "recipe-team-workflow",
+            name: "Recipe Team Workflow",
+            description: "Recipe test",
+            mode: "recipe",
+            steps: [
+              { type: "agent", title: "Plan work", actor: "architect" },
+              { type: "approval", title: "Review result" },
+            ],
+          },
+          members: [{ agent_name: "architect", role: "architect" }],
+        } as any,
+        {} as any
+      );
+
+      const team = harness.ctx.teamManager.getTeam("recipe-team");
+      expect(team?.workflow?.name).toBe("Recipe Team Workflow");
+      expect(team?.workflow?.steps[0].id).toBe("step-1");
+    });
+
     it("rejects teams referencing missing members", async () => {
       const result = await teamTools.hera_create_team.execute(
         {
@@ -68,6 +96,74 @@ describe("createTeamTools (integration)", () => {
       expect(String(result)).toContain("Error");
       expect(String(result)).toContain("ghost");
       expect(harness.ctx.teamManager.getTeam("broken")).toBeUndefined();
+    });
+  });
+
+  describe("workflow recipes", () => {
+    it("sets and previews a team workflow recipe", async () => {
+      await makeAgent("architect");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "workflow-team",
+          description: "Workflow test",
+          coordination: "parallel",
+          members: [{ agent_name: "architect", role: "architect" }],
+        } as any,
+        {} as any
+      );
+
+      const preview = await teamTools.hera_preview_team_workflow.execute(
+        {
+          workflow: {
+            id: "preview-workflow",
+            name: "Preview Workflow",
+            mode: "recipe",
+            steps: [{ type: "agent", title: "Plan" }],
+          },
+        } as any,
+        {} as any
+      );
+      expect(String(preview)).toContain('Recipe "Preview Workflow" (preview-workflow)');
+
+      const updated = await teamTools.hera_set_team_workflow.execute(
+        {
+          team_name: "workflow-team",
+          workflow: {
+            id: "workflow-team-workflow",
+            name: "Workflow Team Recipe",
+            description: "Updated recipe",
+            mode: "recipe",
+            steps: [
+              { type: "agent", title: "Plan", actor: "architect" },
+              { type: "approval", title: "Approve" },
+            ],
+          },
+        } as any,
+        {} as any
+      );
+
+      expect(String(updated)).toContain('Workflow recipe set for team "workflow-team"');
+      expect(String(updated)).toContain("Workflow Team Recipe");
+      const team = harness.ctx.teamManager.getTeam("workflow-team");
+      expect(team?.workflow?.name).toBe("Workflow Team Recipe");
+      expect(team?.workflow?.steps).toHaveLength(2);
+    });
+
+    it("rejects workflow updates for missing teams", async () => {
+      const result = await teamTools.hera_set_team_workflow.execute(
+        {
+          team_name: "missing-team",
+          workflow: {
+            id: "missing-team-workflow",
+            name: "Missing Team Recipe",
+            mode: "recipe",
+            steps: [{ type: "agent", title: "Plan" }],
+          },
+        } as any,
+        {} as any
+      );
+
+      expect(String(result)).toContain("not found");
     });
   });
 

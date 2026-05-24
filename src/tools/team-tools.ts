@@ -2,6 +2,7 @@ import { tool } from "@opencode-ai/plugin";
 import type { PluginContext, AgentDefinition, SkillDefinition } from "../types.js";
 import { MAX_RESULT_PREVIEW_LENGTH, TEAM_MANAGEMENT_DESCRIPTIONS } from "../constants.js";
 import { TEAM_TEMPLATES } from "../team/templates.js";
+import type { TeamWorkflowRecipeInput } from "../types.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
 import { persistAgent } from "../persistence.js";
 import { randomUUID } from "node:crypto";
@@ -20,8 +21,43 @@ import {
   addControlPoint,
   formatControlPoints,
 } from "../team/control-manager.js";
+import {
+  normalizeTeamWorkflowRecipe,
+  summarizeTeamWorkflowRecipe,
+  teamWorkflowRecipePreview,
+} from "../team/workflow-recipe.js";
 
 const z = tool.schema;
+
+const teamWorkflowStepSchema = z.object({
+  id: z.string().optional().describe("Step ID (optional; Hera will fill one in)"),
+  type: z.enum(["agent", "message", "approval", "tool"]),
+  title: z.string().describe("Human-readable step title"),
+  actor: z.string().optional().describe("Agent or role responsible for this step"),
+  input: z.string().optional().describe("Optional step input or handoff text"),
+  dependsOn: z.array(z.string()).optional().describe("Upstream step IDs"),
+  editable: z.boolean().optional().describe("Whether the step can be edited later"),
+});
+
+const teamWorkflowRecipeSchema = z.object({
+  id: z.string().describe("Workflow recipe ID"),
+  name: z.string().describe("Workflow recipe name"),
+  description: z.string().optional().describe("Recipe description"),
+  mode: z.literal("recipe"),
+  steps: z.array(teamWorkflowStepSchema).min(1).describe("Editable workflow steps"),
+});
+
+function normalizeIncomingRecipe(
+  recipe: TeamWorkflowRecipeInput
+): ReturnType<typeof normalizeTeamWorkflowRecipe> {
+  return normalizeTeamWorkflowRecipe(recipe);
+}
+
+function toTeamWorkflowRecipe(
+  recipe: TeamWorkflowRecipeInput | undefined
+): ReturnType<typeof normalizeTeamWorkflowRecipe> | undefined {
+  return recipe ? normalizeIncomingRecipe(recipe) : undefined;
+}
 
 export function createTeamTools(ctx: PluginContext) {
   const { teamManager, store, registeredAgents, client, skillManager, agentRegistry, paths } = ctx;
@@ -47,6 +83,9 @@ export function createTeamTools(ctx: PluginContext) {
             })
           )
           .describe("Team members"),
+        workflow: teamWorkflowRecipeSchema
+          .optional()
+          .describe("Optional editable workflow recipe for the team"),
       },
       async execute(args) {
         const missing = args.members.filter((m) => !registeredAgents.has(m.agent_name));
@@ -66,6 +105,7 @@ export function createTeamTools(ctx: PluginContext) {
           })),
           sharedMemory: [],
           createdAt: Date.now(),
+          workflow: toTeamWorkflowRecipe(args.workflow),
         };
         await teamManager.createTeam(team);
         return `Team "${args.name}" created with ${args.members.length} members (${args.coordination}, ${team.management} management). Members share a workspace via hera_team_remember/hera_team_recall.`;
@@ -90,6 +130,9 @@ export function createTeamTools(ctx: PluginContext) {
           .optional()
           .describe("Optional mode to apply to existing member agents"),
         agent_names: z.array(z.string()).describe("Existing agents to include in the team"),
+        workflow: teamWorkflowRecipeSchema
+          .optional()
+          .describe("Optional editable workflow recipe for the team"),
       },
       async execute(args) {
         const missing = args.agent_names.filter((agentName) => !registeredAgents.has(agentName));
@@ -110,6 +153,7 @@ export function createTeamTools(ctx: PluginContext) {
           members,
           sharedMemory: [],
           createdAt: Date.now(),
+          workflow: toTeamWorkflowRecipe(args.workflow),
         };
         await teamManager.createTeam(team);
         const skillsMap = skillManager.getSkillMap();
@@ -343,6 +387,9 @@ export function createTeamTools(ctx: PluginContext) {
           .string()
           .optional()
           .describe("Task to execute immediately after team creation"),
+        workflow: teamWorkflowRecipeSchema
+          .optional()
+          .describe("Override the template workflow recipe"),
       },
       async execute(args, ctx) {
         const tpl = TEAM_TEMPLATES[args.template];
@@ -391,12 +438,16 @@ export function createTeamTools(ctx: PluginContext) {
           })),
           sharedMemory: [],
           createdAt: Date.now(),
+          workflow: toTeamWorkflowRecipe(args.workflow ?? tpl.workflow),
         };
         await teamManager.createTeam(team);
 
         const lines = [
           `Team "${args.name}" created (template: ${args.template}).`,
           `Coordination: ${tpl.coordination}. Management: ${tpl.management ?? "simple"}. Members: ${tpl.members.map((m) => m.role).join(", ")}.`,
+          team.workflow
+            ? `Workflow recipe:\n${summarizeTeamWorkflowRecipe(team.workflow)}`
+            : `Workflow recipe: not set.`,
           `Shared workspace: members publish decisions, context, and results with hera_team_remember/hera_team_recall.`,
           ``,
           `Agent setup:`,
@@ -430,6 +481,36 @@ export function createTeamTools(ctx: PluginContext) {
         }
 
         return lines.join("\n");
+      },
+    }),
+
+    hera_set_team_workflow: tool({
+      description: "Create or update a team's editable workflow recipe.",
+      args: {
+        team_name: z.string().describe("Team name"),
+        workflow: teamWorkflowRecipeSchema.describe("Editable workflow recipe"),
+      },
+      async execute(args) {
+        const team = teamManager.getTeam(args.team_name);
+        if (!team)
+          return `Error: Team "${args.team_name}" not found. Use hera_list_teams to see available teams.`;
+
+        const workflow = normalizeIncomingRecipe(args.workflow);
+        await teamManager.createTeam({ ...team, workflow });
+        return [
+          `Workflow recipe set for team "${args.team_name}".`,
+          teamWorkflowRecipePreview(workflow),
+        ].join("\n");
+      },
+    }),
+
+    hera_preview_team_workflow: tool({
+      description: "Preview a team workflow recipe without saving it.",
+      args: {
+        workflow: teamWorkflowRecipeSchema.describe("Editable workflow recipe"),
+      },
+      async execute(args) {
+        return teamWorkflowRecipePreview(normalizeIncomingRecipe(args.workflow));
       },
     }),
 
@@ -662,6 +743,7 @@ export function createTeamTools(ctx: PluginContext) {
           `Coordination: ${team.coordination}`,
           `Management: ${management} — ${TEAM_MANAGEMENT_DESCRIPTIONS[management]}`,
           `Shared workspace: hera_team_remember/hera_team_recall is the team's blackboard for decisions, context, and results.`,
+          team.workflow ? `Workflow recipe: ${team.workflow.name}` : `Workflow recipe: not set`,
           `Members: ${members}`,
         ];
 

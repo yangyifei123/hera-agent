@@ -21,6 +21,9 @@ describe("TEAM_TEMPLATES", () => {
       expect(tpl.members.length).toBeGreaterThan(0);
       expect(["parallel", "sequential", "adaptive"]).toContain(tpl.coordination);
       expect(["simple", "okr", "tree", "control"]).toContain(tpl.management);
+      expect(tpl.workflow).toBeDefined();
+      expect(tpl.workflow?.mode).toBe("recipe");
+      expect(tpl.workflow?.steps.length).toBeGreaterThan(0);
       for (const member of tpl.members) {
         expect(member.role).toBeTruthy();
         expect(member.template).toBeTruthy();
@@ -49,6 +52,11 @@ describe("code-review template", () => {
     expect(hunter).toBeDefined();
     expect(hunter!.template).toBe("debugger");
   });
+
+  test("has recipe", () => {
+    expect(TEAM_TEMPLATES["code-review"].workflow).toBeDefined();
+    expect(TEAM_TEMPLATES["code-review"].workflow?.steps).toHaveLength(3);
+  });
 });
 
 describe("dev-pipeline template", () => {
@@ -71,6 +79,11 @@ describe("dev-pipeline template", () => {
   test("has tester last", () => {
     expect(TEAM_TEMPLATES["dev-pipeline"].members[2].template).toBe("tester");
   });
+
+  test("has recipe", () => {
+    expect(TEAM_TEMPLATES["dev-pipeline"].workflow).toBeDefined();
+    expect(TEAM_TEMPLATES["dev-pipeline"].workflow?.steps).toHaveLength(4);
+  });
 });
 
 describe("research template", () => {
@@ -88,6 +101,11 @@ describe("research template", () => {
 
   test("has writer second", () => {
     expect(TEAM_TEMPLATES["research"].members[1].template).toBe("documenter");
+  });
+
+  test("has recipe", () => {
+    expect(TEAM_TEMPLATES["research"].workflow).toBeDefined();
+    expect(TEAM_TEMPLATES["research"].workflow?.steps).toHaveLength(3);
   });
 });
 

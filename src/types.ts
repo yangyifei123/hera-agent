@@ -132,6 +132,44 @@ export interface ControlPoint {
   status?: "pending" | "passed" | "failed";
 }
 
+export type TeamWorkflowStepType = "agent" | "message" | "approval" | "tool";
+
+export interface TeamWorkflowStep {
+  id: string;
+  type: TeamWorkflowStepType;
+  title: string;
+  actor?: string;
+  input?: string;
+  dependsOn?: string[];
+  editable?: boolean;
+}
+
+export interface TeamWorkflowStepInput {
+  id?: string;
+  type: TeamWorkflowStepType;
+  title: string;
+  actor?: string;
+  input?: string;
+  dependsOn?: string[];
+  editable?: boolean;
+}
+
+export interface TeamWorkflowRecipe {
+  id: string;
+  name: string;
+  description?: string;
+  mode: "recipe";
+  steps: TeamWorkflowStep[];
+}
+
+export interface TeamWorkflowRecipeInput {
+  id: string;
+  name: string;
+  description?: string;
+  mode: "recipe";
+  steps: TeamWorkflowStepInput[];
+}
+
 // Workflow system types
 export type WorkflowMode = "serial" | "parallel" | "dag";
 
@@ -228,13 +266,14 @@ export interface TeamDefinition {
   /** Shared workspace entries (blackboard pattern). Members write via hera_team_remember and read via hera_team_recall. */
   sharedMemory?: string[];
   createdAt?: number;
+  /** Editable team workflow recipe that users can inspect and modify. */
+  workflow?: TeamWorkflowRecipe;
   /** OKR objectives (used when management="okr") */
   objectives?: OKRObjective[];
   /** Tree hierarchy (used when management="tree") */
   hierarchy?: TreeNode[];
   /** Control points (used when management="control") */
   controlPoints?: ControlPoint[];
-  workflow?: WorkflowDefinition;
 }
 
 export interface TeamMember {
