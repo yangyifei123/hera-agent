@@ -4,6 +4,8 @@ import type { MemoryStore } from "../memory/store.js";
 import { randomUUID } from "node:crypto";
 import {
   TEAM_MANAGEMENT_DESCRIPTIONS,
+  TEAM_MESSAGE_QUEUE_CAP,
+  TEAM_MESSAGE_TTL_MS,
   TEAM_POLL_MAX_ATTEMPTS,
   TEAM_POLL_INTERVAL_MS,
 } from "../constants.js";
@@ -65,6 +67,7 @@ export class TeamManager {
         // skip malformed messages
       }
     }
+    await this.pruneAllMessageQueues();
 
     const storedSessions = await this.store.list("team-session");
     for (const mem of storedSessions) {
@@ -300,7 +303,9 @@ export class TeamManager {
     };
     const queue = this.messageQueue.get(teamName) ?? [];
     queue.push(msg);
+    const pruned = this.pruneMessageQueue(queue);
     this.messageQueue.set(teamName, queue);
+    await this.deleteStoredMessages(pruned);
     await this.store.save({
       id: `team-message-${msg.id}`,
       type: "team-message",
@@ -310,6 +315,30 @@ export class TeamManager {
     });
     await this.pushMessageToActiveSessions(msg);
     return msg;
+  }
+
+  private pruneMessageQueue(queue: TeamMessage[]): TeamMessage[] {
+    const cutoff = Date.now() - TEAM_MESSAGE_TTL_MS;
+    const retained = queue.filter((message) => message.timestamp >= cutoff);
+    const expired = queue.filter((message) => message.timestamp < cutoff);
+    const overflowCount = Math.max(0, retained.length - TEAM_MESSAGE_QUEUE_CAP);
+    const overflow = overflowCount > 0 ? retained.splice(0, overflowCount) : [];
+    queue.splice(0, queue.length, ...retained);
+    return [...expired, ...overflow];
+  }
+
+  private async pruneAllMessageQueues(): Promise<void> {
+    const pruned: TeamMessage[] = [];
+    for (const queue of this.messageQueue.values()) {
+      pruned.push(...this.pruneMessageQueue(queue));
+    }
+    await this.deleteStoredMessages(pruned);
+  }
+
+  private async deleteStoredMessages(messages: TeamMessage[]): Promise<void> {
+    await Promise.all(
+      messages.map((message) => this.store.delete("team-message", `team-message-${message.id}`))
+    );
   }
 
   private async pushMessageToActiveSessions(msg: TeamMessage): Promise<void> {
