@@ -30,7 +30,7 @@ Narration:
 ## Create an Agent: 35 seconds
 
 ```bash
-opencode run --agent hera "create my-reviewer, mode: all, template: coder"
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js create agent my-reviewer --template coder --mode all
 opencode --agent my-reviewer "review src/index.ts for error handling gaps"
 ```
 

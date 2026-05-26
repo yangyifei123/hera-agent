@@ -7,10 +7,11 @@
 
 ```bash
 # Install Hera (if not already installed)
-cd ~/.config/opencode && bun add hera-agent
+mkdir -p ~/.config/opencode
+npm install --prefix ~/.config/opencode hera-agent
 
 # Create a code review agent
-opencode run --agent hera "create code-reviewer, mode: all, template: reviewer"
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js create agent code-reviewer --template reviewer --mode all
 ```
 
 ## Run
@@ -140,7 +141,7 @@ opencode --agent api-docs-writer "document the authentication endpoints"
 
 ## Expected Output
 
-The agent has the skill's knowledge PLUS the 8 built-in skills (memory, evolution, etc.). It remembers past API documentation work and improves over time.
+The agent has the skill's knowledge plus the 11 built-in skills (memory, evolution, workflow orchestration, and more). It remembers past API documentation work and improves over time.
 
 ## Teardown
 
@@ -193,3 +194,9 @@ opencode --agent deploy-bot "deploy staging to ECS"
 # On both machines
 opencode run --agent hera "delete deploy-bot"
 ```
+
+---
+
+# More Recipes
+
+For debugging agents, sequential dev teams, session distillation, self-evolving agents, and packaging flows, see [../SHOWCASE.md](../SHOWCASE.md).
