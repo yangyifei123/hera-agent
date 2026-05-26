@@ -1,25 +1,35 @@
 ﻿# Hera - Agent Factory for OpenCode
 
-> Create persistent AI agents with memory and teams inside OpenCode.
+> Stop rebuilding the same AI teammate. Hera turns prompts into persistent OpenCode agents with memory, skills, teams, and exportable plugins.
 
 [![Version](https://img.shields.io/badge/version-2.2.1-blue.svg)](https://github.com/yangyifei123/hera-agent/releases/tag/v2.2.1)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Plugin-orange.svg)](https://github.com/opencode-ai/opencode)
 
-**Stop re-typing the same prompts.** Hera creates AI agents that remember across sessions, evolve from experience, and coordinate as teams - all inside your existing OpenCode workflow.
+**The pain:** every serious AI coding workflow eventually becomes a pile of repeated prompts: reviewer, debugger, tester, architect, release helper.
 
-> **Scope**: Hera is an OpenCode plugin. It is not a standalone agent platform, not a Claude Code replacement, and not an OpenCode competitor. It extends OpenCode by adding persistent agents, memory, teams, and export tools.
+**The fix:** Hera stores those roles as durable agents you can call again, improve over time, combine into teams, and share as plugins.
+
+**What is OpenCode?** OpenCode is a terminal-first AI coding tool with a plugin system. Hera plugs into that system; it does not replace OpenCode. If you already use OpenCode, Hera is the persistence/team layer it is missing. If you are new, start with [OpenCode](https://github.com/opencode-ai/opencode), then install Hera.
+
+![Hera terminal demo placeholder](docs/assets/hera-terminal-demo.svg)
 
 ```bash
 # 1. Install with npm (recommended; no Bun required)
 mkdir -p ~/.config/opencode
 npm install --prefix ~/.config/opencode hera-agent
 
-# 2. Create an agent that remembers
-opencode run --agent hera "create my-reviewer, mode: all, template: coder"
+# 2. Create an agent that remembers (CLI path)
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js create agent my-reviewer --template coder --mode all
 
 # 3. Use it - it persists
 opencode --agent my-reviewer "review src/auth.ts for security issues"
+```
+
+Prefer a guided path? Run:
+
+```bash
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js quickstart
 ```
 
 ## Why Hera?
@@ -32,6 +42,8 @@ If you use OpenCode and find yourself re-typing prompt patterns - code review, t
 - **Export** as standalone plugins you can share
 
 No Python service, no API server, no new runtime. Runs inside OpenCode.
+
+See the visual/recording script in [docs/TERMINAL_DEMO.md](docs/TERMINAL_DEMO.md), agent mode guide in [docs/MODES.md](docs/MODES.md), and 10 copy-paste recipes in [docs/SHOWCASE.md](docs/SHOWCASE.md).
 
 ## 2-Minute Demo
 
@@ -149,8 +161,11 @@ bun run ~/.config/opencode/node_modules/hera-agent/bin/hera.js doctor
 ### Create and Use Agents
 
 ```bash
-# Create from template
-opencode run --agent hera "create my-dev, mode: all, template: coder"
+# Create from template using the CLI
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js create agent my-dev --template coder --mode all
+
+# Or create naturally through the Hera agent
+opencode run --agent hera "create my-reviewer, mode: all, template: reviewer"
 
 # Use it
 opencode --agent my-dev "write a fibonacci function in TypeScript"
@@ -163,6 +178,8 @@ opencode run --agent hera "remember: our API follows REST conventions with snake
 ```
 
 > Important: Use `mode: all` or `mode: primary` for agents you want to call directly with `--agent`. Subagent-mode agents are invoked by other agents, not directly.
+
+Need the full decision guide? See [Agent Modes](docs/MODES.md).
 
 ## Built-in Skills
 
@@ -322,6 +339,7 @@ hera list agents      # List agents
 hera list skills      # List skills
 hera list teams       # List teams
 hera create agent NAME --template coder  # Create agent
+hera quickstart       # Create starter agent + show next steps
 hera status           # System status
 hera version          # Show version
 ```
