@@ -69,7 +69,7 @@ All checks passed
 ## Step 3: Create an Agent (20 seconds)
 
 ```bash
-opencode run --agent hera "create my-reviewer, mode: all, template: coder"
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js create agent my-reviewer --template coder --mode all
 ```
 
 **What happens**:
@@ -78,7 +78,7 @@ opencode run --agent hera "create my-reviewer, mode: all, template: coder"
 - Agent inherits 11 built-in skills: caveman, init, memory, evolution, skill-combo, subagent, communicate, auto-compact, workflow-orchestration, brainstorming, skill-creator.
 - Agent is immediately available via `--agent my-reviewer`.
 
-**Expected output**: Confirmation that agent was created and registered.
+**Expected output**: Confirmation that agent was created, the `.md` path was written, and the next `opencode --agent my-reviewer` command is shown.
 
 ## Step 4: Use the Agent (15 seconds)
 
@@ -139,10 +139,10 @@ opencode run --agent hera "preview team workflow: recipe"
 ## Step 7: Verify Team Works (10 seconds)
 
 ```bash
-opencode run --agent hera "list teams"
+node ~/.config/opencode/node_modules/hera-agent/bin/hera.js status
 ```
 
-**Expected output**: `review-team` listed with members and coordination mode.
+**Expected output**: Hera status with agent, skill, team, and plugin configuration counts.
 
 ---
 
