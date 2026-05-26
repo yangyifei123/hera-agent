@@ -7,6 +7,7 @@ import type { OpenCodeClient } from "../types/client.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MAX_CONCURRENT_WORKFLOWS } from "../constants.js";
 
 describe("WorkflowManager", () => {
   let tempDir: string;
@@ -129,6 +130,34 @@ describe("WorkflowManager", () => {
 
       const retrieved = manager2.getWorkflow("persist-test");
       expect(retrieved).toEqual(workflow);
+    });
+  });
+
+  describe("Resource limits", () => {
+    test("rejects workflows above the concurrent execution cap", async () => {
+      mockClient = makeAgentClient(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { data: undefined };
+      });
+      manager = new WorkflowManager(store, teamManager, mockClient);
+      await manager.init();
+
+      const workflow: WorkflowDefinition = {
+        id: "concurrency-cap",
+        name: "Concurrency Cap",
+        description: "Test",
+        mode: "serial",
+        steps: [{ id: "agent-step", name: "Agent Step", type: "agent", executor: "hera" }],
+        createdAt: Date.now(),
+      };
+
+      await manager.createWorkflow(workflow);
+      const executions = Array.from({ length: MAX_CONCURRENT_WORKFLOWS + 1 }, () =>
+        manager.executeWorkflow("concurrency-cap", {})
+      );
+      const results = await Promise.allSettled(executions);
+
+      expect(results.filter((result) => result.status === "rejected").length).toBeGreaterThan(0);
     });
   });
 

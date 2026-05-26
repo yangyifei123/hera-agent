@@ -12,6 +12,7 @@ import { WorkflowNotFoundError, WorkflowExecutionError } from "../errors.js";
 import { WorkflowValidator } from "./validator.js";
 import { WorkflowProgressCallback, ConcurrencyLimiter } from "./progress.js";
 import { heraLog } from "../logger.js";
+import { MAX_CONCURRENT_WORKFLOWS } from "../constants.js";
 
 export class WorkflowManager {
   private store: MemoryStore;
@@ -19,6 +20,7 @@ export class WorkflowManager {
   private client: OpenCodeClient | undefined;
   private workflows: Map<string, WorkflowDefinition> = new Map();
   private executions: Map<string, WorkflowExecution> = new Map();
+  private activeExecutions = 0;
 
   // Resource management
   private readonly MAX_EXECUTION_HISTORY = 1000;
@@ -82,6 +84,14 @@ export class WorkflowManager {
       throw new WorkflowNotFoundError(workflowId);
     }
 
+    if (this.activeExecutions >= MAX_CONCURRENT_WORKFLOWS) {
+      throw new WorkflowExecutionError(
+        workflowId,
+        "entry",
+        new Error(`Maximum concurrent workflows (${MAX_CONCURRENT_WORKFLOWS}) reached`)
+      );
+    }
+
     const executionId = randomUUID();
     const execution: WorkflowExecution = {
       id: executionId,
@@ -93,6 +103,7 @@ export class WorkflowManager {
     };
 
     this.executions.set(executionId, execution);
+    this.activeExecutions++;
 
     heraLog("info", `Starting workflow execution: ${workflowId} (${workflow.mode} mode)`);
 
@@ -135,10 +146,8 @@ export class WorkflowManager {
         workflowError
       );
     } finally {
-      // Periodic cleanup (10% chance)
-      if (Math.random() < 0.1) {
-        await this.cleanupOldExecutions();
-      }
+      this.activeExecutions--;
+      await this.cleanupOldExecutions();
     }
   }
 
