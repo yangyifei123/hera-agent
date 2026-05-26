@@ -140,4 +140,23 @@ describe("MemoryStore", () => {
     const ids = (await store.list("session")).map((memory) => memory.id);
     expect(ids).toEqual(["active"]);
   });
+
+  test("concurrent saves to the same id leave valid JSON", async () => {
+    await Promise.all(
+      Array.from({ length: 20 }, (_, index) =>
+        store.save({
+          id: "concurrent",
+          type: "session",
+          content: `value-${index}`,
+          timestamp: 1000 + index,
+        })
+      )
+    );
+
+    const loaded = await store.load("session", "concurrent");
+    expect(loaded).not.toBeNull();
+    expect(loaded!.content).toStartWith("value-");
+    const listed = await store.list("session");
+    expect(listed).toHaveLength(1);
+  });
 });

@@ -1,10 +1,11 @@
 // Hera Memory System - Persistent storage under ~/.config/opencode/hera-data/memory/
 
-import { readdir, readFile, writeFile, mkdir, unlink } from "node:fs/promises";
+import { readdir, readFile, mkdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import type { HeraMemory } from "../types.js";
 import { heraLog } from "../logger.js";
 import { DEFAULT_MEMORY_LIMIT } from "../constants.js";
+import { atomicWriteJson } from "../helpers.js";
 
 export interface MemoryStoreOptions {
   maxEntries?: number;
@@ -52,7 +53,7 @@ export class MemoryStore {
       ...memory,
       expiresAt: memory.expiresAt ?? this.defaultExpiresAt(memory.timestamp),
     };
-    await writeFile(filePath, JSON.stringify(memoryToSave, null, 2), "utf-8");
+    await atomicWriteJson(filePath, memoryToSave);
     await this.enforceLimit(memory.type);
   }
 

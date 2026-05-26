@@ -6,10 +6,10 @@
 import type { AgentDefinition, SkillDefinition } from "./types.js";
 import type { AgentRegistry } from "./agents/registry.js";
 import type { MemoryStore } from "./memory/store.js";
-import { mkdir, readdir, writeFile, unlink, readFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
-import { errorMessage } from "./helpers.js";
+import { atomicWriteJson, errorMessage } from "./helpers.js";
 
 export interface PersistResult {
   config: Record<string, unknown>;
@@ -94,8 +94,7 @@ export async function backupAgent(
 
   const timestamp = Date.now();
   const filePath = join(backupsDir, `${name}-${timestamp}.json`);
-  const content = JSON.stringify(def, null, 2);
-  await writeFile(filePath, content, "utf-8");
+  await atomicWriteJson(filePath, def);
 
   // Prune old backups: keep only last MAX_BACKUPS_PER_AGENT
   try {

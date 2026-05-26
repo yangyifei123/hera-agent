@@ -6,6 +6,11 @@
 import type { AgentConfig } from "@opencode-ai/sdk";
 import type { SkillDefinition } from "./types.js";
 import { DEFAULT_SKILLS, DEFAULT_PERMISSION } from "./constants.js";
+import { rename, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+
+const writeLocks = new Map<string, Promise<void>>();
 
 /**
  * Returns default skills with optional additional skills, deduplicated via Set.
@@ -41,4 +46,52 @@ export function buildSkillPromptEmbedding(skills: SkillDefinition[]): string {
  */
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Atomically writes text by writing a sibling temporary file first, then
+ * renaming it over the target. The same-directory rename keeps the operation
+ * on one filesystem and prevents partially-written JSON after interruption.
+ */
+export async function atomicWriteText(filePath: string, content: string): Promise<void> {
+  const previous = writeLocks.get(filePath) ?? Promise.resolve();
+  const next = previous.then(() => writeTextAtomically(filePath, content));
+  writeLocks.set(
+    filePath,
+    next.catch(() => undefined)
+  );
+  try {
+    await next;
+  } finally {
+    if (writeLocks.get(filePath) === next) {
+      writeLocks.delete(filePath);
+    }
+  }
+}
+
+async function writeTextAtomically(filePath: string, content: string): Promise<void> {
+  const tempPath = join(dirname(filePath), `.hera-tmp-${Date.now()}-${randomUUID()}`);
+  try {
+    await writeFile(tempPath, content, "utf-8");
+    if (process.platform === "win32") {
+      try {
+        await unlink(filePath);
+      } catch {
+        // Target may not exist yet.
+      }
+    }
+    await rename(tempPath, filePath);
+  } catch (err) {
+    try {
+      await unlink(tempPath);
+    } catch {
+      // Best-effort cleanup only; preserve original write error.
+    }
+    throw err;
+  }
+}
+
+/** Writes JSON atomically with Hera's standard readable formatting. */
+export async function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+  await atomicWriteText(filePath, JSON.stringify(value, null, 2));
 }
