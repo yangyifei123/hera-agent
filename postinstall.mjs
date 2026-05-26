@@ -1,14 +1,16 @@
 // Post-install hook for hera-agent - Cross-platform auto-configuration
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 function getConfigRoot() {
   // Keep this logic in sync with src/constants.ts resolveOpenCodeConfigRoot().
+  if (process.env.HERA_CONFIG_ROOT) return process.env.HERA_CONFIG_ROOT;
   if (process.platform === "win32") {
-    const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? homedir();
     return join(home, ".config", "opencode");
   }
-  const home = process.env.HOME ?? "/root";
+  const home = process.env.HOME ?? homedir();
   return join(home, ".config", "opencode");
 }
 

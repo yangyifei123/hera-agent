@@ -24,6 +24,15 @@ export const TEAM_POLL_INTERVAL_MS = 1000;
 /** Default team task timeout in milliseconds (5 minutes) */
 export const DEFAULT_TEAM_TIMEOUT_MS = 300000;
 
+/** Maximum retained in-memory inbox messages per team. */
+export const TEAM_MESSAGE_QUEUE_CAP = 100;
+
+/** Maximum age for team inbox messages before pruning (7 days). */
+export const TEAM_MESSAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Maximum concurrent workflow executions in one plugin process. */
+export const MAX_CONCURRENT_WORKFLOWS = 20;
+
 // === Memory Configuration ===
 
 /** Default memory limit for stored entries */
@@ -50,13 +59,18 @@ export const DEFAULT_SKILLS = [
 
 export type ConfigRootPlatform = NodeJS.Platform;
 
-export type ConfigRootEnv = NodeJS.ProcessEnv | { USERPROFILE?: string; HOME?: string };
+export type ConfigRootEnv =
+  | NodeJS.ProcessEnv
+  | { USERPROFILE?: string; HOME?: string; HERA_CONFIG_ROOT?: string };
 
 /** Resolve the OpenCode config root used by Hera's plugin runtime and CLI helpers. */
 export function resolveOpenCodeConfigRoot(
   env: ConfigRootEnv = process.env,
   platform: ConfigRootPlatform = process.platform
 ): string {
+  if (env.HERA_CONFIG_ROOT) {
+    return env.HERA_CONFIG_ROOT;
+  }
   if (platform === "win32") {
     const home = env.USERPROFILE ?? env.HOME ?? "C:/Users/Administrator";
     return join(home, ".config", "opencode");
