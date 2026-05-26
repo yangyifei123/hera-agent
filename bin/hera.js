@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
 
 const args = process.argv.slice(2);
 const cmd = args[0] || "help";
@@ -22,14 +23,264 @@ function getVersion() {
 }
 const VERSION = getVersion();
 
+const DEFAULT_SKILLS = [
+  "caveman",
+  "init",
+  "memory",
+  "evolution",
+  "skill-combo",
+  "subagent",
+  "communicate",
+  "auto-compact",
+  "workflow-orchestration",
+  "brainstorming",
+  "skill-creator",
+];
+
+const TEMPLATES = {
+  general: {
+    mode: "all",
+    description: "Versatile assistant for any task",
+    prompt: (name) => `You are ${name}, a versatile AI assistant. Be concise, accurate, and helpful.`,
+  },
+  coder: {
+    mode: "all",
+    description: "Specialized in writing, debugging, and refactoring code",
+    prompt: (name) => `You are ${name}, a senior software engineer. Write clean, tested, maintainable code. Always verify changes before reporting done.`,
+  },
+  reviewer: {
+    mode: "subagent",
+    description: "Reviews code for quality, security, and maintainability",
+    prompt: (name) => `You are ${name}, a code review specialist. Focus on security, performance, maintainability, and correctness.`,
+  },
+  researcher: {
+    mode: "subagent",
+    description: "Researches solutions, libraries, patterns, and technical topics",
+    prompt: (name) => `You are ${name}, a research analyst. Investigate thoroughly and provide clear recommendations.`,
+  },
+  coordinator: {
+    mode: "all",
+    description: "Coordinates agent teams, distributes tasks, aggregates results",
+    prompt: (name) => `You are ${name}, a team coordinator. Break complex work into subtasks and synthesize results.`,
+  },
+  architect: {
+    mode: "all",
+    description: "Designs system architecture and makes technical decisions",
+    prompt: (name) => `You are ${name}, a system architect. Design maintainable systems and document tradeoffs.`,
+  },
+  debugger: {
+    mode: "all",
+    description: "Investigates bugs, traces issues, proposes fixes",
+    prompt: (name) => `You are ${name}, a debugging specialist. Reproduce, isolate, fix, and explain root causes.`,
+  },
+  tester: {
+    mode: "subagent",
+    description: "Writes tests, ensures quality, finds edge cases",
+    prompt: (name) => `You are ${name}, a test engineer. Write reliable tests and find edge cases.`,
+  },
+  documenter: {
+    mode: "subagent",
+    description: "Creates clear, comprehensive documentation",
+    prompt: (name) => `You are ${name}, a documentation specialist. Write clear docs with examples and edge cases.`,
+  },
+  optimizer: {
+    mode: "subagent",
+    description: "Optimizes code for speed, memory, and efficiency",
+    prompt: (name) => `You are ${name}, a performance optimizer. Profile first, optimize second, and measure impact.`,
+  },
+};
+
 function getConfigRoot() {
   // Keep this logic in sync with src/constants.ts resolveOpenCodeConfigRoot().
+  if (process.env.HERA_CONFIG_ROOT) return process.env.HERA_CONFIG_ROOT;
   if (process.platform === "win32") {
-    const home = process.env.USERPROFILE ?? process.env.HOME ?? "C:/Users/Administrator";
+    const home = process.env.USERPROFILE ?? process.env.HOME ?? homedir();
     return path.join(home, ".config", "opencode");
   }
-  const home = process.env.HOME ?? "/root";
+  const home = process.env.HOME ?? homedir();
   return path.join(home, ".config", "opencode");
+}
+
+function getFlag(name, fallback = undefined) {
+  const prefix = `${name}=`;
+  const inline = args.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = args.indexOf(name);
+  if (index >= 0 && args[index + 1] && !args[index + 1].startsWith("--")) {
+    return args[index + 1];
+  }
+  return fallback;
+}
+
+function validateAgentName(name) {
+  if (!name) return { ok: false, error: "Agent name is required." };
+  if (name.length > 50) return { ok: false, error: "Agent name must be 50 characters or less." };
+  if (!["hera", "opencode", "system"].includes(name) && /^[a-z][a-z0-9-]*$/.test(name) && !name.endsWith("-")) {
+    return { ok: true };
+  }
+  if (["hera", "opencode", "system"].includes(name)) {
+    return { ok: false, error: `"${name}" is a reserved name.` };
+  }
+  const suggestion = name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^([0-9])/, "agent-$1");
+  return {
+    ok: false,
+    error: "Agent name must start with a letter and contain only lowercase letters, numbers, and hyphens.",
+    suggestion: suggestion || "agent",
+  };
+}
+
+function escapeFrontmatter(value) {
+  return String(value).replace(/"/g, '\\"');
+}
+
+function jsonFrontmatter(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function buildAgentMarkdown(def) {
+  return [
+    "---",
+    `name: ${def.name}`,
+    `description: "${escapeFrontmatter(def.description)}"`,
+    `mode: ${def.mode}`,
+    def.model ? `model: ${def.model}` : "",
+    `maxSteps: ${def.maxSteps}`,
+    def.template ? `template: ${def.template}` : "",
+    `createdAt: ${def.createdAt}`,
+    `skillsJson: ${jsonFrontmatter(def.skills)}`,
+    "---",
+    "",
+    `# Agent: ${def.name}`,
+    "",
+    def.prompt,
+    "",
+    "## Built-in Skills",
+    "",
+    `This agent inherits: ${def.skills.join(", ")}.`,
+    "",
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+function ensureRuntimeDirs(configRoot) {
+  for (const dir of [
+    path.join(configRoot, "agents", "hera"),
+    path.join(configRoot, "hera-data", "memory", "agents"),
+    path.join(configRoot, "hera-data", "memory", "teams"),
+    path.join(configRoot, "hera-data", "skills"),
+  ]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function createAgentFromCli(name) {
+  const configRoot = getConfigRoot();
+  ensureRuntimeDirs(configRoot);
+  const agentsDir = path.join(configRoot, "agents", "hera");
+  const filePath = path.join(agentsDir, `${name}.md`);
+  const validation = validateAgentName(name);
+  if (!validation.ok) {
+    console.log(`[✗] ${validation.error}${validation.suggestion ? ` Suggestion: ${validation.suggestion}` : ""}`);
+    process.exit(1);
+  }
+  if (fs.existsSync(filePath)) {
+    console.log(`[✗] Agent "${name}" already exists at ${filePath}`);
+    process.exit(1);
+  }
+  const templateName = getFlag("--template", "general");
+  const template = TEMPLATES[templateName];
+  if (!template) {
+    console.log(`[✗] Unknown template "${templateName}". Run: hera list-templates`);
+    process.exit(1);
+  }
+  const mode = getFlag("--mode", template.mode);
+  if (!["primary", "subagent", "all"].includes(mode)) {
+    console.log(`[✗] Invalid mode "${mode}". Use: all, primary, or subagent.`);
+    process.exit(1);
+  }
+  const prompt = getFlag("--prompt", template.prompt(name));
+  const description = getFlag("--description", template.description);
+  const maxSteps = Number(getFlag("--max-steps", "30"));
+  const model = getFlag("--model", "");
+  const def = {
+    name,
+    description,
+    mode,
+    prompt,
+    model: model || undefined,
+    skills: DEFAULT_SKILLS,
+    maxSteps: Number.isFinite(maxSteps) ? maxSteps : 30,
+    template: templateName,
+    createdAt: Date.now(),
+    evolutionLog: [],
+  };
+  fs.writeFileSync(filePath, buildAgentMarkdown(def), "utf-8");
+  const memoryPath = path.join(configRoot, "hera-data", "memory", "agents", `agent-${name}.json`);
+  fs.writeFileSync(
+    memoryPath,
+    JSON.stringify(
+      {
+        id: `agent-${name}`,
+        type: "agent",
+        content: JSON.stringify(def),
+        timestamp: Date.now(),
+        metadata: { mode, skills: def.skills, fileWritten: filePath, source: "hera-cli" },
+      },
+      null,
+      2
+    ) + "\n",
+    "utf-8"
+  );
+  console.log(`Agent "${name}" created.`);
+  console.log(`Mode: ${mode}. Template: ${templateName}.`);
+  console.log(`Persisted to: ${filePath}`);
+  console.log(`Use it with: opencode --agent ${name} "your task"`);
+}
+
+function printStatus() {
+  const configRoot = getConfigRoot();
+  const agentsDir = path.join(configRoot, "agents", "hera");
+  const skillsDir = path.join(configRoot, "hera-data", "skills");
+  const teamsDir = path.join(configRoot, "hera-data", "memory", "teams");
+  const agents = fs.existsSync(agentsDir) ? fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md")) : [];
+  const skills = fs.existsSync(skillsDir) ? fs.readdirSync(skillsDir) : [];
+  const teams = fs.existsSync(teamsDir) ? fs.readdirSync(teamsDir).filter((f) => f.endsWith(".json")) : [];
+  const opencodeJson = path.join(configRoot, "opencode.json");
+  let configured = false;
+  try {
+    configured = JSON.parse(fs.readFileSync(opencodeJson, "utf-8")).plugin?.includes("hera-agent") === true;
+  } catch {
+    configured = false;
+  }
+  console.log("Hera Agent Factory — Status\n");
+  console.log(`Config root: ${configRoot}`);
+  console.log(`OpenCode plugin configured: ${configured ? "yes" : "no"}`);
+  console.log(`Agents: ${agents.length}`);
+  console.log(`User skills: ${skills.length}`);
+  console.log(`Teams: ${teams.length}`);
+  console.log(`CLI: v${VERSION}`);
+}
+
+function runQuickstart() {
+  const name = getFlag("--name", "my-coder");
+  const configRoot = getConfigRoot();
+  const filePath = path.join(configRoot, "agents", "hera", `${name}.md`);
+  console.log("Hera Agent Factory — Quickstart\n");
+  if (!fs.existsSync(filePath)) {
+    createAgentFromCli(name);
+    console.log("");
+  } else {
+    console.log(`[i] Agent "${name}" already exists at ${filePath}`);
+  }
+  console.log("Next steps:");
+  console.log(`  1. opencode --agent ${name} "review src/index.ts"`);
+  console.log(`  2. opencode run --agent hera "remember: our project uses strict TypeScript"`);
+  console.log(`  3. opencode run --agent hera "create review-team with ${name} and bug-hunter, mode: parallel"`);
 }
 
 function checkBun() {
@@ -213,6 +464,26 @@ switch (cmd) {
 
     console.log("\n[✓] Installation complete!");
     console.log("    Start Hera with: opencode --agent hera");
+    break;
+  }
+
+  case "create": {
+    if (args[1] !== "agent" || !args[2]) {
+      console.log("Usage: hera create agent NAME --template coder --mode all");
+      process.exit(1);
+    }
+    createAgentFromCli(args[2]);
+    break;
+  }
+
+  case "quickstart":
+  case "init": {
+    runQuickstart();
+    break;
+  }
+
+  case "status": {
+    printStatus();
     break;
   }
 
@@ -549,6 +820,9 @@ Hera Agent Factory v${VERSION}
 Commands:
   hera install        Install hera-agent into OpenCode
   hera doctor         Run health checks on Hera installation
+  hera quickstart     Create a starter agent and show next steps
+  hera create agent NAME --template coder  Create a disk-backed agent
+  hera status         Show local Hera counts and config state
   hera update         Show update/upgrade instructions
   hera uninstall      Show uninstall instructions
   hera list           List registered agents (alias: list-agents)

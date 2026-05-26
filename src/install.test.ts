@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { existsSync, readdirSync } from "node:fs";
-import { join } from "path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync, execSync } from "child_process";
 
 describe("Installation Tests", () => {
@@ -97,6 +99,89 @@ describe("Installation Tests", () => {
   });
 
   describe("CLI lifecycle guidance", () => {
+    test("create agent command writes an OpenCode-discoverable agent", async () => {
+      const configRoot = await mkdtemp(join(tmpdir(), "hera-cli-create-"));
+      try {
+        const output = execFileSync(
+          process.execPath,
+          ["bin/hera.js", "create", "agent", "cli-coder", "--template", "coder", "--mode", "all"],
+          {
+            encoding: "utf-8",
+            cwd: process.cwd(),
+            stdio: "pipe",
+            env: { ...process.env, HERA_CONFIG_ROOT: configRoot },
+          }
+        );
+
+        const agentPath = join(configRoot, "agents", "hera", "cli-coder.md");
+        expect(output).toContain('Agent "cli-coder" created');
+        expect(existsSync(agentPath)).toBe(true);
+        expect(await readFile(agentPath, "utf-8")).toContain("mode: all");
+        expect(
+          existsSync(join(configRoot, "hera-data", "memory", "agents", "agent-cli-coder.json"))
+        ).toBe(true);
+      } finally {
+        await rm(configRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("create agent command rejects invalid names", async () => {
+      const configRoot = await mkdtemp(join(tmpdir(), "hera-cli-invalid-"));
+      try {
+        expect(() =>
+          execFileSync(process.execPath, ["bin/hera.js", "create", "agent", "Bad Name"], {
+            encoding: "utf-8",
+            cwd: process.cwd(),
+            stdio: "pipe",
+            env: { ...process.env, HERA_CONFIG_ROOT: configRoot },
+          })
+        ).toThrow();
+      } finally {
+        await rm(configRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("status command summarizes local Hera state", async () => {
+      const configRoot = await mkdtemp(join(tmpdir(), "hera-cli-status-"));
+      try {
+        execFileSync(process.execPath, ["bin/hera.js", "create", "agent", "status-coder"], {
+          encoding: "utf-8",
+          cwd: process.cwd(),
+          stdio: "pipe",
+          env: { ...process.env, HERA_CONFIG_ROOT: configRoot },
+        });
+        const output = execFileSync(process.execPath, ["bin/hera.js", "status"], {
+          encoding: "utf-8",
+          cwd: process.cwd(),
+          stdio: "pipe",
+          env: { ...process.env, HERA_CONFIG_ROOT: configRoot },
+        });
+
+        expect(output).toContain("Hera Agent Factory — Status");
+        expect(output).toContain("Agents: 1");
+      } finally {
+        await rm(configRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("quickstart creates the default starter agent", async () => {
+      const configRoot = await mkdtemp(join(tmpdir(), "hera-cli-quickstart-"));
+      try {
+        const output = execFileSync(process.execPath, ["bin/hera.js", "quickstart"], {
+          encoding: "utf-8",
+          cwd: process.cwd(),
+          stdio: "pipe",
+          env: { ...process.env, HERA_CONFIG_ROOT: configRoot },
+        });
+
+        expect(output).toContain("Hera Agent Factory — Quickstart");
+        expect(output).toContain("opencode --agent my-coder");
+        expect(existsSync(join(configRoot, "agents", "hera", "my-coder.md"))).toBe(true);
+      } finally {
+        await rm(configRoot, { recursive: true, force: true });
+      }
+    });
+
     test("update command exposes npm-first run mode", () => {
       const output = execSync("node bin/hera.js update", {
         encoding: "utf-8",
