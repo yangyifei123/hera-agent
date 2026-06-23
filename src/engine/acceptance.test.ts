@@ -53,8 +53,7 @@ describe("AcceptanceEvaluator", () => {
 
   it("fails a shell check on timeout", async () => {
     // Windows: `sleep` is not a cmd.exe builtin; use ping to block reliably.
-    const slow =
-      process.platform === "win32" ? "ping -n 6 127.0.0.1 >NUL" : "sleep 5";
+    const slow = process.platform === "win32" ? "ping -n 6 127.0.0.1 >NUL" : "sleep 5";
     const r = await evalr.evaluate(
       [{ type: "shell", command: slow, timeoutMs: 50 }],
       { output: "", cwd: dir },
@@ -75,7 +74,11 @@ describe("AcceptanceEvaluator", () => {
 
   it("fails shell checks when shell is disabled", async () => {
     const disabled = new AcceptanceEvaluator({ shellEnabled: false });
-    const r = await disabled.evaluate([{ type: "shell", command: "exit 0" }], { output: "", cwd: dir }, 1);
+    const r = await disabled.evaluate(
+      [{ type: "shell", command: "exit 0" }],
+      { output: "", cwd: dir },
+      1
+    );
     expect(r[0].passed).toBe(false);
     expect(r[0].detail).toContain("disabled");
   });

@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonCollectionStore, assertSafeId } from "./json-collection-store.js";
 
-interface Row { id: string; status: string; value: number }
+interface Row {
+  id: string;
+  status: string;
+  value: number;
+}
 
 describe("JsonCollectionStore", () => {
   let dir: string;
@@ -38,7 +42,12 @@ describe("JsonCollectionStore", () => {
     await store.save({ id: "a", status: "pending", value: 1 });
     await store.save({ id: "b", status: "pending", value: 2 });
     await store.save({ id: "c", status: "done", value: 3 });
-    expect(store.byIndex("status", "pending").map((r) => r.id).sort()).toEqual(["a", "b"]);
+    expect(
+      store
+        .byIndex("status", "pending")
+        .map((r) => r.id)
+        .sort()
+    ).toEqual(["a", "b"]);
     expect(store.byIndex("status", "done").map((r) => r.id)).toEqual(["c"]);
   });
 
@@ -57,8 +66,13 @@ describe("JsonCollectionStore", () => {
   });
 
   it("builds the index from existing files on init", async () => {
-    await writeFile(join(dir, "rows", "x.json"), JSON.stringify({ id: "x", status: "pending", value: 9 }));
-    const fresh = new JsonCollectionStore<Row>(dir, "rows", { secondaryIndexes: { status: (r) => r.status } });
+    await writeFile(
+      join(dir, "rows", "x.json"),
+      JSON.stringify({ id: "x", status: "pending", value: 9 })
+    );
+    const fresh = new JsonCollectionStore<Row>(dir, "rows", {
+      secondaryIndexes: { status: (r) => r.status },
+    });
     await fresh.init();
     expect(fresh.byIndex("status", "pending").map((r) => r.id)).toEqual(["x"]);
   });

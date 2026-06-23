@@ -64,7 +64,10 @@ export function validateManifest(
   }
 
   if (m.mode !== "md" && m.mode !== "plugin") {
-    return { valid: false, error: `Invalid package mode "${String(m.mode)}". Expected "md" or "plugin".` };
+    return {
+      valid: false,
+      error: `Invalid package mode "${String(m.mode)}". Expected "md" or "plugin".`,
+    };
   }
 
   return { valid: true, manifest: m as unknown as PackageManifest };

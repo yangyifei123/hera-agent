@@ -52,7 +52,10 @@ export class TaskExecutor {
       return succeeded;
     }
 
-    const failedDetail = proof.filter((p) => !p.passed).map((p) => p.detail).join("; ");
+    const failedDetail = proof
+      .filter((p) => !p.passed)
+      .map((p) => p.detail)
+      .join("; ");
     return this.fail(task, now, `acceptance failed: ${failedDetail}`, proof);
   }
 
@@ -83,7 +86,11 @@ export class TaskExecutor {
   private buildPrompt(task: TaskRecord): string {
     const lines = [task.goal];
     if (task.input != null) {
-      lines.push("", "Input:", typeof task.input === "string" ? task.input : JSON.stringify(task.input));
+      lines.push(
+        "",
+        "Input:",
+        typeof task.input === "string" ? task.input : JSON.stringify(task.input)
+      );
     }
     lines.push(
       "",

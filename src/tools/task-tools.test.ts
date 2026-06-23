@@ -52,10 +52,12 @@ describe("task-tools", () => {
 
   it("enqueues a batch under one batchId", async () => {
     const res = await tools.hera_enqueue_batch.execute(
-      { tasks: [
-        { goal: "a", acceptance: [{ type: "file_exists", path: "/tmp/a" }] },
-        { goal: "b", acceptance: [{ type: "file_exists", path: "/tmp/b" }] },
-      ] } as any,
+      {
+        tasks: [
+          { goal: "a", acceptance: [{ type: "file_exists", path: "/tmp/a" }] },
+          { goal: "b", acceptance: [{ type: "file_exists", path: "/tmp/b" }] },
+        ],
+      } as any,
       {} as any
     );
     const batchId = String(res).match(/batch ([\w-]+)/)?.[1];
@@ -65,15 +67,29 @@ describe("task-tools", () => {
 
   it("reports batch accounting without calling partial success complete", async () => {
     await store.save({
-      id: "x", batchId: "b9", goal: "g", executor: "hera",
+      id: "x",
+      batchId: "b9",
+      goal: "g",
+      executor: "hera",
       acceptance: [{ type: "file_exists", path: "/tmp/x" }],
-      status: "failed", attempts: 3, maxAttempts: 3, lastError: "nope",
-      createdAt: 1, updatedAt: 1,
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      lastError: "nope",
+      createdAt: 1,
+      updatedAt: 1,
     });
     await store.save({
-      id: "y", batchId: "b9", goal: "g", executor: "hera",
+      id: "y",
+      batchId: "b9",
+      goal: "g",
+      executor: "hera",
       acceptance: [{ type: "file_exists", path: "/tmp/y" }],
-      status: "succeeded", attempts: 1, maxAttempts: 3, createdAt: 1, updatedAt: 1,
+      status: "succeeded",
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: 1,
+      updatedAt: 1,
     });
     const res = await tools.hera_batch_report.execute({ batchId: "b9" } as any, {} as any);
     expect(String(res)).toContain("1 succeeded");

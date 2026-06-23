@@ -53,7 +53,9 @@ export function createTaskTools(ctx: PluginContext) {
         executor: z.string().optional().describe("Agent name to run it (default: hera)"),
         acceptance: z
           .array(z.any())
-          .describe("Acceptance checks (shell/file_exists/regex); ALL must pass. Required, non-empty."),
+          .describe(
+            "Acceptance checks (shell/file_exists/regex); ALL must pass. Required, non-empty."
+          ),
         maxAttempts: z.number().optional().describe("Retry budget (default from config)"),
         dependsOn: z.array(z.string()).optional().describe("Task ids that must succeed first"),
       },
@@ -68,9 +70,12 @@ export function createTaskTools(ctx: PluginContext) {
     }),
 
     hera_enqueue_batch: tool({
-      description: "Enqueue many durable tasks at once under one batch id (supports large batches).",
+      description:
+        "Enqueue many durable tasks at once under one batch id (supports large batches).",
       args: {
-        tasks: z.array(z.any()).describe("Array of task definitions (same shape as hera_enqueue_task)"),
+        tasks: z
+          .array(z.any())
+          .describe("Array of task definitions (same shape as hera_enqueue_task)"),
       },
       async execute(args) {
         const tasks = (args as { tasks: EnqueueInput[] }).tasks;
@@ -96,13 +101,17 @@ export function createTaskTools(ctx: PluginContext) {
           `Task ${task.id}: ${task.status} (attempt ${task.attempts}/${task.maxAttempts})`,
           task.lastError ? `Last error: ${task.lastError}` : "",
           task.proof ? `Proof: ${JSON.stringify(task.proof)}` : "",
-        ].filter(Boolean).join("\n");
+        ]
+          .filter(Boolean)
+          .join("\n");
       },
     }),
 
     hera_list_tasks: tool({
       description: "List tasks, optionally filtered by status.",
-      args: { status: z.string().optional().describe("pending|running|succeeded|failed|cancelled") },
+      args: {
+        status: z.string().optional().describe("pending|running|succeeded|failed|cancelled"),
+      },
       async execute(args) {
         const tasks = args.status
           ? taskStore.byStatus(args.status as TaskStatus)
@@ -125,14 +134,19 @@ export function createTaskTools(ctx: PluginContext) {
     }),
 
     hera_batch_report: tool({
-      description: "Final accounting for a batch: succeeded count, failed list with reasons, and in-flight counts. Never reports partial success as complete.",
+      description:
+        "Final accounting for a batch: succeeded count, failed list with reasons, and in-flight counts. Never reports partial success as complete.",
       args: { batchId: z.string().describe("Batch id") },
       async execute(args) {
         const tasks = taskStore.byBatch(args.batchId);
         if (tasks.length === 0) return `No tasks in batch ${args.batchId}.`;
         const by = (s: TaskStatus) => tasks.filter((t) => t.status === s);
         const failed = by("failed");
-        const complete = failed.length === 0 && by("pending").length === 0 && by("running").length === 0 && by("cancelled").length === 0;
+        const complete =
+          failed.length === 0 &&
+          by("pending").length === 0 &&
+          by("running").length === 0 &&
+          by("cancelled").length === 0;
         return [
           `Batch ${args.batchId}: ${by("succeeded").length} succeeded, ${failed.length} failed, ${by("running").length} running, ${by("pending").length} pending, ${by("cancelled").length} cancelled (of ${tasks.length}).`,
           complete ? "Batch fully complete." : "Batch NOT fully complete.",

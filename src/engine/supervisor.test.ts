@@ -11,10 +11,15 @@ import type { TaskRecord } from "./task-types.js";
 
 function makeTask(id: string, target: string): TaskRecord {
   return {
-    id, goal: "make file", executor: "hera",
+    id,
+    goal: "make file",
+    executor: "hera",
     acceptance: [{ type: "file_exists", path: target }],
-    status: "pending", attempts: 0, maxAttempts: 2,
-    createdAt: 1, updatedAt: 1,
+    status: "pending",
+    attempts: 0,
+    maxAttempts: 2,
+    createdAt: 1,
+    updatedAt: 1,
   };
 }
 
@@ -33,15 +38,22 @@ describe("Supervisor", () => {
   function buildSupervisor(runner: AgentRunner, concurrency = 4) {
     const evalr = new AcceptanceEvaluator({ shellEnabled: true });
     const exec = new TaskExecutor(store, evalr, runner, dir);
-    return new Supervisor(store, exec, { concurrency, leaseMs: 5000, tickMs: 10, ownerId: "sup-1" }, () => 1000);
+    return new Supervisor(
+      store,
+      exec,
+      { concurrency, leaseMs: 5000, tickMs: 10, ownerId: "sup-1" },
+      () => 1000
+    );
   }
 
   it("drains a batch of tasks to completion", async () => {
-    const runner: AgentRunner = { run: async (_e, prompt) => {
-      const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
-      if (m) await writeFile(m[1], "x");
-      return "done";
-    } };
+    const runner: AgentRunner = {
+      run: async (_e, prompt) => {
+        const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
+        if (m) await writeFile(m[1], "x");
+        return "done";
+      },
+    };
     const sup = buildSupervisor(runner, 4);
     for (let i = 0; i < 20; i++) {
       await store.save(makeTask(`t${i}`, join(dir, `f${i}.txt`)));
@@ -54,14 +66,17 @@ describe("Supervisor", () => {
   it("never exceeds the concurrency cap", async () => {
     let active = 0;
     let peak = 0;
-    const runner: AgentRunner = { run: async (_e, prompt) => {
-      active++; peak = Math.max(peak, active);
-      await new Promise((r) => setTimeout(r, 20));
-      const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
-      if (m) await writeFile(m[1], "x");
-      active--;
-      return "done";
-    } };
+    const runner: AgentRunner = {
+      run: async (_e, prompt) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 20));
+        const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
+        if (m) await writeFile(m[1], "x");
+        active--;
+        return "done";
+      },
+    };
     const sup = buildSupervisor(runner, 3);
     for (let i = 0; i < 12; i++) await store.save(makeTask(`t${i}`, join(dir, `f${i}.txt`)));
     await sup.drain();
@@ -72,14 +87,17 @@ describe("Supervisor", () => {
   it("overlapping dispatchOnce calls do not exceed the concurrency cap", async () => {
     let active = 0;
     let peak = 0;
-    const runner: AgentRunner = { run: async (_e, prompt) => {
-      active++; peak = Math.max(peak, active);
-      await new Promise((r) => setTimeout(r, 20));
-      const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
-      if (m) await writeFile(m[1], "x");
-      active--;
-      return "done";
-    } };
+    const runner: AgentRunner = {
+      run: async (_e, prompt) => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 20));
+        const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
+        if (m) await writeFile(m[1], "x");
+        active--;
+        return "done";
+      },
+    };
     const sup = buildSupervisor(runner, 3);
     for (let i = 0; i < 12; i++) await store.save(makeTask(`t${i}`, join(dir, `f${i}.txt`)));
     // Fire overlapping dispatches to trigger the race — without the guard these

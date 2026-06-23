@@ -10,10 +10,16 @@ import type { TaskRecord } from "./task-types.js";
 
 function makeTask(over: Partial<TaskRecord> = {}): TaskRecord {
   return {
-    id: "t1", goal: "g", executor: "hera",
+    id: "t1",
+    goal: "g",
+    executor: "hera",
     acceptance: [{ type: "file_exists", path: "/tmp/x" }],
-    status: "running", attempts: 0, maxAttempts: 2,
-    createdAt: 1, updatedAt: 1, ...over,
+    status: "running",
+    attempts: 0,
+    maxAttempts: 2,
+    createdAt: 1,
+    updatedAt: 1,
+    ...over,
   };
 }
 
@@ -33,7 +39,12 @@ describe("TaskExecutor", () => {
 
   it("marks a task succeeded when acceptance passes, recording proof", async () => {
     const target = join(dir, "out.txt");
-    const runner: AgentRunner = { run: async () => { await writeFile(target, "ok"); return "wrote it"; } };
+    const runner: AgentRunner = {
+      run: async () => {
+        await writeFile(target, "ok");
+        return "wrote it";
+      },
+    };
     const exec = new TaskExecutor(store, evalr, runner, dir);
     const task = makeTask({ acceptance: [{ type: "file_exists", path: target }] });
     await store.save(task);
@@ -46,7 +57,11 @@ describe("TaskExecutor", () => {
   it("retries (pending) when acceptance fails under budget", async () => {
     const runner: AgentRunner = { run: async () => "did nothing" };
     const exec = new TaskExecutor(store, evalr, runner, dir);
-    const task = makeTask({ acceptance: [{ type: "file_exists", path: join(dir, "missing") }], attempts: 0, maxAttempts: 2 });
+    const task = makeTask({
+      acceptance: [{ type: "file_exists", path: join(dir, "missing") }],
+      attempts: 0,
+      maxAttempts: 2,
+    });
     await store.save(task);
     const updated = await exec.runAttempt(task, 1000);
     expect(updated.status).toBe("pending");
@@ -57,7 +72,11 @@ describe("TaskExecutor", () => {
   it("marks failed when the retry budget is exhausted", async () => {
     const runner: AgentRunner = { run: async () => "nope" };
     const exec = new TaskExecutor(store, evalr, runner, dir);
-    const task = makeTask({ acceptance: [{ type: "file_exists", path: join(dir, "missing") }], attempts: 1, maxAttempts: 2 });
+    const task = makeTask({
+      acceptance: [{ type: "file_exists", path: join(dir, "missing") }],
+      attempts: 1,
+      maxAttempts: 2,
+    });
     await store.save(task);
     const updated = await exec.runAttempt(task, 1000);
     expect(updated.status).toBe("failed");
@@ -65,7 +84,11 @@ describe("TaskExecutor", () => {
   });
 
   it("treats an agent error as a failed attempt", async () => {
-    const runner: AgentRunner = { run: async () => { throw new Error("agent boom"); } };
+    const runner: AgentRunner = {
+      run: async () => {
+        throw new Error("agent boom");
+      },
+    };
     const exec = new TaskExecutor(store, evalr, runner, dir);
     const task = makeTask({ attempts: 1, maxAttempts: 2 });
     await store.save(task);

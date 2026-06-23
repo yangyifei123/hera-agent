@@ -137,7 +137,10 @@ describe("Constants", () => {
 
     test("OPENCODE_CONFIG_ROOT is honored as a legacy alias when canonical is unset", () => {
       expect(
-        resolveOpenCodeConfigRoot({ OPENCODE_CONFIG_ROOT: "/legacy/root", HOME: "/home/ada" }, "linux")
+        resolveOpenCodeConfigRoot(
+          { OPENCODE_CONFIG_ROOT: "/legacy/root", HOME: "/home/ada" },
+          "linux"
+        )
       ).toBe("/legacy/root");
     });
   });

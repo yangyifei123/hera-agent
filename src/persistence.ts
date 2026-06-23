@@ -195,13 +195,7 @@ export async function restoreAgent(
       };
     }
 
-    const { fileWritten } = await persistAgent(
-      def,
-      skills,
-      registeredAgents,
-      agentRegistry,
-      store
-    );
+    const { fileWritten } = await persistAgent(def, skills, registeredAgents, agentRegistry, store);
     return {
       success: true,
       message: `Agent "${def.name}" restored from backup. Persisted to ${fileWritten}.`,

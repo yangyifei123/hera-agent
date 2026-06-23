@@ -1,9 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import {
-  createPackageTools,
-  validateManifest,
-  isEntryInsideDir,
-} from "./package-tools.js";
+import { createPackageTools, validateManifest, isEntryInsideDir } from "./package-tools.js";
 import type { PluginContext } from "../types.js";
 import type { ToolContext } from "@opencode-ai/plugin";
 import { makeTestHarness, type TestHarness } from "./test-harness.js";
@@ -300,7 +296,13 @@ describe("Package Tools", () => {
     await mkdir(staging, { recursive: true });
     await writeFile(
       join(staging, "manifest.json"),
-      JSON.stringify({ version: "9.9", agentName: "x", mode: "md", includesMemory: false, files: [] })
+      JSON.stringify({
+        version: "9.9",
+        agentName: "x",
+        mode: "md",
+        includesMemory: false,
+        files: [],
+      })
     );
     const pkgPath = join(testDir, "bad-version.tar.gz");
     await makeTarGz(staging, pkgPath);
@@ -345,9 +347,7 @@ describe("Package Tools", () => {
 
     const pkgPath = join(testDir, "evil.tar.gz");
     // Remap the payload file so its archive entry escapes the extraction root.
-    await makeTarGz(staging, pkgPath, (name) =>
-      name === "evil.md" ? "../escaped-evil.md" : name
-    );
+    await makeTarGz(staging, pkgPath, (name) => (name === "evil.md" ? "../escaped-evil.md" : name));
 
     const tools = createPackageTools(ctx);
     const result = await tools.hera_unpack_agent.execute(

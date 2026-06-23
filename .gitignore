@@ -6,3 +6,4 @@ bun.lock
 .sisyphus/
 test-workflows-stress/
 -p/
+.superpowers/

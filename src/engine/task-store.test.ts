@@ -43,7 +43,12 @@ describe("TaskStore", () => {
     await store.save(makeTask({ id: "a", status: "pending", batchId: "b1" }));
     await store.save(makeTask({ id: "b", status: "running", batchId: "b1" }));
     expect(store.byStatus("pending").map((t) => t.id)).toEqual(["a"]);
-    expect(store.byBatch("b1").map((t) => t.id).sort()).toEqual(["a", "b"]);
+    expect(
+      store
+        .byBatch("b1")
+        .map((t) => t.id)
+        .sort()
+    ).toEqual(["a", "b"]);
   });
 
   it("claimReady leases up to limit and sets running", async () => {
@@ -75,8 +80,12 @@ describe("TaskStore", () => {
   });
 
   it("recover resets running tasks with expired leases to pending", async () => {
-    await store.save(makeTask({ id: "a", status: "running", leaseOwner: "old", leaseExpiresAt: 500 }));
-    await store.save(makeTask({ id: "b", status: "running", leaseOwner: "live", leaseExpiresAt: 9999 }));
+    await store.save(
+      makeTask({ id: "a", status: "running", leaseOwner: "old", leaseExpiresAt: 500 })
+    );
+    await store.save(
+      makeTask({ id: "b", status: "running", leaseOwner: "live", leaseExpiresAt: 9999 })
+    );
     const count = await store.recover(1000);
     expect(count).toBe(1);
     expect((await store.get("a"))?.status).toBe("pending");

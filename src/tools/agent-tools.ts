@@ -491,7 +491,10 @@ export function createAgentTools(ctx: PluginContext) {
           if (validation.suggestion) msg += ` Suggestion: "${validation.suggestion}".`;
           return msg;
         }
-        if (args.timestamp !== undefined && (!Number.isFinite(args.timestamp) || args.timestamp <= 0)) {
+        if (
+          args.timestamp !== undefined &&
+          (!Number.isFinite(args.timestamp) || args.timestamp <= 0)
+        ) {
           return "Error: Backup timestamp must be a positive finite number.";
         }
 

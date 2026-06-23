@@ -356,7 +356,10 @@ describe("createAgentTools (integration)", () => {
 
       await tools.hera_delete_agent.execute({ name: "restore-me" } as any, {} as any);
 
-      const result = await tools.hera_list_backups.execute({ name: "restore-me" } as any, {} as any);
+      const result = await tools.hera_list_backups.execute(
+        { name: "restore-me" } as any,
+        {} as any
+      );
       expect(String(result)).toContain("restore-me");
       expect(String(result)).toContain("Available backups");
     });
