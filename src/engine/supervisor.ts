@@ -14,6 +14,7 @@ export class Supervisor {
   private active = new Set<Promise<unknown>>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
+  private dispatching = false;
 
   constructor(
     private store: TaskStore,
@@ -33,22 +34,28 @@ export class Supervisor {
   }
 
   async dispatchOnce(): Promise<number> {
-    const slots = this.options.concurrency - this.active.size;
-    if (slots <= 0) return 0;
-    const claimed = await this.store.claimReady(
-      slots,
-      this.options.leaseMs,
-      this.options.ownerId,
-      this.clock()
-    );
-    for (const task of claimed) {
-      const p = this.executor
-        .runAttempt(task, this.clock())
-        .catch((err) => heraLog("warn", `Task attempt threw: ${task.id}`, err))
-        .finally(() => this.active.delete(p));
-      this.active.add(p);
+    if (this.dispatching) return 0;
+    this.dispatching = true;
+    try {
+      const slots = this.options.concurrency - this.active.size;
+      if (slots <= 0) return 0;
+      const claimed = await this.store.claimReady(
+        slots,
+        this.options.leaseMs,
+        this.options.ownerId,
+        this.clock()
+      );
+      for (const task of claimed) {
+        const p = this.executor
+          .runAttempt(task, this.clock())
+          .catch((err) => heraLog("warn", `Task attempt threw: ${task.id}`, err))
+          .finally(() => this.active.delete(p));
+        this.active.add(p);
+      }
+      return claimed.length;
+    } finally {
+      this.dispatching = false;
     }
-    return claimed.length;
   }
 
   async drain(): Promise<void> {
@@ -56,6 +63,7 @@ export class Supervisor {
       await this.dispatchOnce();
       if (this.active.size === 0) {
         if (this.store.byStatus("pending").length === 0) break;
+        await new Promise((r) => setTimeout(r, this.options.tickMs));
         continue;
       }
       await Promise.race(this.active);

@@ -69,6 +69,27 @@ describe("Supervisor", () => {
     expect(store.byStatus("succeeded")).toHaveLength(12);
   });
 
+  it("overlapping dispatchOnce calls do not exceed the concurrency cap", async () => {
+    let active = 0;
+    let peak = 0;
+    const runner: AgentRunner = { run: async (_e, prompt) => {
+      active++; peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 20));
+      const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
+      if (m) await writeFile(m[1], "x");
+      active--;
+      return "done";
+    } };
+    const sup = buildSupervisor(runner, 3);
+    for (let i = 0; i < 12; i++) await store.save(makeTask(`t${i}`, join(dir, `f${i}.txt`)));
+    // Fire overlapping dispatches to trigger the race — without the guard these
+    // would each observe the same stale active.size and over-claim up to 3×concurrency.
+    await Promise.all([sup.dispatchOnce(), sup.dispatchOnce(), sup.dispatchOnce()]);
+    await sup.drain();
+    expect(peak).toBeLessThanOrEqual(3);
+    expect(store.byStatus("succeeded")).toHaveLength(12);
+  });
+
   it("recover resets crashed running tasks", async () => {
     const t = makeTask("crashed", join(dir, "c.txt"));
     await store.save({ ...t, status: "running", leaseOwner: "old", leaseExpiresAt: 1 });
