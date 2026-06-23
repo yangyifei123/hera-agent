@@ -92,7 +92,9 @@ const TEMPLATES = {
 
 function getConfigRoot() {
   // Keep this logic in sync with src/constants.ts resolveOpenCodeConfigRoot().
+  // Precedence: HERA_CONFIG_ROOT (canonical) > OPENCODE_CONFIG_ROOT (legacy alias) > default.
   if (process.env.HERA_CONFIG_ROOT) return process.env.HERA_CONFIG_ROOT;
+  if (process.env.OPENCODE_CONFIG_ROOT) return process.env.OPENCODE_CONFIG_ROOT;
   if (process.platform === "win32") {
     const home = process.env.USERPROFILE ?? process.env.HOME ?? homedir();
     return path.join(home, ".config", "opencode");

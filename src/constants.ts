@@ -61,15 +61,33 @@ export type ConfigRootPlatform = NodeJS.Platform;
 
 export type ConfigRootEnv =
   | NodeJS.ProcessEnv
-  | { USERPROFILE?: string; HOME?: string; HERA_CONFIG_ROOT?: string };
+  | {
+      USERPROFILE?: string;
+      HOME?: string;
+      HERA_CONFIG_ROOT?: string;
+      OPENCODE_CONFIG_ROOT?: string;
+    };
 
-/** Resolve the OpenCode config root used by Hera's plugin runtime and CLI helpers. */
+/**
+ * Resolve the OpenCode config root used by Hera's plugin runtime and CLI helpers.
+ *
+ * Precedence (highest first):
+ *   1. `HERA_CONFIG_ROOT` — canonical override for the Hera/OpenCode config root.
+ *   2. `OPENCODE_CONFIG_ROOT` — legacy alias kept for backward compatibility.
+ *   3. Platform default under the user's home (`.config/opencode`).
+ *
+ * New code and docs should prefer `HERA_CONFIG_ROOT`; the alias is read-only
+ * compatibility for existing setups and is never written by Hera.
+ */
 export function resolveOpenCodeConfigRoot(
   env: ConfigRootEnv = process.env,
   platform: ConfigRootPlatform = process.platform
 ): string {
   if (env.HERA_CONFIG_ROOT) {
     return env.HERA_CONFIG_ROOT;
+  }
+  if (env.OPENCODE_CONFIG_ROOT) {
+    return env.OPENCODE_CONFIG_ROOT;
   }
   if (platform === "win32") {
     const home = env.USERPROFILE ?? env.HOME ?? "C:/Users/Administrator";

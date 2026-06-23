@@ -116,6 +116,25 @@ describe("Constants", () => {
         "/root/.config/opencode"
       );
     });
+
+    test("HERA_CONFIG_ROOT is canonical and overrides everything", () => {
+      expect(
+        resolveOpenCodeConfigRoot(
+          {
+            HERA_CONFIG_ROOT: "/canonical/root",
+            OPENCODE_CONFIG_ROOT: "/legacy/root",
+            HOME: "/home/ada",
+          },
+          "linux"
+        )
+      ).toBe("/canonical/root");
+    });
+
+    test("OPENCODE_CONFIG_ROOT is honored as a legacy alias when canonical is unset", () => {
+      expect(
+        resolveOpenCodeConfigRoot({ OPENCODE_CONFIG_ROOT: "/legacy/root", HOME: "/home/ada" }, "linux")
+      ).toBe("/legacy/root");
+    });
   });
 
   describe("Team Management Descriptions", () => {
