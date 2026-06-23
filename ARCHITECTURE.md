@@ -178,7 +178,9 @@ listBackups()      → lists available backups
 | Variable | Description |
 |----------|-------------|
 | `HERA_DEBUG` | Enable debug logging |
-| `HERA_DIR` | Override config directory |
+| `HERA_CONFIG_ROOT` | Canonical override for the OpenCode config root used by the plugin runtime and CLI |
+| `OPENCODE_CONFIG_ROOT` | Legacy alias for the config root; read only when `HERA_CONFIG_ROOT` is unset |
+| `HERA_DIR` | Config root used **only** by generated standalone-plugin memory helpers (not the main runtime/CLI) |
 
 ## Agent Mode Renaming (Documentation Only)
 

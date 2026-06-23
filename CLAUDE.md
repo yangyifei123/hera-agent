@@ -4,166 +4,185 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hera is an **OpenCode plugin** (not a standalone app) that acts as an agent factory: it creates child agents, manages skills, coordinates teams, persists memory across sessions, and supports self-evolution via prompt directives. It runs inside the OpenCode CLI on the Bun runtime.
+Hera is an **OpenCode plugin** (not a standalone app) that acts as an agent factory: it creates child agents, manages reusable skills, coordinates teams, persists memory across sessions, and can export agents/teams as standalone plugins.
 
-**Critical concept**: Child agents are persisted as `.md` files in `~/.config/opencode/agents/hera/` with YAML frontmatter. OpenCode auto-discovers them by scanning this directory at startup — the plugin doesn't "register" them through an API. The plugin's `config` hook *also* injects the same agents into OpenCode's in-memory agent map for immediate availability without a restart. Both paths must stay consistent.
+The most important mental model: child agents are persisted as Markdown files in `~/.config/opencode/agents/hera/`. OpenCode discovers those files on startup, while Hera's `config` hook also injects the same agents into OpenCode's in-memory agent map so they are usable immediately in the current session.
 
-## Build, Test, Run
+## Common Commands
 
 ```bash
-bun install              # install deps
-bun run build            # bundle src/index.ts → dist/ (ESM, Bun target, plugin/SDK externalized)
-bun run dev              # watch mode
+bun install
+bun run dev                       # watch src/index.ts
+bun run build                     # rebuild dist/ and .d.ts output
 
-bun test                 # run full test suite (config in bunfig.toml — root=src, coverage on)
-bun test src/path/to/file.test.ts        # single test file
-bun test --test-name-pattern "name"      # single test by name
+bun run lint
+bun run lint:fix
+bun run typecheck
+bun run format:check
+bun run format
 
-# Verify installation
-hera doctor              # checks config, agents, skills, disk state
+bun test                          # full test suite (bunfig.toml sets root=src, coverage, 30s timeout)
+bun test src/path/to/file.test.ts # single test file
+bun test --test-name-pattern "name"  # single test by name
 
-# Note: `package.json` "scripts.test" is an echo placeholder — DO NOT rely on `bun run test`.
-# Always invoke `bun test` directly so bunfig.toml is honored.
+# Local CLI checks from the repo root
+node bin/hera.js doctor
+node bin/hera.js help
 ```
 
-### Windows-specific commands
+Release/publish gate (`prepublishOnly` in `package.json`):
 
-```powershell
-# Install and build
-bun install; if ($?) { bun run build }
-
-# Verify
-hera doctor
-
-# Run tests
-bun test
+```bash
+bun run typecheck && bun run lint && bun run build && bun test && npm pack --dry-run
 ```
 
-The CLI binary `bin/hera.js` is invoked as `hera <command>` after install; it reads disk state directly (does **not** go through the plugin runtime). Commands include `install`, `doctor`, `list`, `list-skills`, `list-templates`, `list-teams`, `update`, `uninstall`, `version`, `help`.
+Installed users invoke the CLI as `hera <command>`, but inside this repo the reliable form is `node bin/hera.js <command>`.
 
-## Architecture
+## Big-Picture Architecture
 
-### Plugin entry & lifecycle (`src/index.ts`)
+### 1. Two execution surfaces must stay in sync
 
-The default export is an async `Plugin` function that returns four hooks:
+- **Plugin runtime**: `src/index.ts`
+  - Initializes stores/managers
+  - Registers OpenCode hooks (`config`, `tool`, `experimental.chat.system.transform`, `experimental.session.compacting`)
+  - Injects Hera and child agents into the live OpenCode session
+- **Standalone CLI**: `bin/hera.js`
+  - Handles `install`, `doctor`, `quickstart`, `list*`, `update`, `uninstall`, etc.
+  - Reads and writes disk state directly; it does **not** go through the plugin runtime
 
-| Hook | Purpose |
-|------|---------|
-| `config` | Injects Hera + every registered child agent into `input.agent` (the in-memory map OpenCode uses). Builds the full prompt by concatenating `def.prompt` + embedded skill sections + active evolution directives. |
-| `tool` | Returns the merged tool map from `createAllTools(ctx)`. |
-| `experimental.chat.system.transform` | Appends Active Teams / Registered Agents / Available Skills sections to Hera's system prompt. |
-| `experimental.session.compacting` | Triggers distillation prompts and (if `auto_memory: true`) runs `extractMemories()` over compacted messages. |
+If you change templates, default skills, config-root resolution, agent naming rules, or onboarding assumptions, check both `src/` and `bin/hera.js`.
 
-On startup the entry function: resolves the config root (`resolveConfigRoot` — Windows uses `USERPROFILE/.config/opencode`, otherwise `$HOME/.config/opencode`), auto-creates `hera.json` if absent, runs onboarding on first load, then **loads agents from disk first** and only fills gaps from the MemoryStore. Disk is authoritative.
+### 2. Startup flow in `src/index.ts`
 
-### Module layout (post-refactor)
+On plugin startup, Hera:
 
-The codebase was split out of a monolith. Key seams:
+1. Resolves the OpenCode config root via `getConfigRoot()` in `src/constants.ts`
+2. Creates `hera.json` with defaults if it does not exist yet
+3. Initializes:
+   - `MemoryStore`
+   - `SkillManager`
+   - `TeamManager`
+   - `WorkflowManager`
+   - `DistillationEngine`
+   - `AgentRegistry`
+4. Rewrites `hera.md` so Hera itself is always natively discoverable by OpenCode
+5. Runs first-run onboarding via `src/onboarding.ts`
+6. Loads agents from disk first, then fills missing ones from memory-store backups
+7. Builds the merged tool map via `src/tools/index.ts`
 
-- **`src/agents/`** — `registry.ts` writes/reads `.md` files; `hera.ts` defines the Hera agent and the 10 templates plus `buildAgentPrompt()` (the canonical prompt assembler used by both registry and `config` hook).
-- **`src/skills/`** — 5 built-in skill modules + `manager.ts`. Built-in skills are protected from deletion.
-- **`src/team/`** — `manager.ts` creates real OpenCode sessions via `client.session.create()`. Teams are NOT simulated. `templates.ts` provides preset team shapes.
-- **`src/memory/`** — `store.ts` JSON-per-entry persistence; `smart-extractor.ts` powers auto-memory during session compaction.
-- **`src/distillation/`** — `engine.ts` extracts decisions/patterns/skills from sessions.
-- **`src/evolution/`** — `auto-evolve.ts` analyzes sessions and proposes evolution directives.
-- **`src/tools/`** — Tool registration is split by **domain**: `agent-tools`, `skill-tools`, `team-tools`, `memory-tools`, `evolution-tools`, `system-tools`. `index.ts` exports `createAllTools(ctx)` which merges them. Each domain takes only the context slice it needs (`AgentToolCtx`, `SkillToolCtx`, etc. — see `types.ts`).
-- **`src/persistence.ts`** — Unified `persistAgent` / `removeAgent` / `backupAgent` / `restoreAgent`. Backups are JSON in `hera-data/backups/`, capped at 5 per agent (oldest auto-pruned).
-- **`src/constants.ts`** — All magic numbers (timeouts, limits, default skills/permissions) live here. Import constants rather than hard-coding values.
-- **`src/helpers.ts`** — `getDefaultSkills()`, `getDefaultPermission()`, `buildSkillPromptEmbedding()`. **Always returns fresh copies** to avoid shared-reference mutation bugs — preserve this when editing.
-- **`src/logger.ts`** — `heraLog(level, msg, ...)`. Use this instead of `console.*` so output respects `HERA_DEBUG`.
-- **`src/validation.ts`** — Agent name validation; call before any file operation that uses the name as a path segment.
-- **`src/onboarding.ts`** — First-run setup gated by `.onboarded` flag in `hera-data/`.
-- **`bin/hera.js`** — Standalone CLI (Node-based); reads disk state directly, bypasses the plugin runtime. Reads its version string from `package.json` so the CLI never drifts from npm metadata.
+Disk is authoritative for agents; the memory store is a fallback, not the primary source.
 
-### Triple persistence for agents
+### 3. Agent persistence is intentionally multi-layered
 
-When `persistAgent()` runs, an agent lands in three places simultaneously:
-1. **In-memory** `registeredAgents: Map<string, AgentDefinition>` — used by the `config` hook.
-2. **Disk `.md`** in `agents/hera/` — what OpenCode auto-discovers on startup.
-3. **MemoryStore JSON** — fallback so an agent survives even if its `.md` is lost.
+`src/persistence.ts` is the canonical place for agent lifecycle operations.
 
-On startup the entry function loads disk first, then fills gaps from MemoryStore. When modifying agent persistence, keep all three in sync — diverging them produces ghost agents.
+`persistAgent()` writes an agent to three places:
 
-### Prompt assembly
+1. `registeredAgents` in memory
+2. `~/.config/opencode/agents/hera/<name>.md` via `AgentRegistry`
+3. `MemoryStore` JSON as a fallback copy
 
-The full prompt for any child agent is assembled the same way in two places: `AgentRegistry.register()` (when writing the `.md`) and the `config` hook (when injecting at runtime). Both must produce the same string. The shape is:
+`removeAgent()`, `backupAgent()`, `listBackups()`, and `restoreAgent()` also live there. Do not scatter agent CRUD logic across random tool files.
 
-```
-{def.prompt}
+### 4. Prompt assembly is a sharp edge
 
-## Skill: {skill1.name}
-{skill1.prompt}
+Prompt construction currently spans multiple paths:
 
-## Skill: {skill2.name}
-{skill2.prompt}
-...
+- `buildAgentPrompt()` in `src/agents/hera.ts` renders the persisted Markdown body
+- the plugin `config` hook in `src/index.ts` builds the runtime prompt used for live agent injection
 
-## Evolved Directives
-1. [ISO timestamp] {directive}
-2. ...
-```
+This is easy to drift: disk-backed agents are parsed back from rendered `.md` bodies, so changing only one path can cause duplicated or mismatched embedded skill sections. If you touch prompt composition, verify the full flow: create agent -> reload/restart -> invoke agent.
 
-Only non-`rolledBack` evolution entries are included. Rollback is a soft flag, never a delete.
+### 5. Skills are both built-in prompts and on-disk packages
 
-### Path resolution
+`src/skills/manager.ts` loads three sources of skills:
 
-`resolveConfigRoot()` in `src/index.ts` and `getConfigRoot()` in `bin/hera.js` are the only places that compute the config root. The CLI also honors `HERA_DIR` as an override. On Windows, paths under `USERPROFILE` are used; everywhere else, `$HOME`. Don't replicate this logic elsewhere — import or refactor.
+- **11 built-in skills** from `src/skills/*.ts`
+- legacy `SkillDefinition` entries stored in `MemoryStore`
+- directory-based `SkillPackage` bundles under `hera-data/skills/<name>/` (`SKILL.json`, `SKILL.md`, optional extra files/config)
 
-## Cross-Platform Notes
+Built-in skills are non-deletable. The canonical default inherited skill list lives in `DEFAULT_SKILLS` in `src/constants.ts`; keep the CLI defaults in `bin/hera.js` synchronized with it.
 
-### Config Root Directory
-- **Windows**: `%USERPROFILE%\.config\opencode` (e.g., `C:\Users\{username}\.config\opencode`)
-- **Linux/macOS**: `~/.config/opencode`
+### 6. Teams, workflows, and recipes are separate concepts
 
-### Path Separator
-- Windows uses backslash (`\`)
-- Linux/macOS uses forward slash (`/`)
-- Node.js `path.join()` handles this automatically
+Do not conflate these layers:
 
-### PowerShell vs Bash
-- **PowerShell**: Use `$env:USERPROFILE` for home directory
-- **Bash**: Use `$HOME` or `~` for home directory
-- **Windows workaround**: Use `cmd /c` to bypass PowerShell path restrictions
+- **Teams** (`src/team/manager.ts`): spawn real OpenCode sessions via `client.session.create()`; coordination modes are `parallel`, `sequential`, `adaptive`
+- **Team management modes** (`simple`, `okr`, `tree`, `control`): how a team tracks work and approvals
+- **Generic workflows** (`src/workflow/`): serial/parallel/DAG workflow definitions and executions stored in memory
+- **Team workflow recipes** (`src/team/workflow-recipe.ts`, `TeamDefinition.workflow`): lightweight editable step lists attached to teams
 
-### Environment Variables
-- **Windows**: `USERPROFILE` (not `HOME`)
-- **Linux/macOS**: `HOME`
+Teams also have two collaboration channels:
 
-## Configuration
+- inbox-style messages (`hera_team_message`, `hera_get_team_messages`, `hera_ack_team_messages`)
+- shared blackboard memory (`hera_team_remember`, `hera_team_recall`)
 
-Plugin config lives in `~/.config/opencode/hera.json` (auto-created on first load). Relevant flags:
+### 7. Tooling is split into 8 domains
 
-- `auto_evolve: true` — enables session-compacting reflection prompts and `hera_propose_evolution`.
-- `auto_memory: true` — runs `extractMemories()` during compaction and saves to MemoryStore with `source: "auto-memory"` metadata.
-- `disabled_agents` / `disabled_skills` / `disabled_tools` — runtime disable without deleting files.
-- `default_model` — overrides the per-agent model.
+`createAllTools()` merges these tool groups:
 
-Env vars: `HERA_DEBUG` (debug logging), `HERA_DIR` (CLI config root override).
+- `agent-tools`
+- `skill-tools`
+- `team-tools`
+- `memory-tools`
+- `evolution-tools`
+- `system-tools`
+- `package-tools`
+- `workflow-tools`
 
-## Conventions when editing this codebase
+`src/types.ts` defines per-domain context-slice interfaces, but the current tool factories still accept the full `PluginContext` and destructure what they need. Treat the slice interfaces as the architectural seam, not as something already fully enforced.
 
-- **Don't bypass `persistence.ts`** for agent CRUD. The triple-write contract lives there.
-- **Don't hard-code constants** — add to `src/constants.ts` and import.
-- **Don't mutate shared default arrays/objects** — `helpers.ts` returns fresh copies on purpose. Preserve that invariant.
-- **Tool context slices over the full `PluginContext`** — when adding a tool to an existing domain, take only the matching `*ToolCtx` slice from `types.ts`.
-- **Agent modes**: code uses `primary` / `subagent` / `all` (the OpenCode SDK names). Docs refer to them as `autonomous` / `task` / `universal`. Keep the code names; rename only in user-facing text.
-- **Tests live next to source** (`foo.ts` ↔ `foo.test.ts`). `bunfig.toml` sets `root = "src"` and enables coverage. Tests must pass `bun test` before any commit.
-- **File I/O is async** via `node:fs/promises`. The lone exception is `isFirstRun()` in `onboarding.ts`, which uses sync `accessSync` because it runs in the init phase.
+### 8. Memory, distillation, and auto-learning hooks
 
-## Where things land on disk
+- `MemoryStore` persists one JSON file per entry under typed subdirectories in `hera-data/memory/`
+- `experimental.session.compacting` in `src/index.ts` is where Hera plugs in:
+  - distillation guidance
+  - optional auto-memory extraction via `extractMemories()`
+  - optional auto-evolution prompting
+- `auto_memory: true` causes extracted memories to be saved with `metadata.source = "auto-memory"`
 
-```
+### 9. Export and packaging are separate surfaces too
+
+- `src/generators/plugin-generator.ts` and `src/generators/team-plugin-generator.ts` export agents/teams as standalone OpenCode plugins
+- `src/tools/package-tools.ts` packages and unpacks agents as `.tar.gz` archives, optionally with related memory
+
+One subtle path detail: generated plugin memory helpers look at `HERA_DIR`, while the main plugin runtime and standalone CLI resolve the OpenCode config root via `HERA_CONFIG_ROOT`. Keep those env-var contracts straight when editing path logic.
+
+## Path and Config Resolution
+
+- Canonical OpenCode config-root logic lives in `resolveOpenCodeConfigRoot()` / `getConfigRoot()` in `src/constants.ts`
+- `bin/hera.js` duplicates that logic and must stay aligned
+- Windows uses `USERPROFILE/.config/opencode`; other platforms use `HOME/.config/opencode`
+- `hera.json` defaults are created in `src/index.ts`; if you add config fields, update both the runtime default object and `HeraConfig` in `src/types.ts`
+
+## Repo-Specific Conventions
+
+- Use `heraLog()` instead of `console.*`
+- Use `validation.ts` before turning agent names into path segments
+- Prefer constants from `src/constants.ts` over hardcoded limits/timeouts/defaults
+- Preserve the fresh-copy behavior in `helpers.ts` (`getDefaultSkills()`, `getDefaultPermission()`)
+- Use `atomicWriteText()` / `atomicWriteJson()` for persisted files that must survive interrupted writes
+- Tests live next to source files under `src/`
+- Onboarding (`src/onboarding.ts`) seeds a default `quick-fixer` agent plus a `dev-team` with `architect`, `senior-dev`, and `qa-engineer`
+
+## Important Runtime Artifacts
+
+```text
 ~/.config/opencode/
-├── hera.json                       # plugin config
-├── agents/hera/<name>.md           # child agents (OpenCode auto-discovers)
+├── hera.json
+├── agents/
+│   ├── hera/*.md              # disk-backed agents for OpenCode discovery
+│   └── hera-generated/        # generated plugin exports
 └── hera-data/
-    ├── .onboarded                  # first-run flag
-    ├── memory/<id>.json            # MemoryStore entries
-    ├── skills/<name>.json          # user-created skills
-    └── backups/<name>-<ts>.json    # agent backups (max 5 per agent)
+    ├── .onboarded
+    ├── memory/                # MemoryStore JSON entries
+    ├── skills/<name>/         # SkillPackage directories
+    └── packages/              # tar.gz agent packages
 ```
 
-## Reference docs in this repo
+## Reference Docs
 
-- `README.md` — user-facing install/usage.
-- `ARCHITECTURE.md` — module-by-module breakdown with mermaid diagram and data flow walkthroughs. Read this when planning refactors.
+- `README.md` — install paths, CLI usage, templates, teams, packaging
+- `ARCHITECTURE.md` — deeper module-by-module walkthrough
+- `docs/MODES.md` — agent mode terminology and usage
+- `docs/CANONICAL_DEMO.md` and `docs/SHOWCASE.md` — representative user flows
