@@ -64,6 +64,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
       configRoot,
       dataDir,
       memoryDir,
+      tasksDir: join(dataDir, "tasks"),
       skillsDir,
       agentsDir,
     },

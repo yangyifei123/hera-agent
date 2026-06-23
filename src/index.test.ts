@@ -44,6 +44,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
       configRoot: base,
       dataDir: join(base, "hera-data"),
       memoryDir: join(base, "memory"),
+      tasksDir: join(base, "hera-data", "tasks"),
       skillsDir: join(base, "skills"),
       agentsDir: join(base, "agents", "hera"),
     },

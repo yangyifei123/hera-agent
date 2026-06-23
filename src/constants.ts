@@ -143,3 +143,20 @@ export const MAX_RECALL_RESULTS = 10;
 
 /** Maximum length for result preview in output */
 export const MAX_RESULT_PREVIEW_LENGTH = 200;
+
+// === Task Engine Configuration ===
+
+/** Default number of tasks the supervisor runs concurrently. */
+export const TASK_CONCURRENCY = 8;
+
+/** Default retry budget per task before it is marked failed. */
+export const TASK_DEFAULT_MAX_ATTEMPTS = 3;
+
+/** Default base backoff (ms) between task attempts. */
+export const TASK_DEFAULT_BACKOFF_MS = 1000;
+
+/** Default task lease duration (ms); expiry drives crash recovery. */
+export const TASK_LEASE_MS = 300000;
+
+/** Supervisor dispatch tick interval (ms). */
+export const SUPERVISOR_TICK_MS = 500;

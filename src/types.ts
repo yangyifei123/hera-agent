@@ -304,6 +304,10 @@ export interface HeraConfig {
   auto_memory?: boolean;
   memory_limit?: number;
   memory_ttl_ms?: number;
+  task_concurrency?: number;
+  task_default_max_attempts?: number;
+  task_default_backoff_ms?: number;
+  task_lease_ms?: number;
   team_defaults?: {
     coordination?: "parallel" | "sequential" | "adaptive";
     timeout?: number;
@@ -329,6 +333,7 @@ export interface HeraPaths {
   configRoot: string;
   dataDir: string;
   memoryDir: string;
+  tasksDir: string;
   skillsDir: string;
   agentsDir: string;
 }

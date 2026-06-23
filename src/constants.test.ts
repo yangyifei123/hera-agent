@@ -1,4 +1,4 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, it } from "bun:test";
 import {
   DEFAULT_HERA_MAX_STEPS,
   DEFAULT_CHILD_MAX_STEPS,
@@ -16,6 +16,11 @@ import {
   MAX_RESULT_PREVIEW_LENGTH,
   resolveOpenCodeConfigRoot,
   TEAM_MANAGEMENT_DESCRIPTIONS,
+  TASK_CONCURRENCY,
+  TASK_DEFAULT_MAX_ATTEMPTS,
+  TASK_DEFAULT_BACKOFF_MS,
+  TASK_LEASE_MS,
+  SUPERVISOR_TICK_MS,
 } from "./constants.js";
 
 describe("Constants", () => {
@@ -211,5 +216,16 @@ describe("Constants", () => {
         expect(c).toBeGreaterThan(0);
       }
     });
+  });
+});
+
+describe("Task Engine Constants", () => {
+  it("has sane task-engine defaults", () => {
+    expect(TASK_CONCURRENCY).toBe(8);
+    expect(TASK_DEFAULT_MAX_ATTEMPTS).toBe(3);
+    expect(TASK_DEFAULT_BACKOFF_MS).toBe(1000);
+    expect(TASK_LEASE_MS).toBe(300000);
+    expect(SUPERVISOR_TICK_MS).toBeGreaterThan(0);
+    expect(TASK_LEASE_MS).toBeGreaterThan(SUPERVISOR_TICK_MS);
   });
 });
