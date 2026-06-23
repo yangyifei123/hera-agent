@@ -347,6 +347,7 @@ export interface PluginContext {
   agentRegistry: import("./agents/registry.js").AgentRegistry;
   registeredAgents: Map<string, AgentDefinition>;
   client: OpenCodeClient | undefined;
+  taskStore: import("./engine/task-store.js").TaskStore;
   config: HeraConfig;
   paths: HeraPaths;
   autoEvolve: boolean;

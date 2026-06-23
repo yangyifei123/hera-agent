@@ -7,6 +7,7 @@ import { createEvolutionTools } from "./evolution-tools.js";
 import { createSystemTools } from "./system-tools.js";
 import { createPackageTools } from "./package-tools.js";
 import { createWorkflowTools } from "./workflow-tools.js";
+import { createTaskTools } from "./task-tools.js";
 
 export function createAllTools(ctx: PluginContext) {
   const tools = {
@@ -18,6 +19,7 @@ export function createAllTools(ctx: PluginContext) {
     ...createSystemTools(ctx),
     ...createPackageTools(ctx),
     ...createWorkflowTools(ctx),
+    ...createTaskTools(ctx),
   };
   const disabled = new Set(ctx.config.disabled_tools ?? []);
   if (disabled.size === 0) return tools;

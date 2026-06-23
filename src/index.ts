@@ -5,6 +5,7 @@ import { TeamManager } from "./team/manager.js";
 import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
+import { TaskStore } from "./engine/task-store.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
@@ -106,6 +107,9 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const agentRegistry = new AgentRegistry(paths.agentsDir);
   await agentRegistry.init();
 
+  const taskStore = new TaskStore(paths.tasksDir);
+  await taskStore.init();
+
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);
 
@@ -145,6 +149,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     agentRegistry,
     registeredAgents,
     client,
+    taskStore,
     config,
     paths,
     autoEvolve: config.auto_evolve === true,

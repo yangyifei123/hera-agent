@@ -13,6 +13,7 @@ import { MemoryStore } from "../memory/store.js";
 import { SkillManager } from "../skills/manager.js";
 import { DistillationEngine } from "../distillation/engine.js";
 import { WorkflowManager } from "../workflow/manager.js";
+import { TaskStore } from "../engine/task-store.js";
 import type { AgentDefinition, PluginContext } from "../types.js";
 
 export interface TestHarness {
@@ -48,6 +49,9 @@ export async function makeTestHarness(): Promise<TestHarness> {
 
   const distillation = new DistillationEngine(store);
 
+  const taskStore = new TaskStore(join(dataDir, "tasks"));
+  await taskStore.init();
+
   const registeredAgents = new Map<string, AgentDefinition>();
 
   const ctx: PluginContext = {
@@ -59,6 +63,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
     agentRegistry,
     registeredAgents,
     client: undefined,
+    taskStore,
     config: {},
     paths: {
       configRoot,

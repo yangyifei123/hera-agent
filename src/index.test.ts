@@ -9,6 +9,7 @@ import { TeamManager } from "./team/manager.js";
 import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
+import { TaskStore } from "./engine/task-store.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync } from "node:fs";
@@ -39,6 +40,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
     agentRegistry,
     registeredAgents: new Map(),
     client: undefined,
+    taskStore: new TaskStore(join(base, "hera-data", "tasks")),
     config,
     paths: {
       configRoot: base,
