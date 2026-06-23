@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, it, expect, beforeEach } from "bun:test";
 import { MemoryStore } from "./store.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 
 const TEST_DIR = join(tmpdir(), "hera-store-test");
 
@@ -159,4 +160,17 @@ describe("MemoryStore", () => {
     const listed = await store.list("session");
     expect(listed).toHaveLength(1);
   });
+});
+
+it("enforceLimit does not re-scan disk per save (index-backed list)", async () => {
+  // Saving N entries under a small maxEntries must not throw and must keep only the cap.
+  const dir = await mkdtemp(join(tmpdir(), "mem-eff-"));
+  const effStore = new MemoryStore(dir, { maxEntries: 5 });
+  await effStore.init();
+  for (let i = 0; i < 50; i++) {
+    await effStore.save({ id: `e${i}`, type: "context", content: `c${i}`, timestamp: i });
+  }
+  const all = await effStore.list("context");
+  expect(all.length).toBe(5);
+  await rm(dir, { recursive: true, force: true });
 });
