@@ -1,8 +1,23 @@
-import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { persistAgent, removeAgent } from "./persistence.js";
+import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  backupAgent,
+  listBackups,
+  persistAgent,
+  removeAgent,
+  restoreAgent,
+} from "./persistence.js";
 import type { AgentDefinition, SkillDefinition } from "./types.js";
 import type { AgentRegistry } from "./agents/registry.js";
+import { AgentRegistry as RealAgentRegistry } from "./agents/registry.js";
 import type { MemoryStore } from "./memory/store.js";
+import { MemoryStore as RealMemoryStore } from "./memory/store.js";
+
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
 
 // --- Mock Factories ---
 
@@ -128,9 +143,83 @@ describe("removeAgent", () => {
   });
 
   it("handles missing agent gracefully", async () => {
-    // Agent not in map — should not throw
     const result = await removeAgent("nonexistent", registeredAgents, registry, store);
     expect(result).toBe(true);
     expect(registry.unregister).toHaveBeenCalledWith("nonexistent");
+  });
+});
+
+describe("backup/list/restore integration", () => {
+  let tmp: string;
+  let registry: RealAgentRegistry;
+  let store: RealMemoryStore;
+  let registeredAgents: Map<string, AgentDefinition>;
+
+  beforeEach(async () => {
+    tmp = await mkdtemp(join(tmpdir(), "hera-persistence-test-"));
+    registry = new RealAgentRegistry(join(tmp, "agents", "hera"));
+    await registry.init();
+    store = new RealMemoryStore(join(tmp, "hera-data", "memory"));
+    await store.init();
+    registeredAgents = new Map();
+  });
+
+  afterEach(async () => {
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  it("stores backups under configRoot/hera-data/backups", async () => {
+    const def = makeAgentDef({ name: "backed-up-agent" });
+
+    await persistAgent(def, new Map(), registeredAgents, registry, store);
+    await backupAgent("backed-up-agent", registeredAgents, registry);
+
+    const backups = await listBackups("backed-up-agent", registeredAgents, registry);
+    expect(backups).toHaveLength(1);
+
+    const expectedDir = normalizePath(join(tmp, "hera-data", "backups"));
+    expect(normalizePath(backups[0].filePath).startsWith(expectedDir)).toBe(true);
+  });
+
+  it("restores markdown with custom skill prompts re-embedded", async () => {
+    const customSkill: SkillDefinition = {
+      name: "custom-skill",
+      description: "Custom skill",
+      trigger: "custom",
+      prompt: "CUSTOM_SKILL_BODY",
+      category: "user",
+    };
+    const skillsMap = new Map<string, SkillDefinition>([[customSkill.name, customSkill]]);
+    const def = makeAgentDef({
+      name: "restorable-agent",
+      skills: ["caveman", customSkill.name],
+    });
+
+    await persistAgent(def, skillsMap, registeredAgents, registry, store);
+
+    const originalMarkdown = await readFile(
+      join(tmp, "agents", "hera", "restorable-agent.md"),
+      "utf-8"
+    );
+    expect(originalMarkdown).toContain("CUSTOM_SKILL_BODY");
+
+    await removeAgent("restorable-agent", registeredAgents, registry, store);
+
+    const result = await restoreAgent(
+      "restorable-agent",
+      undefined,
+      skillsMap,
+      registeredAgents,
+      registry,
+      store
+    );
+
+    expect(result.success).toBe(true);
+
+    const restoredMarkdown = await readFile(
+      join(tmp, "agents", "hera", "restorable-agent.md"),
+      "utf-8"
+    );
+    expect(restoredMarkdown).toContain("CUSTOM_SKILL_BODY");
   });
 });

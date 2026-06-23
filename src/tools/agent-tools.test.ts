@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { SkillDefinition } from "../types.js";
 import {
   suggestTemplate,
   suggestMode,
@@ -185,7 +186,6 @@ describe("createAgentTools (integration)", () => {
       expect(files).toContain("test-coder.md");
 
       const md = await readFile(join(harness.ctx.paths.agentsDir, "test-coder.md"), "utf-8");
-      // .md must contain the full assembled prompt with built-in skills.
       expect(md).toContain("Caveman Mode");
       expect(md).toContain("Autonomous Knowledge");
       expect(md).toContain("Self-Improvement");
@@ -339,6 +339,167 @@ describe("createAgentTools (integration)", () => {
 
       const files = await readdir(harness.ctx.paths.agentsDir);
       expect(files).not.toContain("gonna-die.md");
+    });
+  });
+
+  describe("backup and restore tools", () => {
+    it("lists backups created during agent deletion", async () => {
+      await tools.hera_create_agent.execute(
+        {
+          name: "restore-me",
+          description: "x",
+          prompt: "x",
+          mode: "subagent",
+        } as any,
+        {} as any
+      );
+
+      await tools.hera_delete_agent.execute({ name: "restore-me" } as any, {} as any);
+
+      const result = await tools.hera_list_backups.execute({ name: "restore-me" } as any, {} as any);
+      expect(String(result)).toContain("restore-me");
+      expect(String(result)).toContain("Available backups");
+    });
+
+    it("restores a deleted agent from latest backup", async () => {
+      const customSkill: SkillDefinition = {
+        name: "custom-skill",
+        description: "Custom skill",
+        trigger: "custom",
+        prompt: "CUSTOM_SKILL_BODY",
+        category: "user",
+      };
+      await harness.ctx.skillManager.createSkill(customSkill);
+
+      await tools.hera_create_agent.execute(
+        {
+          name: "restore-latest",
+          description: "x",
+          prompt: "x",
+          mode: "subagent",
+          skills: [customSkill.name],
+        } as any,
+        {} as any
+      );
+
+      await tools.hera_delete_agent.execute({ name: "restore-latest" } as any, {} as any);
+      expect(harness.ctx.registeredAgents.has("restore-latest")).toBe(false);
+
+      const result = await tools.hera_restore_agent.execute(
+        { name: "restore-latest" } as any,
+        {} as any
+      );
+      expect(String(result)).toContain("restored from backup");
+      expect(harness.ctx.registeredAgents.has("restore-latest")).toBe(true);
+
+      const restoredMarkdown = await readFile(
+        join(harness.ctx.paths.agentsDir, "restore-latest.md"),
+        "utf-8"
+      );
+      expect(restoredMarkdown).toContain("CUSTOM_SKILL_BODY");
+    });
+
+    it("rejects invalid restore names and timestamps", async () => {
+      const badName = await tools.hera_restore_agent.execute(
+        { name: "BAD NAME" } as any,
+        {} as any
+      );
+      expect(String(badName)).toContain("Error");
+
+      const badTimestamp = await tools.hera_restore_agent.execute(
+        { name: "ghost", timestamp: -1 } as any,
+        {} as any
+      );
+      expect(String(badTimestamp)).toContain("positive");
+    });
+  });
+
+  describe("hera_import_agent", () => {
+    function importJson(def: Record<string, unknown>) {
+      return tools.hera_import_agent.execute({ json: JSON.stringify(def) } as any, {} as any);
+    }
+
+    it("imports a valid agent and persists it to the registry", async () => {
+      const result = await importJson({
+        name: "imported-agent",
+        description: "An imported agent",
+        mode: "subagent",
+        prompt: "Do work",
+      });
+      expect(String(result)).toContain("imported successfully");
+      expect(harness.ctx.registeredAgents.has("imported-agent")).toBe(true);
+    });
+
+    it("rejects malformed JSON with a clear error", async () => {
+      const result = await tools.hera_import_agent.execute(
+        { json: "{not valid json" } as any,
+        {} as any
+      );
+      expect(String(result)).toContain("Error");
+    });
+
+    it("rejects missing required fields", async () => {
+      const result = await importJson({ name: "no-prompt", description: "x", mode: "subagent" });
+      expect(String(result)).toContain("Missing required fields");
+      expect(harness.ctx.registeredAgents.has("no-prompt")).toBe(false);
+    });
+
+    it("rejects an invalid agent name", async () => {
+      const result = await importJson({
+        name: "BAD NAME",
+        description: "x",
+        mode: "subagent",
+        prompt: "x",
+      });
+      expect(String(result)).toContain("Error");
+      expect(harness.ctx.registeredAgents.has("BAD NAME")).toBe(false);
+    });
+
+    it("rejects a reserved agent name", async () => {
+      const result = await importJson({
+        name: "hera",
+        description: "x",
+        mode: "subagent",
+        prompt: "x",
+      });
+      expect(String(result)).toContain("reserved");
+    });
+
+    it("rejects an invalid mode", async () => {
+      const result = await importJson({
+        name: "bad-mode",
+        description: "x",
+        mode: "captain",
+        prompt: "x",
+      });
+      expect(String(result)).toContain("mode");
+      expect(harness.ctx.registeredAgents.has("bad-mode")).toBe(false);
+    });
+
+    it("rejects a duplicate agent name", async () => {
+      await tools.hera_create_agent.execute(
+        { name: "dup-agent", description: "x", prompt: "x", mode: "subagent" } as any,
+        {} as any
+      );
+      const result = await importJson({
+        name: "dup-agent",
+        description: "x",
+        mode: "subagent",
+        prompt: "x",
+      });
+      expect(String(result)).toContain("already exists");
+    });
+
+    it("normalizes a missing skills array to a safe default", async () => {
+      const result = await importJson({
+        name: "no-skills",
+        description: "x",
+        mode: "subagent",
+        prompt: "x",
+      });
+      expect(String(result)).toContain("imported successfully");
+      const def = harness.ctx.registeredAgents.get("no-skills");
+      expect(Array.isArray(def?.skills)).toBe(true);
     });
   });
 

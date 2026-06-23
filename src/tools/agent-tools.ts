@@ -8,9 +8,9 @@ import type {
 } from "../types.js";
 import { DEFAULT_CHILD_MAX_STEPS } from "../constants.js";
 import { errorMessage, getDefaultSkills } from "../helpers.js";
-import { persistAgent, removeAgent } from "../persistence.js";
+import { persistAgent, removeAgent, listBackups, restoreAgent } from "../persistence.js";
 import { createAgentFromTemplate } from "../agents/hera.js";
-import { validateAgentNameWithConflict } from "../validation.js";
+import { validateAgentName, validateAgentNameWithConflict } from "../validation.js";
 import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 
@@ -453,17 +453,101 @@ export function createAgentTools(ctx: PluginContext) {
       },
     }),
 
+    hera_list_backups: tool({
+      description: "List available backups for a Hera-created agent.",
+      args: {
+        name: z.string().describe("Agent name whose backups should be listed"),
+      },
+      async execute(args) {
+        const validation = validateAgentName(args.name);
+        if (!validation.valid) {
+          let msg = `Error: ${validation.error}`;
+          if (validation.suggestion) msg += ` Suggestion: "${validation.suggestion}".`;
+          return msg;
+        }
+
+        const backups = await listBackups(args.name, registeredAgents, agentRegistry);
+        if (backups.length === 0) {
+          return `No backups found for agent "${args.name}".`;
+        }
+
+        return [
+          `Available backups for agent "${args.name}":`,
+          ...backups.map((backup) => `- ${backup.timestamp} (${backup.filePath})`),
+        ].join("\n");
+      },
+    }),
+
+    hera_restore_agent: tool({
+      description: "Restore a Hera-created agent from backup.",
+      args: {
+        name: z.string().describe("Agent name to restore"),
+        timestamp: z.number().optional().describe("Specific backup timestamp to restore"),
+      },
+      async execute(args) {
+        const validation = validateAgentName(args.name);
+        if (!validation.valid) {
+          let msg = `Error: ${validation.error}`;
+          if (validation.suggestion) msg += ` Suggestion: "${validation.suggestion}".`;
+          return msg;
+        }
+        if (args.timestamp !== undefined && (!Number.isFinite(args.timestamp) || args.timestamp <= 0)) {
+          return "Error: Backup timestamp must be a positive finite number.";
+        }
+
+        const result = await restoreAgent(
+          args.name,
+          args.timestamp,
+          skillManager.getSkillMap(),
+          registeredAgents,
+          agentRegistry,
+          store
+        );
+        return result.message;
+      },
+    }),
+
     hera_import_agent: tool({
       description: "Import agent from JSON definition.",
       args: {
         json: z.string().describe("JSON agent definition"),
       },
       async execute(args) {
+        let parsed: Partial<AgentDefinition>;
         try {
-          const def = JSON.parse(args.json) as AgentDefinition;
-          if (!def.name || !def.description || !def.mode || !def.prompt) {
-            return "Error: Invalid agent definition. Missing required fields.";
+          parsed = JSON.parse(args.json) as Partial<AgentDefinition>;
+        } catch (err: unknown) {
+          return `Error: Could not parse agent JSON: ${errorMessage(err)}`;
+        }
+
+        try {
+          if (!parsed || typeof parsed !== "object") {
+            return "Error: Invalid agent definition. Expected a JSON object.";
           }
+          if (!parsed.name || !parsed.description || !parsed.mode || !parsed.prompt) {
+            return "Error: Invalid agent definition. Missing required fields (name, description, mode, prompt).";
+          }
+
+          const validModes: AgentDefinition["mode"][] = ["primary", "subagent", "all"];
+          if (!validModes.includes(parsed.mode)) {
+            return `Error: Invalid agent mode "${parsed.mode}". Expected one of: ${validModes.join(", ")}.`;
+          }
+
+          const nameCheck = validateAgentNameWithConflict(parsed.name, registeredAgents);
+          if (!nameCheck.valid) {
+            let msg = `Error: ${nameCheck.error}`;
+            if (nameCheck.suggestion) msg += ` Suggestion: "${nameCheck.suggestion}".`;
+            return msg;
+          }
+
+          const def: AgentDefinition = {
+            ...parsed,
+            name: parsed.name,
+            description: parsed.description,
+            mode: parsed.mode,
+            prompt: parsed.prompt,
+            skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+          };
 
           const skillsMap = skillManager.getSkillMap();
           const { fileWritten } = await persistAgent(

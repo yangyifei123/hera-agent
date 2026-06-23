@@ -39,7 +39,7 @@ function getAgentRegistryDir(agentRegistry: AgentRegistry): string | undefined {
  * Get the backups directory path for a given agents directory.
  */
 function getBackupsDir(agentsDir: string): string {
-  return join(agentsDir, "..", "hera-data", "backups");
+  return join(agentsDir, "..", "..", "hera-data", "backups");
 }
 
 /**
@@ -148,6 +148,7 @@ export async function listBackups(
 export async function restoreAgent(
   name: string,
   timestamp: number | undefined,
+  skills: Map<string, SkillDefinition>,
   registeredAgents: Map<string, AgentDefinition>,
   agentRegistry: AgentRegistry,
   store: MemoryStore
@@ -194,10 +195,9 @@ export async function restoreAgent(
       };
     }
 
-    const skillsMap = new Map<string, SkillDefinition>();
     const { fileWritten } = await persistAgent(
       def,
-      skillsMap,
+      skills,
       registeredAgents,
       agentRegistry,
       store
