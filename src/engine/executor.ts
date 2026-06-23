@@ -8,17 +8,12 @@ export interface AgentRunner {
   run(executor: string, prompt: string): Promise<string>;
 }
 
-export interface TaskExecutorOptions {
-  defaultBackoffMs?: number;
-}
-
 export class TaskExecutor {
   constructor(
     private store: TaskStore,
     private evaluator: AcceptanceEvaluator,
     private runner: AgentRunner,
-    private cwd: string,
-    private options: TaskExecutorOptions = {}
+    private cwd: string
   ) {}
 
   async runAttempt(task: TaskRecord, now: number): Promise<TaskRecord> {

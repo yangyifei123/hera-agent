@@ -333,7 +333,6 @@ export interface HeraPaths {
   configRoot: string;
   dataDir: string;
   memoryDir: string;
-  tasksDir: string;
   skillsDir: string;
   agentsDir: string;
 }

@@ -23,7 +23,6 @@ describe("runOnboarding", () => {
       configRoot: tmp,
       dataDir: join(tmp, "hera-data"),
       memoryDir: join(tmp, "hera-data", "memory"),
-      tasksDir: join(tmp, "hera-data", "tasks"),
       skillsDir: join(tmp, "hera-data", "skills"),
       agentsDir: join(tmp, "agents", "hera"),
     };

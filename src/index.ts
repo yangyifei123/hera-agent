@@ -98,7 +98,6 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     configRoot,
     dataDir: join(configRoot, "hera-data"),
     memoryDir: join(configRoot, "hera-data", "memory"),
-    tasksDir: join(configRoot, "hera-data", "tasks"),
     skillsDir: join(configRoot, "hera-data", "skills"),
     agentsDir: join(configRoot, "agents", "hera"),
   };

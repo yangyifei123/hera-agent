@@ -82,4 +82,14 @@ describe("AcceptanceEvaluator", () => {
     expect(r[0].passed).toBe(false);
     expect(r[0].detail).toContain("disabled");
   });
+
+  it("passes file_exists with a relative path resolved against ctx.cwd", async () => {
+    await writeFile(join(dir, "rel.txt"), "hello");
+    const r = await evalr.evaluate(
+      [{ type: "file_exists", path: "rel.txt" }],
+      { output: "", cwd: dir },
+      1
+    );
+    expect(evalr.allPassed(r)).toBe(true);
+  });
 });

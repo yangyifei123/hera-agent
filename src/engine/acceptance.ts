@@ -1,6 +1,7 @@
 // src/engine/acceptance.ts
 import { exec } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
 import type { AcceptanceCheck, AcceptanceResult } from "./task-types.js";
 
 export interface AcceptanceContext {
@@ -46,7 +47,7 @@ export class AcceptanceEvaluator {
     try {
       switch (check.type) {
         case "file_exists":
-          return this.result(check, await this.fileExists(check.path), now);
+          return this.result(check, await this.fileExists(check.path, ctx.cwd), now);
         case "regex":
           return this.regex(check, ctx, now);
         case "shell":
@@ -59,9 +60,13 @@ export class AcceptanceEvaluator {
     }
   }
 
-  private async fileExists(path: string): Promise<boolean> {
+  private resolvePath(p: string, cwd: string): string {
+    return isAbsolute(p) ? p : join(cwd, p);
+  }
+
+  private async fileExists(path: string, cwd: string): Promise<boolean> {
     try {
-      await access(path);
+      await access(this.resolvePath(path, cwd));
       return true;
     } catch {
       return false;
@@ -77,7 +82,7 @@ export class AcceptanceEvaluator {
     if (check.source === "file") {
       if (!this.shellEnabled) return this.result(check, false, now, "file checks disabled");
       if (!check.path) return this.result(check, false, now, "regex file source requires path");
-      source = await readFile(check.path, "utf-8");
+      source = await readFile(this.resolvePath(check.path, ctx.cwd), "utf-8");
     }
     const matched = new RegExp(check.pattern).test(source);
     return this.result(check, matched, now, matched ? "matched" : "no match");

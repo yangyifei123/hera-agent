@@ -254,6 +254,15 @@ exact blocker and do not claim pass.
 - `src/engine/*` is structured so P4 can extract it as the reusable runtime that
   generated plugins bundle.
 
+## Deferred to P2
+
+- **Attempt-scaled retry backoff** (`backoffMs * attempts`) is intentionally NOT
+  implemented in P1. Implementing it requires a `readyAt` field and a clock-gated
+  drain loop that conflicts with P1's deterministic fixed-clock `drain()` test
+  model. P1 retries respect the attempt budget but re-claim tasks on the next tick
+  without delay. The `TaskRecord.backoffMs` field is kept in the data model so P2
+  can activate real timer/clock scheduling without a schema migration.
+
 ## Risks and mitigations
 
 - **Risk:** memory refactor changes behavior subtly.
