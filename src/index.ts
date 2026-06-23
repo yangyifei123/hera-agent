@@ -6,15 +6,30 @@ import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { TaskStore } from "./engine/task-store.js";
+import { AcceptanceEvaluator } from "./engine/acceptance.js";
+import { TaskExecutor } from "./engine/executor.js";
+import { Supervisor } from "./engine/supervisor.js";
+import { OpenCodeAgentRunner } from "./engine/opencode-agent-runner.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
-import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
+import {
+  DEFAULT_MEMORY_LIMIT,
+  DEFAULT_TEAM_TIMEOUT_MS,
+  getConfigRoot,
+  TASK_CONCURRENCY,
+  TASK_LEASE_MS,
+  SUPERVISOR_TICK_MS,
+} from "./constants.js";
+import { getDefaultPermission } from "./helpers.js";
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
 import { extractMemories } from "./memory/smart-extractor.js";
 import { randomUUID } from "node:crypto";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
+
+// Module-level supervisor reference prevents garbage collection of the running supervisor.
+let _supervisor: Supervisor | undefined;
 
 type ConfigWithAgents = Config & {
   agent?: Record<string, unknown>;
@@ -109,6 +124,24 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const taskStore = new TaskStore(paths.dataDir);
   await taskStore.init();
+
+  // Wire the task engine: AcceptanceEvaluator, runner, executor, supervisor
+  const bashPerm = getDefaultPermission()?.bash;
+  const acceptance = new AcceptanceEvaluator({
+    shellEnabled: bashPerm !== "deny",
+    defaultTimeoutMs: TASK_LEASE_MS,
+  });
+  const agentRunner = new OpenCodeAgentRunner(client, paths.configRoot);
+  const taskExecutor = new TaskExecutor(taskStore, acceptance, agentRunner, paths.configRoot);
+  const supervisor = new Supervisor(taskStore, taskExecutor, {
+    concurrency: config.task_concurrency ?? TASK_CONCURRENCY,
+    leaseMs: config.task_lease_ms ?? TASK_LEASE_MS,
+    tickMs: SUPERVISOR_TICK_MS,
+    ownerId: randomUUID(),
+  });
+  await supervisor.recover();
+  supervisor.start();
+  _supervisor = supervisor;
 
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);

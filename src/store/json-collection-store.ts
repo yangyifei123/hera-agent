@@ -37,7 +37,7 @@ export class JsonCollectionStore<T extends CollectionEntry> {
     await mkdir(this.dir, { recursive: true });
     this.primary.clear();
     for (const idx of this.secondary.values()) idx.clear();
-    let files: string[] = [];
+    let files: string[];
     try {
       files = await readdir(this.dir);
     } catch {
