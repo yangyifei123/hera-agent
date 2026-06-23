@@ -1,13 +1,14 @@
 import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import { heraLog } from "../logger.js";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { readdir, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
+import { validateAgentName } from "../validation.js";
 import { createWriteStream, createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { createGzip, createGunzip } from "node:zlib";
 import { pack, extract } from "tar-fs";
-import { homedir } from "node:os";
+import { getConfigRoot } from "../constants.js";
 
 const z = tool.schema;
 
@@ -20,11 +21,60 @@ interface PackageManifest {
   files: string[];
 }
 
+/** The only package manifest version this build understands. */
+export const SUPPORTED_PACKAGE_VERSION = "1.0";
+
+/**
+ * Returns true only if `entryName` resolves to a path inside `rootDir`.
+ * Blocks archive entries that try to escape the extraction root via `..`
+ * segments or absolute paths (Zip-Slip / tar traversal).
+ */
+export function isEntryInsideDir(rootDir: string, entryName: string): boolean {
+  const root = resolve(rootDir);
+  const target = resolve(root, entryName);
+  return target === root || target.startsWith(root + sep);
+}
+
+/**
+ * Validate a parsed package manifest before any install/write side effect.
+ * Rejects unsupported versions, missing/invalid agent names (which feed into
+ * destination paths), and unknown modes.
+ */
+export function validateManifest(
+  manifest: unknown
+): { valid: true; manifest: PackageManifest } | { valid: false; error: string } {
+  if (!manifest || typeof manifest !== "object") {
+    return { valid: false, error: "Package manifest is missing or not an object." };
+  }
+  const m = manifest as Record<string, unknown>;
+
+  if (m.version !== SUPPORTED_PACKAGE_VERSION) {
+    return {
+      valid: false,
+      error: `Unsupported package version "${String(m.version)}". This build supports version ${SUPPORTED_PACKAGE_VERSION}.`,
+    };
+  }
+
+  if (typeof m.agentName !== "string" || m.agentName.length === 0) {
+    return { valid: false, error: "Package manifest is missing a valid agentName." };
+  }
+  const nameCheck = validateAgentName(m.agentName);
+  if (!nameCheck.valid) {
+    return { valid: false, error: `Invalid agent name in manifest: ${nameCheck.error}` };
+  }
+
+  if (m.mode !== "md" && m.mode !== "plugin") {
+    return { valid: false, error: `Invalid package mode "${String(m.mode)}". Expected "md" or "plugin".` };
+  }
+
+  return { valid: true, manifest: m as unknown as PackageManifest };
+}
+
 /**
  * Get the package output directory
  */
 function getPackageDir(): string {
-  const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+  const configRoot = getConfigRoot();
   return join(configRoot, "hera-data", "packages");
 }
 
@@ -32,7 +82,7 @@ function getPackageDir(): string {
  * Get agent plugin directory if it exists
  */
 async function getAgentPluginDir(agentName: string): Promise<string | null> {
-  const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+  const configRoot = getConfigRoot();
   const pluginDir = join(configRoot, "node_modules", agentName);
 
   try {
@@ -47,7 +97,7 @@ async function getAgentPluginDir(agentName: string): Promise<string | null> {
  * Get agent .md file path if it exists
  */
 async function getAgentMdPath(agentName: string): Promise<string | null> {
-  const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+  const configRoot = getConfigRoot();
   const mdPath = join(configRoot, "agents", "hera", `${agentName}.md`);
 
   try {
@@ -62,7 +112,7 @@ async function getAgentMdPath(agentName: string): Promise<string | null> {
  * Get agent memory files
  */
 async function getAgentMemoryFiles(agentName: string): Promise<string[]> {
-  const configRoot = process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+  const configRoot = getConfigRoot();
   const memoryDir = join(configRoot, "hera-data", "memory");
   const files: string[] = [];
 
@@ -107,12 +157,27 @@ async function createTarGz(sourceDir: string, outputPath: string, files?: string
 /**
  * Extract a tar.gz package
  */
-async function extractTarGz(archivePath: string, targetDir: string): Promise<void> {
+async function extractTarGz(
+  archivePath: string,
+  targetDir: string
+): Promise<{ unsafeEntries: string[] }> {
+  const unsafeEntries: string[] = [];
   const gunzip = createGunzip();
   const input = createReadStream(archivePath);
-  const extractStream = extract(targetDir);
+  const extractStream = extract(targetDir, {
+    // Skip (never write) any entry that would escape the extraction root, and
+    // record it so the caller can reject the whole package.
+    ignore(name) {
+      if (!isEntryInsideDir(targetDir, name)) {
+        unsafeEntries.push(name);
+        return true;
+      }
+      return false;
+    },
+  });
 
   await pipeline(input, gunzip, extractStream);
+  return { unsafeEntries };
 }
 
 export function createPackageTools(_ctx: PluginContext) {
@@ -202,8 +267,7 @@ export function createPackageTools(_ctx: PluginContext) {
             if (memoryFiles.length > 0) {
               const memoryStaging = join(stagingDir, "memory");
 
-              const configRoot =
-                process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+              const configRoot = getConfigRoot();
               const memoryDir = join(configRoot, "hera-data", "memory");
 
               for (const relPath of memoryFiles) {
@@ -284,17 +348,33 @@ export function createPackageTools(_ctx: PluginContext) {
 
         try {
           // Extract package
-          await extractTarGz(packagePath, extractDir);
+          const { unsafeEntries } = await extractTarGz(packagePath, extractDir);
+          if (unsafeEntries.length > 0) {
+            await rm(extractDir, { recursive: true, force: true });
+            return `Error: Package contains unsafe path entries and was refused: ${unsafeEntries.join(", ")}`;
+          }
 
           // Read manifest
           const manifestPath = join(extractDir, "manifest.json");
-          const manifestContent = await readFile(manifestPath, "utf-8");
-          const manifest: PackageManifest = JSON.parse(manifestContent);
+          let rawManifest: unknown;
+          try {
+            const manifestContent = await readFile(manifestPath, "utf-8");
+            rawManifest = JSON.parse(manifestContent);
+          } catch {
+            await rm(extractDir, { recursive: true, force: true });
+            return "Error: Package is missing a readable manifest.json.";
+          }
+
+          const manifestCheck = validateManifest(rawManifest);
+          if (!manifestCheck.valid) {
+            await rm(extractDir, { recursive: true, force: true });
+            return `Error: ${manifestCheck.error}`;
+          }
+          const manifest = manifestCheck.manifest;
 
           const { agentName, mode, includesMemory } = manifest;
 
-          const configRoot =
-            process.env.OPENCODE_CONFIG_ROOT || join(homedir(), ".config", "opencode");
+          const configRoot = getConfigRoot();
           const results: string[] = [];
 
           // Restore agent files

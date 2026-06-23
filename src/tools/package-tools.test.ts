@@ -1,10 +1,33 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { createPackageTools } from "./package-tools.js";
+import {
+  createPackageTools,
+  validateManifest,
+  isEntryInsideDir,
+} from "./package-tools.js";
 import type { PluginContext } from "../types.js";
 import type { ToolContext } from "@opencode-ai/plugin";
 import { makeTestHarness, type TestHarness } from "./test-harness.js";
 import { join } from "node:path";
-import { mkdir, writeFile, rm, readFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, rm, readFile, stat, access } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { createGzip } from "node:zlib";
+import { pack } from "tar-fs";
+
+/** Build a real .tar.gz from a staging dir, optionally remapping entry names. */
+async function makeTarGz(
+  stagingDir: string,
+  outputPath: string,
+  mapEntry?: (name: string) => string
+): Promise<void> {
+  const packStream = pack(stagingDir, {
+    map(header) {
+      if (mapEntry) header.name = mapEntry(header.name);
+      return header;
+    },
+  });
+  await pipeline(packStream, createGzip(), createWriteStream(outputPath));
+}
 
 describe("Package Tools", () => {
   let testDir: string;
@@ -218,5 +241,123 @@ describe("Package Tools", () => {
 
     expect(result).toContain("packaged successfully");
     expect(result).toContain("Memory included: true");
+  });
+
+  describe("manifest validation", () => {
+    test("accepts a well-formed manifest", () => {
+      const result = validateManifest({
+        version: "1.0",
+        agentName: "good-agent",
+        packagedAt: 1,
+        mode: "md",
+        includesMemory: false,
+        files: [],
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    test("rejects an unsupported version", () => {
+      const result = validateManifest({ version: "2.0", agentName: "x", mode: "md" });
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.error).toContain("Unsupported package version");
+    });
+
+    test("rejects a non-object manifest", () => {
+      expect(validateManifest(null).valid).toBe(false);
+      expect(validateManifest("nope").valid).toBe(false);
+    });
+
+    test("rejects a traversal agent name", () => {
+      const result = validateManifest({
+        version: "1.0",
+        agentName: "../../etc/evil",
+        mode: "md",
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    test("rejects an unknown mode", () => {
+      const result = validateManifest({ version: "1.0", agentName: "ok", mode: "exe" });
+      expect(result.valid).toBe(false);
+      if (!result.valid) expect(result.error).toContain("Invalid package mode");
+    });
+  });
+
+  describe("archive entry safety", () => {
+    test("allows normal entries", () => {
+      expect(isEntryInsideDir("/tmp/extract", "manifest.json")).toBe(true);
+      expect(isEntryInsideDir("/tmp/extract", "memory/agents/x.json")).toBe(true);
+    });
+
+    test("blocks parent-escaping and absolute entries", () => {
+      expect(isEntryInsideDir("/tmp/extract", "../escaped.txt")).toBe(false);
+      expect(isEntryInsideDir("/tmp/extract", "../../etc/passwd")).toBe(false);
+    });
+  });
+
+  test("hera_unpack_agent rejects a package with an unsupported manifest version", async () => {
+    const staging = join(testDir, "bad-version-staging");
+    await mkdir(staging, { recursive: true });
+    await writeFile(
+      join(staging, "manifest.json"),
+      JSON.stringify({ version: "9.9", agentName: "x", mode: "md", includesMemory: false, files: [] })
+    );
+    const pkgPath = join(testDir, "bad-version.tar.gz");
+    await makeTarGz(staging, pkgPath);
+
+    const tools = createPackageTools(ctx);
+    const result = await tools.hera_unpack_agent.execute(
+      { packagePath: pkgPath, installPlugin: false },
+      toolCtx
+    );
+    expect(result).toContain("Unsupported package version");
+  });
+
+  test("hera_unpack_agent rejects a package with a malformed manifest", async () => {
+    const staging = join(testDir, "bad-manifest-staging");
+    await mkdir(staging, { recursive: true });
+    await writeFile(join(staging, "manifest.json"), "{not valid json");
+    const pkgPath = join(testDir, "bad-manifest.tar.gz");
+    await makeTarGz(staging, pkgPath);
+
+    const tools = createPackageTools(ctx);
+    const result = await tools.hera_unpack_agent.execute(
+      { packagePath: pkgPath, installPlugin: false },
+      toolCtx
+    );
+    expect(result).toContain("manifest");
+  });
+
+  test("hera_unpack_agent refuses a path-traversal archive entry", async () => {
+    const staging = join(testDir, "evil-staging");
+    await mkdir(staging, { recursive: true });
+    await writeFile(
+      join(staging, "manifest.json"),
+      JSON.stringify({
+        version: "1.0",
+        agentName: "evil-agent",
+        mode: "md",
+        includesMemory: false,
+        files: [],
+      })
+    );
+    await writeFile(join(staging, "evil.md"), "PWNED");
+
+    const pkgPath = join(testDir, "evil.tar.gz");
+    // Remap the payload file so its archive entry escapes the extraction root.
+    await makeTarGz(staging, pkgPath, (name) =>
+      name === "evil.md" ? "../escaped-evil.md" : name
+    );
+
+    const tools = createPackageTools(ctx);
+    const result = await tools.hera_unpack_agent.execute(
+      { packagePath: pkgPath, installPlugin: false },
+      toolCtx
+    );
+    expect(result).toContain("Error");
+
+    // The escaping file must never have been written outside the extraction root.
+    const escapedPath = join(testDir, "hera-data", "escaped-evil.md");
+    await expect(access(escapedPath)).rejects.toThrow();
   });
 });
