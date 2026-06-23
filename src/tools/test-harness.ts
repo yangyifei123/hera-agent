@@ -49,7 +49,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
 
   const distillation = new DistillationEngine(store);
 
-  const taskStore = new TaskStore(join(dataDir, "tasks"));
+  const taskStore = new TaskStore(dataDir);
   await taskStore.init();
 
   const registeredAgents = new Map<string, AgentDefinition>();

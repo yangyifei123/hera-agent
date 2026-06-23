@@ -107,7 +107,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const agentRegistry = new AgentRegistry(paths.agentsDir);
   await agentRegistry.init();
 
-  const taskStore = new TaskStore(paths.tasksDir);
+  const taskStore = new TaskStore(paths.dataDir);
   await taskStore.init();
 
   // Ensure hera itself has a .md file for OpenCode native discovery

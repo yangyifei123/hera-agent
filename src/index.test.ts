@@ -40,7 +40,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
     agentRegistry,
     registeredAgents: new Map(),
     client: undefined,
-    taskStore: new TaskStore(join(base, "hera-data", "tasks")),
+    taskStore: new TaskStore(join(base, "hera-data")),
     config,
     paths: {
       configRoot: base,
