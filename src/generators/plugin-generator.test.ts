@@ -469,6 +469,16 @@ describe("PluginGenerator", () => {
       expect(code).toContain("content");
       expect(code).toContain("category");
     });
+
+    it("should declare and use the same schema alias in generated memory tools", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("const z = tool.schema;");
+      expect(code).not.toContain("const _z = tool.schema");
+      expect(code).toMatch(/content: z\.string\(/);
+      expect(code).toMatch(/category: z\.enum\(/);
+      expect(code).toMatch(/limit: z\.number\(\)\.optional\(\)/);
+    });
   });
 
   // ============================================================

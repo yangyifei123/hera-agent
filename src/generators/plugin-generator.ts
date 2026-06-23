@@ -171,7 +171,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 
-const _z = tool.schema; // Schema validator (unused but kept for future validation)
+const z = tool.schema;
 
 // Memory category → on-disk subdirectory (mirrors Hera's store layout)
 const SUBDIR: Record<string, string> = {
