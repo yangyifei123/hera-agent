@@ -6,6 +6,8 @@ import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { TaskStore } from "./engine/task-store.js";
+import { LoopStore } from "./engine/loop-store.js";
+import { LoopManager } from "./engine/loop-manager.js";
 import { AcceptanceEvaluator } from "./engine/acceptance.js";
 import { TaskExecutor } from "./engine/executor.js";
 import { Supervisor } from "./engine/supervisor.js";
@@ -20,6 +22,9 @@ import {
   TASK_CONCURRENCY,
   TASK_LEASE_MS,
   SUPERVISOR_TICK_MS,
+  LOOP_TICK_MS,
+  LOOP_DEFAULT_MAX_ITERATIONS,
+  LOOP_MIN_INTERVAL_MS,
 } from "./constants.js";
 import { getDefaultPermission } from "./helpers.js";
 import { join } from "node:path";
@@ -30,6 +35,8 @@ import { isFirstRun, runOnboarding } from "./onboarding.js";
 
 // Module-level supervisor reference prevents garbage collection of the running supervisor.
 let _supervisor: Supervisor | undefined;
+// Module-level loop manager reference prevents garbage collection.
+let _loopManager: LoopManager | undefined;
 
 type ConfigWithAgents = Config & {
   agent?: Record<string, unknown>;
@@ -142,6 +149,21 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   supervisor.start();
   _supervisor = supervisor;
 
+  const loopStore = new LoopStore(paths.dataDir);
+  await loopStore.init();
+  const loopManager = new LoopManager(
+    loopStore,
+    taskStore,
+    acceptance,
+    paths.configRoot,
+    {
+      tickMs: config.loop_tick_ms ?? LOOP_TICK_MS,
+      defaultMaxIterations: config.loop_default_max_iterations ?? LOOP_DEFAULT_MAX_ITERATIONS,
+      minIntervalMs: config.loop_min_interval_ms ?? LOOP_MIN_INTERVAL_MS,
+    }
+  );
+  _loopManager = loopManager;
+
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);
 
@@ -182,6 +204,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     registeredAgents,
     client,
     taskStore,
+    loopManager,
     config,
     paths,
     autoEvolve: config.auto_evolve === true,

@@ -350,6 +350,7 @@ export interface PluginContext {
   registeredAgents: Map<string, AgentDefinition>;
   client: OpenCodeClient | undefined;
   taskStore: import("./engine/task-store.js").TaskStore;
+  loopManager: import("./engine/loop-manager.js").LoopManager;
   config: HeraConfig;
   paths: HeraPaths;
   autoEvolve: boolean;

@@ -10,6 +10,10 @@ import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
 import { TaskStore } from "./engine/task-store.js";
+import { LoopStore } from "./engine/loop-store.js";
+import { LoopManager } from "./engine/loop-manager.js";
+import { AcceptanceEvaluator } from "./engine/acceptance.js";
+import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS } from "./constants.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync } from "node:fs";
@@ -31,6 +35,15 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
 
   const config: HeraConfig = { auto_evolve: autoEvolve };
 
+  const taskStore = new TaskStore(join(base, "hera-data"));
+  const loopManager = new LoopManager(
+    new LoopStore(join(base, "hera-data")),
+    taskStore,
+    new AcceptanceEvaluator({ shellEnabled: true }),
+    join(base, "hera-data"),
+    { tickMs: LOOP_TICK_MS, defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS, minIntervalMs: LOOP_MIN_INTERVAL_MS }
+  );
+
   return {
     store,
     skillManager,
@@ -40,7 +53,8 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
     agentRegistry,
     registeredAgents: new Map(),
     client: undefined,
-    taskStore: new TaskStore(join(base, "hera-data")),
+    taskStore,
+    loopManager,
     config,
     paths: {
       configRoot: base,

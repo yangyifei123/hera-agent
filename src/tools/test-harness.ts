@@ -14,6 +14,10 @@ import { SkillManager } from "../skills/manager.js";
 import { DistillationEngine } from "../distillation/engine.js";
 import { WorkflowManager } from "../workflow/manager.js";
 import { TaskStore } from "../engine/task-store.js";
+import { LoopStore } from "../engine/loop-store.js";
+import { LoopManager } from "../engine/loop-manager.js";
+import { AcceptanceEvaluator } from "../engine/acceptance.js";
+import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS } from "../constants.js";
 import type { AgentDefinition, PluginContext } from "../types.js";
 
 export interface TestHarness {
@@ -52,6 +56,16 @@ export async function makeTestHarness(): Promise<TestHarness> {
   const taskStore = new TaskStore(dataDir);
   await taskStore.init();
 
+  const loopStore = new LoopStore(dataDir);
+  await loopStore.init();
+  const loopManager = new LoopManager(
+    loopStore,
+    taskStore,
+    new AcceptanceEvaluator({ shellEnabled: true }),
+    dataDir,
+    { tickMs: LOOP_TICK_MS, defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS, minIntervalMs: LOOP_MIN_INTERVAL_MS }
+  );
+
   const registeredAgents = new Map<string, AgentDefinition>();
 
   const ctx: PluginContext = {
@@ -64,6 +78,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
     registeredAgents,
     client: undefined,
     taskStore,
+    loopManager,
     config: {},
     paths: {
       configRoot,
