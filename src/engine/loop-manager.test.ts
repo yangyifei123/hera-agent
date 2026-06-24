@@ -188,3 +188,68 @@ describe("LoopManager iterate", () => {
     expect((await mgr.get(id))?.status).toBe("completed");
   });
 });
+
+describe("LoopManager recurring", () => {
+  let dir: string;
+  let loopStore: LoopStore;
+  let taskStore: TaskStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "looprec-"));
+    loopStore = new LoopStore(dir);
+    await loopStore.init();
+    taskStore = new TaskStore(dir);
+    await taskStore.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("fires only when now >= nextRunAt and reschedules by intervalMs", async () => {
+    // clock fixed at 1000; nextRunAt initialized to 1000 + 1000 = 2000
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const id = (res as { id: string }).id;
+
+    await mgr.tick(1500); // before nextRunAt(2000) -> no fire
+    expect(taskStore.byBatch(id)).toHaveLength(0);
+
+    await mgr.tick(2000); // fires once, nextRunAt -> 3000
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+    expect((await mgr.get(id))?.recurring?.nextRunAt).toBe(3000);
+
+    await mgr.tick(2500); // before 3000 -> no new fire
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    await mgr.tick(3000); // fires again
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+  });
+
+  it("does not burst-catch-up when far behind", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const id = (res as { id: string }).id;
+    // jump way past several intervals in one tick
+    await mgr.tick(10000);
+    expect(taskStore.byBatch(id)).toHaveLength(1); // exactly one fire
+    expect((await mgr.get(id))?.recurring?.nextRunAt).toBe(11000); // now + interval
+  });
+
+  it("completes after maxRuns", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000, maxRuns: 2 } });
+    const id = (res as { id: string }).id;
+    await mgr.tick(2000); // run 1
+    await mgr.tick(3000); // run 2 -> completed
+    expect((await mgr.get(id))?.status).toBe("completed");
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+    await mgr.tick(4000); // terminal, no more fires
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+  });
+
+  it("clamps intervalMs to the minimum floor", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 10 } });
+    const id = (res as { id: string }).id;
+    expect((await mgr.get(id))?.recurring?.intervalMs).toBe(1000); // floored to LOOP_MIN_INTERVAL_MS
+  });
+});

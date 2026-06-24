@@ -258,6 +258,24 @@ export class LoopManager {
     const taskId = await this.enqueueFromTemplate(loop, now, input);
     await this.loopStore.save({ ...loop, currentTaskId: taskId, iterations: loop.iterations + 1, updatedAt: now });
   }
-  private async tickRecurring(_loop: LoopDefinition, _now: number): Promise<void> {}
+  private async tickRecurring(loop: LoopDefinition, now: number): Promise<void> {
+    const cfg = loop.recurring;
+    if (!cfg) return;
+    if (now < cfg.nextRunAt) return;
+
+    await this.enqueueFromTemplate(loop, now);
+    const runs = cfg.runs + 1;
+    // Fixed cadence; if a full interval still lands in the past, skip missed runs.
+    const advanced = cfg.nextRunAt + cfg.intervalMs;
+    const nextRunAt = advanced <= now ? now + cfg.intervalMs : advanced;
+    const completed = cfg.maxRuns != null && runs >= cfg.maxRuns;
+    await this.loopStore.save({
+      ...loop,
+      recurring: { ...cfg, runs, nextRunAt },
+      iterations: loop.iterations + 1,
+      status: completed ? "completed" : loop.status,
+      updatedAt: now,
+    });
+  }
   private async tickWatch(_loop: LoopDefinition, _now: number): Promise<void> {}
 }
