@@ -72,6 +72,10 @@ export function createLoopTools(ctx: PluginContext) {
       description: "List loops, optionally filtered by status.",
       args: { status: z.string().optional().describe("active|paused|completed|cancelled|failed") },
       async execute(args) {
+        const VALID_STATUSES = ["active", "paused", "completed", "cancelled", "failed"] as const;
+        if (args.status !== undefined && !VALID_STATUSES.includes(args.status as never)) {
+          return `Error: invalid status "${args.status}". Expected one of: active, paused, completed, cancelled, failed.`;
+        }
         const loops = await loopManager.list(args.status as never);
         if (loops.length === 0) return "No loops.";
         return loops

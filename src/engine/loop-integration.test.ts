@@ -26,7 +26,6 @@ describe("Loop + task engine integration", () => {
   });
 
   it("a recurring loop drives the supervisor to complete N tasks", async () => {
-    const n = 0;
     const runner: AgentRunner = {
       run: async (_e, prompt) => {
         const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);

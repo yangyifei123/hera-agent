@@ -59,6 +59,12 @@ describe("loop-tools", () => {
     expect(String(res)).toContain("acceptance");
   });
 
+  it("rejects hera_list_loops with an invalid status", async () => {
+    const res = await tools.hera_list_loops.execute({ status: "bogus" } as any, {} as any);
+    expect(String(res)).toContain("invalid status");
+    expect(String(res)).toContain("Expected one of");
+  });
+
   it("lists, pauses, resumes, and cancels", async () => {
     const created = await tools.hera_create_loop.execute(
       { mode: "drain", goal: "g", acceptance: [{ type: "file_exists", path: "/tmp/x" }] } as any,
