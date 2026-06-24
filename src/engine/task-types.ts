@@ -25,6 +25,7 @@ export interface TaskRecord {
   maxAttempts: number;
   backoffMs?: number;
   lastError?: string;
+  output?: string;
   proof?: AcceptanceResult[];
   dependsOn?: string[];
   leaseOwner?: string;

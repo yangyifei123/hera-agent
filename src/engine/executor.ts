@@ -37,6 +37,7 @@ export class TaskExecutor {
         status: "succeeded",
         attempts: task.attempts + 1,
         proof,
+        output,
         leaseOwner: undefined,
         leaseExpiresAt: undefined,
         updatedAt: now,
@@ -51,14 +52,15 @@ export class TaskExecutor {
       .filter((p) => !p.passed)
       .map((p) => p.detail)
       .join("; ");
-    return this.fail(task, now, `acceptance failed: ${failedDetail}`, proof);
+    return this.fail(task, now, `acceptance failed: ${failedDetail}`, proof, output);
   }
 
   private async fail(
     task: TaskRecord,
     now: number,
     reason: string,
-    proof?: TaskRecord["proof"]
+    proof?: TaskRecord["proof"],
+    output?: string
   ): Promise<TaskRecord> {
     const attempts = task.attempts + 1;
     const exhausted = attempts >= task.maxAttempts;
@@ -67,6 +69,7 @@ export class TaskExecutor {
       status: exhausted ? "failed" : "pending",
       attempts,
       proof: proof ?? task.proof,
+      output: output ?? task.output,
       lastError: reason,
       leaseOwner: undefined,
       leaseExpiresAt: undefined,
