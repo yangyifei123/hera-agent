@@ -216,8 +216,48 @@ export class LoopManager {
     }
   }
 
-  // Implemented in Tasks 4–6.
-  private async tickIterate(_loop: LoopDefinition, _now: number): Promise<void> {}
+  private async tickIterate(loop: LoopDefinition, now: number): Promise<void> {
+    const cfg = loop.iterate;
+    if (!cfg) return;
+
+    const last = loop.currentTaskId ? await this.taskStore.get(loop.currentTaskId) : null;
+
+    // An iteration is in flight: wait.
+    if (last && (last.status === "pending" || last.status === "running")) return;
+
+    // Evaluate the goal against the last completed task (if any).
+    let goalMet = false;
+    if (last) {
+      if (cfg.goal && cfg.goal.length > 0) {
+        const proof = await this.evaluator.evaluate(cfg.goal, { output: last.output ?? "", cwd: this.cwd }, now);
+        goalMet = this.evaluator.allPassed(proof);
+      } else {
+        goalMet = last.status === "succeeded";
+      }
+    }
+
+    if (goalMet) {
+      await this.loopStore.save({ ...loop, status: "completed", updatedAt: now });
+      return;
+    }
+
+    if (loop.iterations >= cfg.maxIterations) {
+      await this.loopStore.save({
+        ...loop,
+        status: "failed",
+        lastError: "iterate: max iterations reached without meeting goal",
+        updatedAt: now,
+      });
+      return;
+    }
+
+    let input: unknown = loop.taskTemplate.input;
+    if (cfg.feedForward && last) {
+      input = { previousOutput: last.output, previousError: last.lastError, original: loop.taskTemplate.input };
+    }
+    const taskId = await this.enqueueFromTemplate(loop, now, input);
+    await this.loopStore.save({ ...loop, currentTaskId: taskId, iterations: loop.iterations + 1, updatedAt: now });
+  }
   private async tickRecurring(_loop: LoopDefinition, _now: number): Promise<void> {}
   private async tickWatch(_loop: LoopDefinition, _now: number): Promise<void> {}
 }

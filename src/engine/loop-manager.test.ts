@@ -1,6 +1,6 @@
 // src/engine/loop-manager.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TaskStore } from "./task-store.js";
@@ -94,5 +94,97 @@ describe("LoopManager core + drain", () => {
     await mgr.pause((r2 as { id: string }).id);
     await mgr.tick(1000); // must resolve without throwing
     expect(true).toBe(true);
+  });
+});
+
+describe("LoopManager iterate", () => {
+  let dir: string;
+  let loopStore: LoopStore;
+  let taskStore: TaskStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "loopiter-"));
+    loopStore = new LoopStore(dir);
+    await loopStore.init();
+    taskStore = new TaskStore(dir);
+    await taskStore.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("enqueues one task per tick while the goal is unmet, then completes when a task succeeds", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 5 } });
+    const id = (res as { id: string }).id;
+
+    await mgr.tick(1000); // first iteration: no prior task -> enqueue #1
+    let loop = (await mgr.get(id))!;
+    expect(loop.iterations).toBe(1);
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    // current task still pending -> no new enqueue
+    await mgr.tick(1000);
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    // mark current task failed -> next tick enqueues #2
+    const t1 = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...t1!, status: "failed" });
+    await mgr.tick(1000);
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+
+    // mark current task succeeded -> next tick completes the loop
+    loop = (await mgr.get(id))!;
+    const t2 = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...t2!, status: "succeeded" });
+    await mgr.tick(1000);
+    expect((await mgr.get(id))?.status).toBe("completed");
+  });
+
+  it("fails when maxIterations is reached without meeting the goal", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 1 } });
+    const id = (res as { id: string }).id;
+    await mgr.tick(1000); // enqueue #1 (iterations=1)
+    const loop = (await mgr.get(id))!;
+    const t1 = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...t1!, status: "failed" });
+    await mgr.tick(1000); // goal unmet, iterations>=max -> failed
+    expect((await mgr.get(id))?.status).toBe("failed");
+  });
+
+  it("feeds the prior task output forward when feedForward is set", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 5, feedForward: true } });
+    const id = (res as { id: string }).id;
+    await mgr.tick(1000);
+    const loop = (await mgr.get(id))!;
+    const t1 = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...t1!, status: "failed", output: "PRIOR_OUTPUT", lastError: "nope" });
+    await mgr.tick(1000);
+    const loop2 = (await mgr.get(id))!;
+    const t2 = await taskStore.get(loop2.currentTaskId!);
+    expect(JSON.stringify(t2!.input)).toContain("PRIOR_OUTPUT");
+  });
+
+  it("respects a custom loop-level goal evaluated against task output", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({
+      mode: "iterate", taskTemplate: template,
+      iterate: { maxIterations: 5, goal: [{ type: "regex", source: "output", pattern: "READY" }] },
+    });
+    const id = (res as { id: string }).id;
+    await mgr.tick(1000);
+    let loop = (await mgr.get(id))!;
+    // task "succeeds" but output lacks READY -> goal unmet -> continue
+    let cur = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...cur!, status: "succeeded", output: "not yet" });
+    await mgr.tick(1000);
+    expect((await mgr.get(id))?.status).toBe("active");
+    // now produce READY in output -> goal met -> completed
+    loop = (await mgr.get(id))!;
+    cur = await taskStore.get(loop.currentTaskId!);
+    await taskStore.save({ ...cur!, status: "succeeded", output: "READY now" });
+    await mgr.tick(1000);
+    expect((await mgr.get(id))?.status).toBe("completed");
   });
 });
