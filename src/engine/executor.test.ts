@@ -99,7 +99,12 @@ describe("TaskExecutor", () => {
 
   it("records the agent output on a succeeded task", async () => {
     const target = join(dir, "out.txt");
-    const runner: AgentRunner = { run: async () => { await writeFile(target, "ok"); return "AGENT_SAID_THIS"; } };
+    const runner: AgentRunner = {
+      run: async () => {
+        await writeFile(target, "ok");
+        return "AGENT_SAID_THIS";
+      },
+    };
     const exec = new TaskExecutor(store, evalr, runner, dir);
     const task = makeTask({ acceptance: [{ type: "file_exists", path: target }] });
     await store.save(task);
@@ -111,7 +116,11 @@ describe("TaskExecutor", () => {
   it("records the agent output on a retry (acceptance failed)", async () => {
     const runner: AgentRunner = { run: async () => "PARTIAL_WORK" };
     const exec = new TaskExecutor(store, evalr, runner, dir);
-    const task = makeTask({ acceptance: [{ type: "file_exists", path: join(dir, "missing") }], attempts: 0, maxAttempts: 2 });
+    const task = makeTask({
+      acceptance: [{ type: "file_exists", path: join(dir, "missing") }],
+      attempts: 0,
+      maxAttempts: 2,
+    });
     await store.save(task);
     const updated = await exec.runAttempt(task, 1000);
     expect(updated.status).toBe("pending");
@@ -119,7 +128,11 @@ describe("TaskExecutor", () => {
   });
 
   it("leaves output undefined on agent error", async () => {
-    const runner: AgentRunner = { run: async () => { throw new Error("boom"); } };
+    const runner: AgentRunner = {
+      run: async () => {
+        throw new Error("boom");
+      },
+    };
     const exec = new TaskExecutor(store, evalr, runner, dir);
     const task = makeTask({ attempts: 1, maxAttempts: 2 });
     await store.save(task);

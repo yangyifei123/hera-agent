@@ -63,7 +63,11 @@ export async function makeTestHarness(): Promise<TestHarness> {
     taskStore,
     new AcceptanceEvaluator({ shellEnabled: true }),
     dataDir,
-    { tickMs: LOOP_TICK_MS, defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS, minIntervalMs: LOOP_MIN_INTERVAL_MS }
+    {
+      tickMs: LOOP_TICK_MS,
+      defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS,
+      minIntervalMs: LOOP_MIN_INTERVAL_MS,
+    }
   );
 
   const registeredAgents = new Map<string, AgentDefinition>();

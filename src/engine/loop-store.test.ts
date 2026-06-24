@@ -11,7 +11,11 @@ function makeLoop(over: Partial<LoopDefinition> = {}): LoopDefinition {
     id: over.id ?? "l1",
     mode: "drain",
     status: "active",
-    taskTemplate: { goal: "g", executor: "hera", acceptance: [{ type: "file_exists", path: "/tmp/x" }] },
+    taskTemplate: {
+      goal: "g",
+      executor: "hera",
+      acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+    },
     iterations: 0,
     createdAt: 1,
     updatedAt: 1,
@@ -40,8 +44,18 @@ describe("LoopStore", () => {
     await store.save(makeLoop({ id: "a", status: "active", mode: "watch" }));
     await store.save(makeLoop({ id: "b", status: "paused", mode: "watch" }));
     await store.save(makeLoop({ id: "c", status: "active", mode: "recurring" }));
-    expect(store.byStatus("active").map((l) => l.id).sort()).toEqual(["a", "c"]);
-    expect(store.byMode("watch").map((l) => l.id).sort()).toEqual(["a", "b"]);
+    expect(
+      store
+        .byStatus("active")
+        .map((l) => l.id)
+        .sort()
+    ).toEqual(["a", "c"]);
+    expect(
+      store
+        .byMode("watch")
+        .map((l) => l.id)
+        .sort()
+    ).toEqual(["a", "b"]);
   });
 
   it("reflects status changes in the index after overwrite", async () => {

@@ -41,7 +41,11 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
     taskStore,
     new AcceptanceEvaluator({ shellEnabled: true }),
     join(base, "hera-data"),
-    { tickMs: LOOP_TICK_MS, defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS, minIntervalMs: LOOP_MIN_INTERVAL_MS }
+    {
+      tickMs: LOOP_TICK_MS,
+      defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS,
+      minIntervalMs: LOOP_MIN_INTERVAL_MS,
+    }
   );
 
   return {

@@ -19,9 +19,18 @@ export function createLoopTools(ctx: PluginContext) {
         acceptance: z.array(z.any()).describe("Task acceptance checks (required, non-empty)"),
         maxAttempts: z.number().optional().describe("Per-task retry budget"),
         maxIterations: z.number().optional().describe("iterate: cap on iterations"),
-        feedForward: z.boolean().optional().describe("iterate: feed prior output into the next task"),
-        iterateGoal: z.array(z.any()).optional().describe("iterate: optional loop-level goal checks"),
-        intervalMs: z.number().optional().describe("recurring: interval in ms (floored to the minimum)"),
+        feedForward: z
+          .boolean()
+          .optional()
+          .describe("iterate: feed prior output into the next task"),
+        iterateGoal: z
+          .array(z.any())
+          .optional()
+          .describe("iterate: optional loop-level goal checks"),
+        intervalMs: z
+          .number()
+          .optional()
+          .describe("recurring: interval in ms (floored to the minimum)"),
         maxRuns: z.number().optional().describe("recurring: stop after this many runs"),
         condition: z.array(z.any()).optional().describe("watch: condition checks (edge-triggered)"),
         batchId: z.string().optional().describe("drain: scope to a specific batch id"),
@@ -38,13 +47,20 @@ export function createLoopTools(ctx: PluginContext) {
           },
           iterate:
             a.mode === "iterate"
-              ? { goal: a.iterateGoal as AcceptanceCheck[] | undefined, maxIterations: a.maxIterations as number | undefined, feedForward: a.feedForward as boolean | undefined }
+              ? {
+                  goal: a.iterateGoal as AcceptanceCheck[] | undefined,
+                  maxIterations: a.maxIterations as number | undefined,
+                  feedForward: a.feedForward as boolean | undefined,
+                }
               : undefined,
           recurring:
             a.mode === "recurring"
               ? { intervalMs: a.intervalMs as number, maxRuns: a.maxRuns as number | undefined }
               : undefined,
-          watch: a.mode === "watch" ? { condition: (a.condition as AcceptanceCheck[]) ?? [] } : undefined,
+          watch:
+            a.mode === "watch"
+              ? { condition: (a.condition as AcceptanceCheck[]) ?? [] }
+              : undefined,
           drain: a.mode === "drain" ? { batchId: a.batchId as string | undefined } : undefined,
         });
         if (!res.ok) return `Error: ${res.error}`;
@@ -58,7 +74,9 @@ export function createLoopTools(ctx: PluginContext) {
       async execute(args) {
         const loops = await loopManager.list(args.status as never);
         if (loops.length === 0) return "No loops.";
-        return loops.map((l) => `- ${l.id} [${l.mode}/${l.status}] iterations=${l.iterations}`).join("\n");
+        return loops
+          .map((l) => `- ${l.id} [${l.mode}/${l.status}] iterations=${l.iterations}`)
+          .join("\n");
       },
     }),
 
@@ -72,7 +90,9 @@ export function createLoopTools(ctx: PluginContext) {
           `Loop ${loop.id}: ${loop.mode}/${loop.status} (iterations ${loop.iterations})`,
           loop.currentTaskId ? `Current task: ${loop.currentTaskId}` : "",
           loop.lastError ? `Last error: ${loop.lastError}` : "",
-        ].filter(Boolean).join("\n");
+        ]
+          .filter(Boolean)
+          .join("\n");
       },
     }),
 
@@ -80,7 +100,9 @@ export function createLoopTools(ctx: PluginContext) {
       description: "Pause an active loop.",
       args: { id: z.string().describe("Loop id") },
       async execute(args) {
-        return (await loopManager.pause(args.id)) ? `Loop paused: ${args.id}` : `Could not pause loop: ${args.id}`;
+        return (await loopManager.pause(args.id))
+          ? `Loop paused: ${args.id}`
+          : `Could not pause loop: ${args.id}`;
       },
     }),
 
@@ -88,7 +110,9 @@ export function createLoopTools(ctx: PluginContext) {
       description: "Resume a paused loop.",
       args: { id: z.string().describe("Loop id") },
       async execute(args) {
-        return (await loopManager.resume(args.id)) ? `Loop resumed: ${args.id}` : `Could not resume loop: ${args.id}`;
+        return (await loopManager.resume(args.id))
+          ? `Loop resumed: ${args.id}`
+          : `Could not resume loop: ${args.id}`;
       },
     }),
 
@@ -96,7 +120,9 @@ export function createLoopTools(ctx: PluginContext) {
       description: "Cancel a loop (and its in-flight task, if any).",
       args: { id: z.string().describe("Loop id") },
       async execute(args) {
-        return (await loopManager.cancel(args.id)) ? `Loop cancelled: ${args.id}` : `Could not cancel loop: ${args.id}`;
+        return (await loopManager.cancel(args.id))
+          ? `Loop cancelled: ${args.id}`
+          : `Could not cancel loop: ${args.id}`;
       },
     }),
   };

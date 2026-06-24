@@ -23,8 +23,14 @@ describe("loop-tools", () => {
     await loopStore.init();
     const taskStore = new TaskStore(dir);
     await taskStore.init();
-    mgr = new LoopManager(loopStore, taskStore, new AcceptanceEvaluator({ shellEnabled: true }), dir,
-      { tickMs: 10, defaultMaxIterations: 25, minIntervalMs: 1000 }, () => 1000);
+    mgr = new LoopManager(
+      loopStore,
+      taskStore,
+      new AcceptanceEvaluator({ shellEnabled: true }),
+      dir,
+      { tickMs: 10, defaultMaxIterations: 25, minIntervalMs: 1000 },
+      () => 1000
+    );
     tools = createLoopTools(ctxWith(mgr));
   });
   afterEach(async () => {
@@ -33,7 +39,12 @@ describe("loop-tools", () => {
 
   it("creates a recurring loop", async () => {
     const res = await tools.hera_create_loop.execute(
-      { mode: "recurring", goal: "ping", acceptance: [{ type: "file_exists", path: "/tmp/x" }], intervalMs: 5000 } as any,
+      {
+        mode: "recurring",
+        goal: "ping",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        intervalMs: 5000,
+      } as any,
       {} as any
     );
     expect(String(res)).toContain("created");
@@ -55,9 +66,17 @@ describe("loop-tools", () => {
     );
     const id = String(created).match(/loop ([\w-]+)/)?.[1]!;
     expect(String(await tools.hera_list_loops.execute({} as any, {} as any))).toContain(id);
-    expect(String(await tools.hera_pause_loop.execute({ id } as any, {} as any))).toContain("paused");
-    expect(String(await tools.hera_resume_loop.execute({ id } as any, {} as any))).toContain("resumed");
-    expect(String(await tools.hera_cancel_loop.execute({ id } as any, {} as any))).toContain("cancelled");
-    expect(String(await tools.hera_loop_status.execute({ id } as any, {} as any))).toContain("cancelled");
+    expect(String(await tools.hera_pause_loop.execute({ id } as any, {} as any))).toContain(
+      "paused"
+    );
+    expect(String(await tools.hera_resume_loop.execute({ id } as any, {} as any))).toContain(
+      "resumed"
+    );
+    expect(String(await tools.hera_cancel_loop.execute({ id } as any, {} as any))).toContain(
+      "cancelled"
+    );
+    expect(String(await tools.hera_loop_status.execute({ id } as any, {} as any))).toContain(
+      "cancelled"
+    );
   });
 });

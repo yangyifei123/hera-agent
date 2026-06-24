@@ -16,7 +16,11 @@ function makeManager(dir: string, loopStore: LoopStore, taskStore: TaskStore, no
   return new LoopManager(loopStore, taskStore, evalr, dir, OPTS, () => now);
 }
 
-const template = { goal: "do it", executor: "hera", acceptance: [{ type: "file_exists" as const, path: "/tmp/x" }] };
+const template = {
+  goal: "do it",
+  executor: "hera",
+  acceptance: [{ type: "file_exists" as const, path: "/tmp/x" }],
+};
 
 describe("LoopManager core + drain", () => {
   let dir: string;
@@ -43,7 +47,10 @@ describe("LoopManager core + drain", () => {
 
   it("rejects a loop whose taskTemplate has no acceptance checks", async () => {
     const mgr = makeManager(dir, loopStore, taskStore);
-    const res = await mgr.createLoop({ mode: "drain", taskTemplate: { goal: "g", executor: "hera", acceptance: [] } });
+    const res = await mgr.createLoop({
+      mode: "drain",
+      taskTemplate: { goal: "g", executor: "hera", acceptance: [] },
+    });
     expect(res.ok).toBe(false);
   });
 
@@ -69,12 +76,23 @@ describe("LoopManager core + drain", () => {
 
   it("drain stays active while scoped batch has pending work, completes when drained", async () => {
     await taskStore.save({
-      id: "t1", batchId: "b1", goal: "g", executor: "hera",
+      id: "t1",
+      batchId: "b1",
+      goal: "g",
+      executor: "hera",
       acceptance: [{ type: "file_exists", path: "/tmp/x" }],
-      status: "pending", attempts: 0, maxAttempts: 1, createdAt: 1, updatedAt: 1,
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 1,
+      createdAt: 1,
+      updatedAt: 1,
     });
     const mgr = makeManager(dir, loopStore, taskStore);
-    const res = await mgr.createLoop({ mode: "drain", taskTemplate: template, drain: { batchId: "b1" } });
+    const res = await mgr.createLoop({
+      mode: "drain",
+      taskTemplate: template,
+      drain: { batchId: "b1" },
+    });
     const id = (res as { id: string }).id;
     await mgr.tick(1000);
     expect((await mgr.get(id))?.status).toBe("active");
@@ -114,7 +132,11 @@ describe("LoopManager iterate", () => {
 
   it("enqueues one task per tick while the goal is unmet, then completes when a task succeeds", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 5 } });
+    const res = await mgr.createLoop({
+      mode: "iterate",
+      taskTemplate: template,
+      iterate: { maxIterations: 5 },
+    });
     const id = (res as { id: string }).id;
 
     await mgr.tick(1000); // first iteration: no prior task -> enqueue #1
@@ -142,7 +164,11 @@ describe("LoopManager iterate", () => {
 
   it("fails when maxIterations is reached without meeting the goal", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 1 } });
+    const res = await mgr.createLoop({
+      mode: "iterate",
+      taskTemplate: template,
+      iterate: { maxIterations: 1 },
+    });
     const id = (res as { id: string }).id;
     await mgr.tick(1000); // enqueue #1 (iterations=1)
     const loop = (await mgr.get(id))!;
@@ -154,7 +180,11 @@ describe("LoopManager iterate", () => {
 
   it("feeds the prior task output forward when feedForward is set", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "iterate", taskTemplate: template, iterate: { maxIterations: 5, feedForward: true } });
+    const res = await mgr.createLoop({
+      mode: "iterate",
+      taskTemplate: template,
+      iterate: { maxIterations: 5, feedForward: true },
+    });
     const id = (res as { id: string }).id;
     await mgr.tick(1000);
     const loop = (await mgr.get(id))!;
@@ -169,7 +199,8 @@ describe("LoopManager iterate", () => {
   it("respects a custom loop-level goal evaluated against task output", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
     const res = await mgr.createLoop({
-      mode: "iterate", taskTemplate: template,
+      mode: "iterate",
+      taskTemplate: template,
       iterate: { maxIterations: 5, goal: [{ type: "regex", source: "output", pattern: "READY" }] },
     });
     const id = (res as { id: string }).id;
@@ -207,7 +238,11 @@ describe("LoopManager recurring", () => {
   it("fires only when now >= nextRunAt and reschedules by intervalMs", async () => {
     // clock fixed at 1000; nextRunAt initialized to 1000 + 1000 = 2000
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
     const id = (res as { id: string }).id;
 
     await mgr.tick(1500); // before nextRunAt(2000) -> no fire
@@ -226,7 +261,11 @@ describe("LoopManager recurring", () => {
 
   it("does not burst-catch-up when far behind", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
     const id = (res as { id: string }).id;
     // jump way past several intervals in one tick
     await mgr.tick(10000);
@@ -236,7 +275,11 @@ describe("LoopManager recurring", () => {
 
   it("completes after maxRuns", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000, maxRuns: 2 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000, maxRuns: 2 },
+    });
     const id = (res as { id: string }).id;
     await mgr.tick(2000); // run 1
     await mgr.tick(3000); // run 2 -> completed
@@ -248,7 +291,11 @@ describe("LoopManager recurring", () => {
 
   it("clamps intervalMs to the minimum floor", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 10 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 10 },
+    });
     const id = (res as { id: string }).id;
     expect((await mgr.get(id))?.recurring?.intervalMs).toBe(1000); // floored to LOOP_MIN_INTERVAL_MS
   });
@@ -273,7 +320,8 @@ describe("LoopManager watch", () => {
     const trigger = join(dir, "go.txt");
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
     const res = await mgr.createLoop({
-      mode: "watch", taskTemplate: template,
+      mode: "watch",
+      taskTemplate: template,
       watch: { condition: [{ type: "file_exists", path: trigger }] },
     });
     const id = (res as { id: string }).id;
@@ -293,7 +341,8 @@ describe("LoopManager watch", () => {
     const trigger = join(dir, "go2.txt");
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
     const res = await mgr.createLoop({
-      mode: "watch", taskTemplate: template,
+      mode: "watch",
+      taskTemplate: template,
       watch: { condition: [{ type: "file_exists", path: trigger }] },
     });
     const id = (res as { id: string }).id;

@@ -46,7 +46,10 @@ export class LoopManager {
       return { ok: false, error: "taskTemplate.goal is required" };
     }
     if (!Array.isArray(t.acceptance) || t.acceptance.length === 0) {
-      return { ok: false, error: "taskTemplate.acceptance must be non-empty (spawned tasks must be verifiable)" };
+      return {
+        ok: false,
+        error: "taskTemplate.acceptance must be non-empty (spawned tasks must be verifiable)",
+      };
     }
     const now = this.clock();
     const loop: LoopDefinition = {
@@ -73,13 +76,23 @@ export class LoopManager {
         break;
       case "recurring": {
         const interval = input.recurring?.intervalMs;
-        if (interval == null || interval <= 0) return { ok: false, error: "recurring.intervalMs is required" };
+        if (interval == null || interval <= 0)
+          return { ok: false, error: "recurring.intervalMs is required" };
         const clamped = Math.max(interval, this.options.minIntervalMs);
-        loop.recurring = { intervalMs: clamped, nextRunAt: now + clamped, maxRuns: input.recurring?.maxRuns, runs: 0 };
+        loop.recurring = {
+          intervalMs: clamped,
+          nextRunAt: now + clamped,
+          maxRuns: input.recurring?.maxRuns,
+          runs: 0,
+        };
         break;
       }
       case "watch":
-        if (!input.watch || !Array.isArray(input.watch.condition) || input.watch.condition.length === 0) {
+        if (
+          !input.watch ||
+          !Array.isArray(input.watch.condition) ||
+          input.watch.condition.length === 0
+        ) {
           return { ok: false, error: "watch.condition must be non-empty" };
         }
         loop.watch = { condition: input.watch.condition, lastConditionMet: false };
@@ -229,7 +242,11 @@ export class LoopManager {
     let goalMet = false;
     if (last) {
       if (cfg.goal && cfg.goal.length > 0) {
-        const proof = await this.evaluator.evaluate(cfg.goal, { output: last.output ?? "", cwd: this.cwd }, now);
+        const proof = await this.evaluator.evaluate(
+          cfg.goal,
+          { output: last.output ?? "", cwd: this.cwd },
+          now
+        );
         goalMet = this.evaluator.allPassed(proof);
       } else {
         goalMet = last.status === "succeeded";
@@ -253,10 +270,19 @@ export class LoopManager {
 
     let input: unknown = loop.taskTemplate.input;
     if (cfg.feedForward && last) {
-      input = { previousOutput: last.output, previousError: last.lastError, original: loop.taskTemplate.input };
+      input = {
+        previousOutput: last.output,
+        previousError: last.lastError,
+        original: loop.taskTemplate.input,
+      };
     }
     const taskId = await this.enqueueFromTemplate(loop, now, input);
-    await this.loopStore.save({ ...loop, currentTaskId: taskId, iterations: loop.iterations + 1, updatedAt: now });
+    await this.loopStore.save({
+      ...loop,
+      currentTaskId: taskId,
+      iterations: loop.iterations + 1,
+      updatedAt: now,
+    });
   }
   private async tickRecurring(loop: LoopDefinition, now: number): Promise<void> {
     const cfg = loop.recurring;

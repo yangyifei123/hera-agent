@@ -151,17 +151,13 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const loopStore = new LoopStore(paths.dataDir);
   await loopStore.init();
-  const loopManager = new LoopManager(
-    loopStore,
-    taskStore,
-    acceptance,
-    paths.configRoot,
-    {
-      tickMs: config.loop_tick_ms ?? LOOP_TICK_MS,
-      defaultMaxIterations: config.loop_default_max_iterations ?? LOOP_DEFAULT_MAX_ITERATIONS,
-      minIntervalMs: config.loop_min_interval_ms ?? LOOP_MIN_INTERVAL_MS,
-    }
-  );
+  const loopManager = new LoopManager(loopStore, taskStore, acceptance, paths.configRoot, {
+    tickMs: config.loop_tick_ms ?? LOOP_TICK_MS,
+    defaultMaxIterations: config.loop_default_max_iterations ?? LOOP_DEFAULT_MAX_ITERATIONS,
+    minIntervalMs: config.loop_min_interval_ms ?? LOOP_MIN_INTERVAL_MS,
+  });
+  await loopManager.recover();
+  loopManager.start();
   _loopManager = loopManager;
 
   // Ensure hera itself has a .md file for OpenCode native discovery
