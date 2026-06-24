@@ -277,5 +277,22 @@ export class LoopManager {
       updatedAt: now,
     });
   }
-  private async tickWatch(_loop: LoopDefinition, _now: number): Promise<void> {}
+  private async tickWatch(loop: LoopDefinition, now: number): Promise<void> {
+    const cfg = loop.watch;
+    if (!cfg) return;
+    const proof = await this.evaluator.evaluate(cfg.condition, { output: "", cwd: this.cwd }, now);
+    const met = this.evaluator.allPassed(proof);
+
+    let iterations = loop.iterations;
+    if (met && !cfg.lastConditionMet) {
+      await this.enqueueFromTemplate(loop, now);
+      iterations += 1;
+    }
+    await this.loopStore.save({
+      ...loop,
+      watch: { ...cfg, lastConditionMet: met },
+      iterations,
+      updatedAt: now,
+    });
+  }
 }

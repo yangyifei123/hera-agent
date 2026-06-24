@@ -253,3 +253,61 @@ describe("LoopManager recurring", () => {
     expect((await mgr.get(id))?.recurring?.intervalMs).toBe(1000); // floored to LOOP_MIN_INTERVAL_MS
   });
 });
+
+describe("LoopManager watch", () => {
+  let dir: string;
+  let loopStore: LoopStore;
+  let taskStore: TaskStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "loopwatch-"));
+    loopStore = new LoopStore(dir);
+    await loopStore.init();
+    taskStore = new TaskStore(dir);
+    await taskStore.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("enqueues once on false->true and not again while true", async () => {
+    const trigger = join(dir, "go.txt");
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({
+      mode: "watch", taskTemplate: template,
+      watch: { condition: [{ type: "file_exists", path: trigger }] },
+    });
+    const id = (res as { id: string }).id;
+
+    await mgr.tick(1000); // condition false -> no enqueue
+    expect(taskStore.byBatch(id)).toHaveLength(0);
+
+    await writeFile(trigger, "x");
+    await mgr.tick(1001); // false->true edge -> enqueue once
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    await mgr.tick(1002); // still true -> no new enqueue
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+  });
+
+  it("re-arms after the condition goes false then true again", async () => {
+    const trigger = join(dir, "go2.txt");
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({
+      mode: "watch", taskTemplate: template,
+      watch: { condition: [{ type: "file_exists", path: trigger }] },
+    });
+    const id = (res as { id: string }).id;
+
+    await writeFile(trigger, "x");
+    await mgr.tick(1000); // edge -> enqueue #1
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    await rm(trigger);
+    await mgr.tick(1001); // condition false -> re-arm, no enqueue
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    await writeFile(trigger, "x");
+    await mgr.tick(1002); // edge again -> enqueue #2
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+  });
+});
