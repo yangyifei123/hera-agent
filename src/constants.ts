@@ -160,3 +160,14 @@ export const TASK_LEASE_MS = 300000;
 
 /** Supervisor dispatch tick interval (ms). */
 export const SUPERVISOR_TICK_MS = 500;
+
+// === Loop Engine Configuration ===
+
+/** LoopManager tick interval (ms). */
+export const LOOP_TICK_MS = 1000;
+
+/** Default iterate-mode iteration cap when unset. */
+export const LOOP_DEFAULT_MAX_ITERATIONS = 25;
+
+/** Floor for recurring-mode interval (ms). */
+export const LOOP_MIN_INTERVAL_MS = 1000;

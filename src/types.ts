@@ -308,6 +308,9 @@ export interface HeraConfig {
   task_default_max_attempts?: number;
   task_default_backoff_ms?: number;
   task_lease_ms?: number;
+  loop_tick_ms?: number;
+  loop_default_max_iterations?: number;
+  loop_min_interval_ms?: number;
   team_defaults?: {
     coordination?: "parallel" | "sequential" | "adaptive";
     timeout?: number;

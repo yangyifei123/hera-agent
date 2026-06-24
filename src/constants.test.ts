@@ -21,6 +21,9 @@ import {
   TASK_DEFAULT_BACKOFF_MS,
   TASK_LEASE_MS,
   SUPERVISOR_TICK_MS,
+  LOOP_TICK_MS,
+  LOOP_DEFAULT_MAX_ITERATIONS,
+  LOOP_MIN_INTERVAL_MS,
 } from "./constants.js";
 
 describe("Constants", () => {
@@ -230,5 +233,13 @@ describe("Task Engine Constants", () => {
     expect(TASK_LEASE_MS).toBe(300000);
     expect(SUPERVISOR_TICK_MS).toBeGreaterThan(0);
     expect(TASK_LEASE_MS).toBeGreaterThan(SUPERVISOR_TICK_MS);
+  });
+});
+
+describe("Loop Engine Constants", () => {
+  it("has sane loop defaults", () => {
+    expect(LOOP_TICK_MS).toBeGreaterThan(0);
+    expect(LOOP_DEFAULT_MAX_ITERATIONS).toBe(25);
+    expect(LOOP_MIN_INTERVAL_MS).toBe(1000);
   });
 });
