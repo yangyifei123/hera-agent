@@ -15,6 +15,7 @@ export class Supervisor {
   private timer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
   private dispatching = false;
+  private reclaimedCount = 0;
 
   constructor(
     private store: TaskStore,
@@ -33,10 +34,19 @@ export class Supervisor {
     return this.active.size;
   }
 
+  stats(): { active: number; reclaimed: number; concurrency: number } {
+    return {
+      active: this.active.size,
+      reclaimed: this.reclaimedCount,
+      concurrency: this.options.concurrency,
+    };
+  }
+
   async dispatchOnce(): Promise<number> {
     if (this.dispatching) return 0;
     this.dispatching = true;
     try {
+      this.reclaimedCount += await this.store.recover(this.clock());
       const slots = this.options.concurrency - this.active.size;
       if (slots <= 0) return 0;
       const claimed = await this.store.claimReady(
