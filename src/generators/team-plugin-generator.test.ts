@@ -125,13 +125,37 @@ describe("TeamPluginGenerator", () => {
       expect(code).not.toMatch(/tool:\s*\{\s*\}/);
     });
 
-    it("does not import any hera-agent internals", () => {
+    it("does not import any hera-agent internals when withEngine is false (back-compat)", () => {
       const team = makeTeam();
       const members = team.members.map((m) => makeAgent(m.agentName));
-      const code = gen.generatePluginIndex(team, members, []);
+      const code = gen.generatePluginIndex(team, members, [], false);
       expect(code).not.toMatch(/from\s+["'][^"']*hera-agent[^"']*["']/);
       expect(code).not.toContain("TeamManager");
       expect(code).not.toContain("MemoryStore");
+    });
+  });
+
+  describe("engine injection", () => {
+    it("injects createEngine wiring + hera-agent dep by default", () => {
+      const team = makeTeam();
+      const pkg = gen.generatePackageJson(team);
+      expect(Object.keys(pkg.dependencies)).toContain("hera-agent");
+      const members = team.members.map((m) => makeAgent(m.agentName));
+      const code = gen.generatePluginIndex(team, members, []);
+      expect(code).toContain('from "hera-agent/engine"');
+      expect(code).toContain("createEngine(");
+      expect(code).toContain("engine.start()");
+      expect(code).toContain("...engine.tools");
+    });
+
+    it("omits engine wiring when withEngine is false", () => {
+      const team = makeTeam();
+      const pkg = gen.generatePackageJson(team, false);
+      expect(Object.keys(pkg.dependencies)).not.toContain("hera-agent");
+      const members = team.members.map((m) => makeAgent(m.agentName));
+      const code = gen.generatePluginIndex(team, members, [], false);
+      expect(code).not.toContain("hera-agent/engine");
+      expect(code).not.toContain("createEngine(");
     });
   });
 

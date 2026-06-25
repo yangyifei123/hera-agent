@@ -64,12 +64,160 @@ function buildTeamContext(team: TeamDefinition, selfName: string): string {
 }
 
 /**
- * Inline memory tool code (shared with single-agent plugins). Kept in sync
+ * Inline memory tool implementation block (shared with single-agent plugins).
+ * The prologue (imports + helpers) is now built inline inside generatePluginIndex
+ * so that the engine import can be conditionally inserted. Kept in sync
  * with PluginGenerator.generatePluginIndex.
  */
-const MEMORY_TOOL_PROLOGUE = `import { tool } from "@opencode-ai/plugin";
+
+const MEMORY_TOOL_BLOCK = `      hera_remember: tool({
+        description: "Store information in Hera's persistent memory (shared with Hera and other generated agents).",
+        args: {
+          content: z.string().describe("Information to remember"),
+          category: z.enum([
+            "session", "skill", "agent", "team", "distillation",
+            "preference", "decision", "pattern", "fix", "context",
+          ]).describe("Memory category"),
+        },
+        async execute(args) {
+          const id = await saveMemory(args.content, args.category);
+          return "Remembered as " + id + " in " + args.category + " memory.";
+        },
+      }),
+      hera_recall: tool({
+        description: "Search Hera's persistent memory.",
+        args: {
+          query: z.string().describe("Search query (substring match)"),
+          category: z.enum([
+            "session", "skill", "agent", "team", "distillation",
+            "preference", "decision", "pattern", "fix", "context",
+          ]).optional().describe("Filter by category"),
+          limit: z.number().optional().describe("Max results (default 10, max 50)"),
+          since: z.number().optional().describe("Only memories from this Unix timestamp onward"),
+        },
+        async execute(args) {
+          const effectiveLimit = args.limit != null ? Math.min(args.limit, 50) : 10;
+          const results = await searchMemory(args.query, args.category, effectiveLimit, args.since);
+          if (results.length === 0) return "No matching memories found.";
+          return results.map((m) => "[" + m.type + "] " + m.content.slice(0, 200)).join("\\n---\\n");
+        },
+      }),`;
+
+export class TeamPluginGenerator {
+  private inner: PluginGenerator;
+
+  constructor(runner?: CommandRunner) {
+    this.inner = new PluginGenerator(runner);
+  }
+
+  /**
+   * Generate package.json for the team plugin.
+   *
+   * @param withEngine - When true (default), adds `hera-agent` as a dependency so
+   *   the generated plugin can import `createEngine` from `hera-agent/engine`.
+   */
+  generatePackageJson(team: TeamDefinition, withEngine = true) {
+    return {
+      name: teamPluginName(team.name),
+      version: "1.0.0",
+      description: team.description || `OpenCode team plugin: ${team.name}`,
+      type: "module",
+      main: "./dist/index.js",
+      types: "./dist/index.d.ts",
+      exports: {
+        ".": {
+          types: "./dist/index.d.ts",
+          import: "./dist/index.js",
+          default: "./dist/index.js",
+        },
+      },
+      scripts: {
+        build:
+          "bun build src/index.ts --outdir dist --target bun --format esm " +
+          "--external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
+      },
+      dependencies: {
+        "@opencode-ai/plugin": "^1.4.6",
+        ...(withEngine ? { "hera-agent": "^2.2.1" } : {}),
+      },
+      files: ["dist", "INSTALL.md"],
+      license: "MIT",
+    };
+  }
+
+  /**
+   * Generate src/index.ts for the team plugin.
+   *
+   * @param withEngine - When true (default), the generated plugin bootstraps the
+   *   HDTE engine via `createEngine` from `hera-agent/engine` and spreads
+   *   `engine.tools` into the returned tool map.
+   */
+  generatePluginIndex(
+    team: TeamDefinition,
+    members: AgentDefinition[],
+    resolvedSkills: SkillDefinition[],
+    withEngine = true
+  ): string {
+    const pluginVar = camelCase(teamPluginName(team.name)) + "Plugin";
+
+    const agentBlocks: string[] = [];
+    for (const member of members) {
+      const augmented: AgentDefinition = {
+        ...member,
+        prompt: `${member.prompt}\n\n${buildTeamContext(team, member.name)}`,
+      };
+      const fullPrompt = buildAgentPrompt(augmented, resolvedSkills);
+
+      const agentConfig = {
+        description: augmented.description,
+        mode: augmented.mode,
+        prompt: fullPrompt,
+        ...(augmented.model ? { model: augmented.model } : {}),
+        temperature: 0.3,
+        maxSteps: augmented.maxSteps ?? 30,
+        permission: {
+          edit: "allow" as const,
+          bash: "allow" as const,
+          webfetch: "allow" as const,
+        },
+      };
+
+      const configJson = JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ");
+
+      agentBlocks.push(`      input.agent["${member.name}"] = ${configJson};`);
+    }
+
+    // Conditional engine import fragment (only when withEngine)
+    const engineImport = withEngine ? `import { createEngine } from "hera-agent/engine";\n` : "";
+
+    // Conditional getHeraDataDir helper (only when withEngine)
+    const heraDataDirHelper = withEngine
+      ? `
+function getHeraDataDir(): string {
+  const env = process.env.HERA_DIR;
+  if (env) return env;
+  const home = process.env.USERPROFILE || process.env.HOME || homedir();
+  return join(home, ".config", "opencode", "hera-data");
+}
+`
+      : "";
+
+    // Conditional engine bootstrap (only when withEngine)
+    const engineBootstrap = withEngine
+      ? `  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client });
+  await engine.init();
+  await engine.recover();
+  engine.start();
+`
+      : "";
+
+    // Conditional engine tools spread (only when withEngine)
+    const engineToolsSpread = withEngine ? `      ...engine.tools,\n` : "";
+
+    // Build the prologue with conditional engine import inserted
+    const prologue = `import { tool } from "@opencode-ai/plugin";
 import type { Plugin } from "@opencode-ai/plugin";
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+${engineImport}import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -96,7 +244,7 @@ function getMemoryDir(): string {
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
   return join(home, ".config", "opencode", "hera-data", "memory");
 }
-
+${heraDataDirHelper}
 async function saveMemory(content: string, category: string): Promise<string> {
   const sub = SUBDIR[category] ?? category + "s";
   const dir = join(getMemoryDir(), sub);
@@ -148,118 +296,16 @@ async function searchMemory(
 }
 `;
 
-const MEMORY_TOOL_BLOCK = `      hera_remember: tool({
-        description: "Store information in Hera's persistent memory (shared with Hera and other generated agents).",
-        args: {
-          content: z.string().describe("Information to remember"),
-          category: z.enum([
-            "session", "skill", "agent", "team", "distillation",
-            "preference", "decision", "pattern", "fix", "context",
-          ]).describe("Memory category"),
-        },
-        async execute(args) {
-          const id = await saveMemory(args.content, args.category);
-          return "Remembered as " + id + " in " + args.category + " memory.";
-        },
-      }),
-      hera_recall: tool({
-        description: "Search Hera's persistent memory.",
-        args: {
-          query: z.string().describe("Search query (substring match)"),
-          category: z.enum([
-            "session", "skill", "agent", "team", "distillation",
-            "preference", "decision", "pattern", "fix", "context",
-          ]).optional().describe("Filter by category"),
-          limit: z.number().optional().describe("Max results (default 10, max 50)"),
-          since: z.number().optional().describe("Only memories from this Unix timestamp onward"),
-        },
-        async execute(args) {
-          const effectiveLimit = args.limit != null ? Math.min(args.limit, 50) : 10;
-          const results = await searchMemory(args.query, args.category, effectiveLimit, args.since);
-          if (results.length === 0) return "No matching memories found.";
-          return results.map((m) => "[" + m.type + "] " + m.content.slice(0, 200)).join("\\n---\\n");
-        },
-      }),`;
-
-export class TeamPluginGenerator {
-  private inner: PluginGenerator;
-
-  constructor(runner?: CommandRunner) {
-    this.inner = new PluginGenerator(runner);
-  }
-
-  generatePackageJson(team: TeamDefinition) {
-    return {
-      name: teamPluginName(team.name),
-      version: "1.0.0",
-      description: team.description || `OpenCode team plugin: ${team.name}`,
-      type: "module",
-      main: "./dist/index.js",
-      types: "./dist/index.d.ts",
-      exports: {
-        ".": {
-          types: "./dist/index.d.ts",
-          import: "./dist/index.js",
-          default: "./dist/index.js",
-        },
-      },
-      scripts: {
-        build:
-          "bun build src/index.ts --outdir dist --target bun --format esm " +
-          "--external @opencode-ai/plugin --external @opencode-ai/sdk && echo 'build done'",
-      },
-      dependencies: {
-        "@opencode-ai/plugin": "^1.4.6",
-      },
-      files: ["dist", "INSTALL.md"],
-      license: "MIT",
-    };
-  }
-
-  generatePluginIndex(
-    team: TeamDefinition,
-    members: AgentDefinition[],
-    resolvedSkills: SkillDefinition[]
-  ): string {
-    const pluginVar = camelCase(teamPluginName(team.name)) + "Plugin";
-
-    const agentBlocks: string[] = [];
-    for (const member of members) {
-      const augmented: AgentDefinition = {
-        ...member,
-        prompt: `${member.prompt}\n\n${buildTeamContext(team, member.name)}`,
-      };
-      const fullPrompt = buildAgentPrompt(augmented, resolvedSkills);
-
-      const agentConfig = {
-        description: augmented.description,
-        mode: augmented.mode,
-        prompt: fullPrompt,
-        ...(augmented.model ? { model: augmented.model } : {}),
-        temperature: 0.3,
-        maxSteps: augmented.maxSteps ?? 30,
-        permission: {
-          edit: "allow" as const,
-          bash: "allow" as const,
-          webfetch: "allow" as const,
-        },
-      };
-
-      const configJson = JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ");
-
-      agentBlocks.push(`      input.agent["${member.name}"] = ${configJson};`);
-    }
-
-    return `${MEMORY_TOOL_PROLOGUE}
+    return `${prologue}
 const ${pluginVar}: Plugin = async (input) => {
-  return {
+${engineBootstrap}  return {
     async config(input) {
       // Register every team member agent
       input.agent = input.agent ?? {};
 ${agentBlocks.join("\n")}
     },
     tool: {
-${MEMORY_TOOL_BLOCK}
+${engineToolsSpread}${MEMORY_TOOL_BLOCK}
     },
   };
 };
@@ -316,14 +362,16 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
   generate(
     team: TeamDefinition,
     members: AgentDefinition[],
-    resolvedSkills: SkillDefinition[]
+    resolvedSkills: SkillDefinition[],
+    opts: { withEngine?: boolean } = {}
   ): PluginPackage {
     heraLog("debug", `Generating team plugin package for: ${team.name}`);
 
+    const withEngine = opts.withEngine ?? true;
     const files: PluginFile[] = [
       {
         path: "package.json",
-        content: JSON.stringify(this.generatePackageJson(team), null, 2) + "\n",
+        content: JSON.stringify(this.generatePackageJson(team, withEngine), null, 2) + "\n",
       },
       {
         path: "tsconfig.json",
@@ -331,7 +379,7 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
       },
       {
         path: "src/index.ts",
-        content: this.generatePluginIndex(team, members, resolvedSkills),
+        content: this.generatePluginIndex(team, members, resolvedSkills, withEngine),
       },
       {
         path: "INSTALL.md",
