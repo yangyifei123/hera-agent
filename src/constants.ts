@@ -158,6 +158,9 @@ export const TASK_DEFAULT_BACKOFF_MS = 1000;
 /** Default task lease duration (ms); expiry drives crash recovery. */
 export const TASK_LEASE_MS = 300000;
 
+/** Default per-attempt agent timeout (ms); must be < TASK_LEASE_MS. */
+export const TASK_ATTEMPT_TIMEOUT_MS = 240000;
+
 /** Supervisor dispatch tick interval (ms). */
 export const SUPERVISOR_TICK_MS = 500;
 

@@ -140,4 +140,24 @@ describe("TaskExecutor", () => {
     expect(updated.status).toBe("failed");
     expect(updated.output).toBeUndefined();
   });
+
+  it("fails an attempt when the agent runner exceeds the attempt timeout", async () => {
+    const runner: AgentRunner = { run: () => new Promise<string>(() => {}) }; // never resolves
+    const exec = new TaskExecutor(store, evalr, runner, dir, 30); // 30ms timeout
+    const task = makeTask({ attempts: 1, maxAttempts: 2 });
+    await store.save(task);
+    const updated = await exec.runAttempt(task, 1000);
+    expect(updated.status).toBe("failed");
+    expect(updated.lastError).toContain("timed out");
+  });
+
+  it("does not time out a fast runner under the limit", async () => {
+    const target = join(dir, "fast.txt");
+    const runner: AgentRunner = { run: async () => { await writeFile(target, "x"); return "ok"; } };
+    const exec = new TaskExecutor(store, evalr, runner, dir, 5000);
+    const task = makeTask({ acceptance: [{ type: "file_exists", path: target }] });
+    await store.save(task);
+    const updated = await exec.runAttempt(task, 1000);
+    expect(updated.status).toBe("succeeded");
+  });
 });

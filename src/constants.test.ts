@@ -24,6 +24,7 @@ import {
   LOOP_TICK_MS,
   LOOP_DEFAULT_MAX_ITERATIONS,
   LOOP_MIN_INTERVAL_MS,
+  TASK_ATTEMPT_TIMEOUT_MS,
 } from "./constants.js";
 
 describe("Constants", () => {
@@ -241,5 +242,12 @@ describe("Loop Engine Constants", () => {
     expect(LOOP_TICK_MS).toBeGreaterThan(0);
     expect(LOOP_DEFAULT_MAX_ITERATIONS).toBe(25);
     expect(LOOP_MIN_INTERVAL_MS).toBe(1000);
+  });
+});
+
+describe("Self-Healing Constants", () => {
+  it("attempt timeout is below the lease", () => {
+    expect(TASK_ATTEMPT_TIMEOUT_MS).toBe(240000);
+    expect(TASK_ATTEMPT_TIMEOUT_MS).toBeLessThan(TASK_LEASE_MS);
   });
 });

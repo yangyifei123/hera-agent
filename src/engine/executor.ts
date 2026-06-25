@@ -8,12 +8,24 @@ export interface AgentRunner {
   run(executor: string, prompt: string): Promise<string>;
 }
 
+function raceWithTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  if (!ms || ms <= 0) return p;
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`attempt timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); }
+    );
+  });
+}
+
 export class TaskExecutor {
   constructor(
     private store: TaskStore,
     private evaluator: AcceptanceEvaluator,
     private runner: AgentRunner,
-    private cwd: string
+    private cwd: string,
+    private attemptTimeoutMs: number = 0
   ) {}
 
   async runAttempt(task: TaskRecord, now: number): Promise<TaskRecord> {
@@ -21,7 +33,7 @@ export class TaskExecutor {
     let output = "";
     let agentError: string | undefined;
     try {
-      output = await this.runner.run(task.executor, prompt);
+      output = await raceWithTimeout(this.runner.run(task.executor, prompt), this.attemptTimeoutMs);
     } catch (err) {
       agentError = err instanceof Error ? err.message : String(err);
     }
