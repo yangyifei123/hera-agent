@@ -9,6 +9,7 @@ import { createPackageTools } from "./package-tools.js";
 import { createWorkflowTools } from "./workflow-tools.js";
 import { createTaskTools } from "./task-tools.js";
 import { createLoopTools } from "./loop-tools.js";
+import { createRecoveryTools } from "./recovery-tools.js";
 
 export function createAllTools(ctx: PluginContext) {
   const tools = {
@@ -22,6 +23,7 @@ export function createAllTools(ctx: PluginContext) {
     ...createWorkflowTools(ctx),
     ...createTaskTools(ctx),
     ...createLoopTools(ctx),
+    ...createRecoveryTools(ctx),
   };
   const disabled = new Set(ctx.config.disabled_tools ?? []);
   if (disabled.size === 0) return tools;

@@ -203,6 +203,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     client,
     taskStore,
     loopManager,
+    supervisor,
     config,
     paths,
     autoEvolve: config.auto_evolve === true,

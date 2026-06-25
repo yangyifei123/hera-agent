@@ -17,7 +17,9 @@ import { TaskStore } from "../engine/task-store.js";
 import { LoopStore } from "../engine/loop-store.js";
 import { LoopManager } from "../engine/loop-manager.js";
 import { AcceptanceEvaluator } from "../engine/acceptance.js";
-import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS, LOOP_MAX_CONSECUTIVE_FAILURES } from "../constants.js";
+import { TaskExecutor } from "../engine/executor.js";
+import { Supervisor } from "../engine/supervisor.js";
+import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS, LOOP_MAX_CONSECUTIVE_FAILURES, TASK_CONCURRENCY, TASK_LEASE_MS, SUPERVISOR_TICK_MS } from "../constants.js";
 import type { AgentDefinition, PluginContext } from "../types.js";
 
 export interface TestHarness {
@@ -71,6 +73,20 @@ export async function makeTestHarness(): Promise<TestHarness> {
     }
   );
 
+  const stubRunner = { run: async (): Promise<string> => { throw new Error("no-op"); } };
+  const taskExecutor = new TaskExecutor(
+    taskStore,
+    new AcceptanceEvaluator({ shellEnabled: true }),
+    stubRunner,
+    dataDir
+  );
+  const supervisor = new Supervisor(taskStore, taskExecutor, {
+    concurrency: TASK_CONCURRENCY,
+    leaseMs: TASK_LEASE_MS,
+    tickMs: SUPERVISOR_TICK_MS,
+    ownerId: "test",
+  });
+
   const registeredAgents = new Map<string, AgentDefinition>();
 
   const ctx: PluginContext = {
@@ -84,6 +100,7 @@ export async function makeTestHarness(): Promise<TestHarness> {
     client: undefined,
     taskStore,
     loopManager,
+    supervisor,
     config: {},
     paths: {
       configRoot,
