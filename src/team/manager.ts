@@ -412,6 +412,52 @@ export class TeamManager {
     return count;
   }
 
+  async recoverSessions(): Promise<number> {
+    if (!this.client || typeof this.client.session?.status !== "function") return 0;
+    let changed = 0;
+    for (const [teamName, sessions] of this.spawnedSessions.entries()) {
+      let mutated = false;
+      for (const session of sessions) {
+        if (session.status !== "unknown" && session.status !== "running" && session.status !== "pending") {
+          continue;
+        }
+        try {
+          const statusResult = await this.client.session.status();
+          const type = statusResult.data?.[session.sessionId]?.type;
+          if (type === "idle") {
+            const messagesResult = await this.client.session.messages({ path: { id: session.sessionId } });
+            const messages = messagesResult.data ?? [];
+            let result = "";
+            for (let i = messages.length - 1; i >= 0; i--) {
+              if (messages[i]?.info.role === "assistant") {
+                result = messages[i].parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
+                break;
+              }
+            }
+            session.status = "completed";
+            session.result = result;
+            mutated = true;
+            changed++;
+          }
+        } catch {
+          session.status = "error";
+          mutated = true;
+          changed++;
+        }
+      }
+      if (mutated) {
+        await this.store.save({
+          id: teamSessionMemoryId(teamName),
+          type: "team-session",
+          content: JSON.stringify({ teamName, sessions }),
+          timestamp: Date.now(),
+          metadata: { sessionCount: sessions.length },
+        });
+      }
+    }
+    return changed;
+  }
+
   getSpawnedSessions(teamName: string): SpawnedSession[] {
     return this.spawnedSessions.get(teamName) ?? [];
   }
