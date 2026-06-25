@@ -21,9 +21,22 @@ describe("TeamManager.recoverSessions", () => {
   it("reconciles an idle session to completed with captured result", async () => {
     const client = fakeClient({ s1: { type: "idle" } }, { s1: "FINAL ANSWER" });
     const mgr = new TeamManager(store, client);
-    await mgr.createTeam({ name: "t", description: "d", members: [{ agentName: "a", role: "dev" }], coordination: "parallel" } as never);
+    await mgr.createTeam({
+      name: "t",
+      description: "d",
+      members: [{ agentName: "a", role: "dev" }],
+      coordination: "parallel",
+    } as never);
     // seed a spawned session in a non-terminal state
-    await store.save({ id: "team-session-t", type: "team-session", content: JSON.stringify({ teamName: "t", sessions: [{ agentName: "a", sessionId: "s1", status: "running" }] }), timestamp: 1 });
+    await store.save({
+      id: "team-session-t",
+      type: "team-session",
+      content: JSON.stringify({
+        teamName: "t",
+        sessions: [{ agentName: "a", sessionId: "s1", status: "running" }],
+      }),
+      timestamp: 1,
+    });
     await mgr.init(); // reloads sessions (running -> unknown)
     const changed = await mgr.recoverSessions();
     expect(changed).toBeGreaterThanOrEqual(1);
@@ -38,7 +51,10 @@ describe("TeamManager.recoverSessions", () => {
   });
 });
 
-function fakeClient(statusById: Record<string, { type: string }>, messages: Record<string, string> = {}) {
+function fakeClient(
+  statusById: Record<string, { type: string }>,
+  messages: Record<string, string> = {}
+) {
   return {
     session: {
       status: async () => ({ data: statusById }),

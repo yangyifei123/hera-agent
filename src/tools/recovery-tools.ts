@@ -7,7 +7,8 @@ export function createRecoveryTools(ctx: PluginContext) {
   const { taskStore, supervisor, loopManager, teamManager } = ctx;
   return {
     hera_recover: tool({
-      description: "Reclaim orphaned tasks: reset expired-lease 'running' tasks back to 'pending' so they re-run.",
+      description:
+        "Reclaim orphaned tasks: reset expired-lease 'running' tasks back to 'pending' so they re-run.",
       args: {},
       async execute() {
         const count = await taskStore.recover(Date.now());
@@ -16,7 +17,8 @@ export function createRecoveryTools(ctx: PluginContext) {
     }),
 
     hera_engine_health: tool({
-      description: "Report task-engine and loop-engine health: task counts by status, loop counts by status, and supervisor stats.",
+      description:
+        "Report task-engine and loop-engine health: task counts by status, loop counts by status, and supervisor stats.",
       args: {},
       async execute() {
         const statuses: TaskStatus[] = ["pending", "running", "succeeded", "failed", "cancelled"];
@@ -26,7 +28,10 @@ export function createRecoveryTools(ctx: PluginContext) {
           acc[l.status] = (acc[l.status] ?? 0) + 1;
           return acc;
         }, {});
-        const loopLine = Object.entries(loopCounts).map(([k, v]) => `${k}=${v}`).join(" ") || "none";
+        const loopLine =
+          Object.entries(loopCounts)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(" ") || "none";
         const s = supervisor.stats();
         return [
           `Tasks: ${taskLine}`,

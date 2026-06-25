@@ -147,7 +147,13 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     defaultTimeoutMs: TASK_LEASE_MS,
   });
   const agentRunner = new OpenCodeAgentRunner(client, paths.configRoot);
-  const taskExecutor = new TaskExecutor(taskStore, acceptance, agentRunner, paths.configRoot, config.task_attempt_timeout_ms ?? TASK_ATTEMPT_TIMEOUT_MS);
+  const taskExecutor = new TaskExecutor(
+    taskStore,
+    acceptance,
+    agentRunner,
+    paths.configRoot,
+    config.task_attempt_timeout_ms ?? TASK_ATTEMPT_TIMEOUT_MS
+  );
   const supervisor = new Supervisor(taskStore, taskExecutor, {
     concurrency: config.task_concurrency ?? TASK_CONCURRENCY,
     leaseMs: config.task_lease_ms ?? TASK_LEASE_MS,

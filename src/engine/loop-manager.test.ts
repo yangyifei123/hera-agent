@@ -9,7 +9,12 @@ import { LoopStore } from "./loop-store.js";
 import { LoopManager } from "./loop-manager.js";
 import type { CreateLoopInput } from "./loop-manager.js";
 
-const OPTS = { tickMs: 10, defaultMaxIterations: 25, minIntervalMs: 1000, maxConsecutiveFailures: 3 };
+const OPTS = {
+  tickMs: 10,
+  defaultMaxIterations: 25,
+  minIntervalMs: 1000,
+  maxConsecutiveFailures: 3,
+};
 
 function makeManager(dir: string, loopStore: LoopStore, taskStore: TaskStore, now = 1000) {
   const evalr = new AcceptanceEvaluator({ shellEnabled: true });
@@ -378,14 +383,26 @@ describe("LoopManager circuit-breaker", () => {
 
   it("trips a recurring loop to failed after N consecutive task failures", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000); // OPTS.maxConsecutiveFailures = 3
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
     const id = (res as { id: string }).id;
     // simulate 3 prior failed spawned tasks for this loop's batch
     for (let i = 0; i < 3; i++) {
       await taskStore.save({
-        id: `f${i}`, batchId: id, goal: "g", executor: "hera",
+        id: `f${i}`,
+        batchId: id,
+        goal: "g",
+        executor: "hera",
         acceptance: [{ type: "file_exists", path: "/tmp/x" }],
-        status: "failed", attempts: 3, maxAttempts: 3, createdAt: i, updatedAt: i, completedAt: i,
+        status: "failed",
+        attempts: 3,
+        maxAttempts: 3,
+        createdAt: i,
+        updatedAt: i,
+        completedAt: i,
       });
     }
     await mgr.tick(5000);
@@ -395,11 +412,51 @@ describe("LoopManager circuit-breaker", () => {
 
   it("a later success resets the trailing-failure run (no trip)", async () => {
     const mgr = makeManager(dir, loopStore, taskStore, 1000);
-    const res = await mgr.createLoop({ mode: "recurring", taskTemplate: template, recurring: { intervalMs: 1000 } });
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
     const id = (res as { id: string }).id;
-    await taskStore.save({ id: "f1", batchId: id, goal: "g", executor: "hera", acceptance: [{ type: "file_exists", path: "/tmp/x" }], status: "failed", attempts: 3, maxAttempts: 3, createdAt: 1, updatedAt: 1, completedAt: 1 });
-    await taskStore.save({ id: "f2", batchId: id, goal: "g", executor: "hera", acceptance: [{ type: "file_exists", path: "/tmp/x" }], status: "failed", attempts: 3, maxAttempts: 3, createdAt: 2, updatedAt: 2, completedAt: 2 });
-    await taskStore.save({ id: "s1", batchId: id, goal: "g", executor: "hera", acceptance: [{ type: "file_exists", path: "/tmp/x" }], status: "succeeded", attempts: 1, maxAttempts: 3, createdAt: 3, updatedAt: 3, completedAt: 3 });
+    await taskStore.save({
+      id: "f1",
+      batchId: id,
+      goal: "g",
+      executor: "hera",
+      acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      createdAt: 1,
+      updatedAt: 1,
+      completedAt: 1,
+    });
+    await taskStore.save({
+      id: "f2",
+      batchId: id,
+      goal: "g",
+      executor: "hera",
+      acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      createdAt: 2,
+      updatedAt: 2,
+      completedAt: 2,
+    });
+    await taskStore.save({
+      id: "s1",
+      batchId: id,
+      goal: "g",
+      executor: "hera",
+      acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+      status: "succeeded",
+      attempts: 1,
+      maxAttempts: 3,
+      createdAt: 3,
+      updatedAt: 3,
+      completedAt: 3,
+    });
     await mgr.tick(2000); // trailing run is 0 (last terminal is succeeded) -> no trip; recurring fires
     expect((await mgr.get(id))?.status).toBe("active");
   });

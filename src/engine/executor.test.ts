@@ -153,7 +153,12 @@ describe("TaskExecutor", () => {
 
   it("does not time out a fast runner under the limit", async () => {
     const target = join(dir, "fast.txt");
-    const runner: AgentRunner = { run: async () => { await writeFile(target, "x"); return "ok"; } };
+    const runner: AgentRunner = {
+      run: async () => {
+        await writeFile(target, "x");
+        return "ok";
+      },
+    };
     const exec = new TaskExecutor(store, evalr, runner, dir, 5000);
     const task = makeTask({ acceptance: [{ type: "file_exists", path: target }] });
     await store.save(task);

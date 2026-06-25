@@ -118,16 +118,20 @@ describe("Supervisor", () => {
   });
 
   it("reclaims an orphaned running task mid-run and completes it", async () => {
-    const runner: AgentRunner = { run: async (_e, prompt) => {
-      const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
-      if (m) await writeFile(m[1], "x");
-      return "done";
-    } };
+    const runner: AgentRunner = {
+      run: async (_e, prompt) => {
+        const m = /file_exists.*?"path":"([^"]+)"/.exec(prompt);
+        if (m) await writeFile(m[1], "x");
+        return "done";
+      },
+    };
     const sup = buildSupervisor(runner, 4);
     // a task stuck "running" with an EXPIRED lease (orphaned by a dead prior attempt)
     await store.save({
       ...makeTask("orphan", join(dir, "orphan.txt")),
-      status: "running", leaseOwner: "dead", leaseExpiresAt: 1,
+      status: "running",
+      leaseOwner: "dead",
+      leaseExpiresAt: 1,
     });
     await sup.drain();
     expect(store.byStatus("succeeded").map((t) => t.id)).toContain("orphan");

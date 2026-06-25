@@ -418,14 +418,20 @@ export class TeamManager {
     for (const [teamName, sessions] of this.spawnedSessions.entries()) {
       let mutated = false;
       for (const session of sessions) {
-        if (session.status !== "unknown" && session.status !== "running" && session.status !== "pending") {
+        if (
+          session.status !== "unknown" &&
+          session.status !== "running" &&
+          session.status !== "pending"
+        ) {
           continue;
         }
         try {
           const statusResult = await this.client.session.status();
           const type = statusResult.data?.[session.sessionId]?.type;
           if (type === "idle") {
-            const messagesResult = await this.client.session.messages({ path: { id: session.sessionId } });
+            const messagesResult = await this.client.session.messages({
+              path: { id: session.sessionId },
+            });
             const messages = messagesResult.data ?? [];
             let result = "";
             for (let i = messages.length - 1; i >= 0; i--) {
