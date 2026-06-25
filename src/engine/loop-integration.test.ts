@@ -46,7 +46,7 @@ describe("Loop + task engine integration", () => {
       taskStore,
       evalr,
       dir,
-      { tickMs: 5, defaultMaxIterations: 25, minIntervalMs: 1000 },
+      { tickMs: 5, defaultMaxIterations: 25, minIntervalMs: 1000, maxConsecutiveFailures: 5 },
       () => 1000
     );
 
@@ -94,7 +94,7 @@ describe("Loop + task engine integration", () => {
       taskStore,
       evalr,
       dir,
-      { tickMs: 5, defaultMaxIterations: 5, minIntervalMs: 1000 },
+      { tickMs: 5, defaultMaxIterations: 5, minIntervalMs: 1000, maxConsecutiveFailures: 5 },
       () => 1000
     );
 

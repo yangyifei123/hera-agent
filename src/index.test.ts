@@ -13,7 +13,7 @@ import { TaskStore } from "./engine/task-store.js";
 import { LoopStore } from "./engine/loop-store.js";
 import { LoopManager } from "./engine/loop-manager.js";
 import { AcceptanceEvaluator } from "./engine/acceptance.js";
-import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS } from "./constants.js";
+import { LOOP_TICK_MS, LOOP_DEFAULT_MAX_ITERATIONS, LOOP_MIN_INTERVAL_MS, LOOP_MAX_CONSECUTIVE_FAILURES } from "./constants.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync } from "node:fs";
@@ -45,6 +45,7 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
       tickMs: LOOP_TICK_MS,
       defaultMaxIterations: LOOP_DEFAULT_MAX_ITERATIONS,
       minIntervalMs: LOOP_MIN_INTERVAL_MS,
+      maxConsecutiveFailures: LOOP_MAX_CONSECUTIVE_FAILURES,
     }
   );
 

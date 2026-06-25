@@ -25,6 +25,7 @@ import {
   LOOP_TICK_MS,
   LOOP_DEFAULT_MAX_ITERATIONS,
   LOOP_MIN_INTERVAL_MS,
+  LOOP_MAX_CONSECUTIVE_FAILURES,
 } from "./constants.js";
 import { getDefaultPermission } from "./helpers.js";
 import { join } from "node:path";
@@ -155,6 +156,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     tickMs: config.loop_tick_ms ?? LOOP_TICK_MS,
     defaultMaxIterations: config.loop_default_max_iterations ?? LOOP_DEFAULT_MAX_ITERATIONS,
     minIntervalMs: config.loop_min_interval_ms ?? LOOP_MIN_INTERVAL_MS,
+    maxConsecutiveFailures: config.loop_max_consecutive_failures ?? LOOP_MAX_CONSECUTIVE_FAILURES,
   });
   await loopManager.recover();
   loopManager.start();

@@ -174,3 +174,6 @@ export const LOOP_DEFAULT_MAX_ITERATIONS = 25;
 
 /** Floor for recurring-mode interval (ms). */
 export const LOOP_MIN_INTERVAL_MS = 1000;
+
+/** Trip a loop to failed after this many consecutive failed spawned tasks. */
+export const LOOP_MAX_CONSECUTIVE_FAILURES = 5;

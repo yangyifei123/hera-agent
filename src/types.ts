@@ -312,6 +312,7 @@ export interface HeraConfig {
   loop_tick_ms?: number;
   loop_default_max_iterations?: number;
   loop_min_interval_ms?: number;
+  loop_max_consecutive_failures?: number;
   team_defaults?: {
     coordination?: "parallel" | "sequential" | "adaptive";
     timeout?: number;

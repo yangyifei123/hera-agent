@@ -28,7 +28,7 @@ describe("loop-tools", () => {
       taskStore,
       new AcceptanceEvaluator({ shellEnabled: true }),
       dir,
-      { tickMs: 10, defaultMaxIterations: 25, minIntervalMs: 1000 },
+      { tickMs: 10, defaultMaxIterations: 25, minIntervalMs: 1000, maxConsecutiveFailures: 5 },
       () => 1000
     );
     tools = createLoopTools(ctxWith(mgr));

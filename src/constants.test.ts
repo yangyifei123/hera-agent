@@ -25,6 +25,7 @@ import {
   LOOP_DEFAULT_MAX_ITERATIONS,
   LOOP_MIN_INTERVAL_MS,
   TASK_ATTEMPT_TIMEOUT_MS,
+  LOOP_MAX_CONSECUTIVE_FAILURES,
 } from "./constants.js";
 
 describe("Constants", () => {
@@ -249,5 +250,9 @@ describe("Self-Healing Constants", () => {
   it("attempt timeout is below the lease", () => {
     expect(TASK_ATTEMPT_TIMEOUT_MS).toBe(240000);
     expect(TASK_ATTEMPT_TIMEOUT_MS).toBeLessThan(TASK_LEASE_MS);
+  });
+
+  it("loop max consecutive failures default", () => {
+    expect(LOOP_MAX_CONSECUTIVE_FAILURES).toBe(5);
   });
 });

@@ -23,6 +23,7 @@ export interface LoopManagerOptions {
   tickMs: number;
   defaultMaxIterations: number;
   minIntervalMs: number;
+  maxConsecutiveFailures: number;
 }
 
 export class LoopManager {
@@ -184,6 +185,25 @@ export class LoopManager {
   }
 
   private async advance(loop: LoopDefinition, now: number): Promise<void> {
+    const terminal = this.taskStore
+      .byBatch(loop.id)
+      .filter((t) => t.status === "failed" || t.status === "succeeded")
+      .sort((a, b) => (a.completedAt ?? a.updatedAt) - (b.completedAt ?? b.updatedAt));
+    let trailing = 0;
+    for (let i = terminal.length - 1; i >= 0; i--) {
+      if (terminal[i].status === "failed") trailing++;
+      else break;
+    }
+    if (trailing >= this.options.maxConsecutiveFailures) {
+      await this.loopStore.save({
+        ...loop,
+        status: "failed",
+        lastError: `loop circuit-breaker: ${trailing} consecutive task failures`,
+        updatedAt: now,
+      });
+      return;
+    }
+
     switch (loop.mode) {
       case "iterate":
         return this.tickIterate(loop, now);
@@ -289,7 +309,7 @@ export class LoopManager {
     if (!cfg) return;
     if (now < cfg.nextRunAt) return;
 
-    await this.enqueueFromTemplate(loop, now);
+    const taskId = await this.enqueueFromTemplate(loop, now);
     const runs = cfg.runs + 1;
     // Fixed cadence; if a full interval still lands in the past, skip missed runs.
     const advanced = cfg.nextRunAt + cfg.intervalMs;
@@ -298,6 +318,7 @@ export class LoopManager {
     await this.loopStore.save({
       ...loop,
       recurring: { ...cfg, runs, nextRunAt },
+      currentTaskId: taskId,
       iterations: loop.iterations + 1,
       status: completed ? "completed" : loop.status,
       updatedAt: now,
@@ -310,13 +331,15 @@ export class LoopManager {
     const met = this.evaluator.allPassed(proof);
 
     let iterations = loop.iterations;
+    let currentTaskId = loop.currentTaskId;
     if (met && !cfg.lastConditionMet) {
-      await this.enqueueFromTemplate(loop, now);
+      currentTaskId = await this.enqueueFromTemplate(loop, now);
       iterations += 1;
     }
     await this.loopStore.save({
       ...loop,
       watch: { ...cfg, lastConditionMet: met },
+      currentTaskId,
       iterations,
       updatedAt: now,
     });
