@@ -12,6 +12,31 @@ research-driven capability proposals.
 
 ---
 
+## ✅ Fixed — follow-up batches (same day, separate verified commits, 806 tests green)
+
+- **Memory recall** is tokenized + relevance-ranked (term coverage, phrase/id
+  weighting, recency tie-break) instead of flat substring; auto-memories use a
+  deterministic content-hash id so re-extraction no longer accumulates
+  cross-session duplicates. `src/memory/store.ts`, `src/index.ts`
+- **Per-agent permission/tools/maxSteps** are passed through at runtime
+  (`createChildAgentConfig`) — agent-level restrictions are now enforced.
+- **`llm_judge` acceptance check** added (`{type:'llm_judge', rubric, threshold}`)
+  — semantic anti-perfunctory completion gating, fails closed, wired from the
+  engine agent runner. `src/engine/acceptance.ts`
+- **HDTE engine is a per-dataDir singleton** (`createEngine({singleton:true})`) —
+  Hera + generated plugins in one process now share one in-memory store instead
+  of competing engines double-running tasks. (A cross-OS-process lease heartbeat
+  was prototyped and dropped: it races the executor's terminal save without
+  per-id write locking — see backlog.) `src/engine/index.ts`, generators
+- **Prompt double-embedding fixed at the root**: the raw author prompt now
+  round-trips via `promptB64` frontmatter, so the config hook assembles built-in
+  skills exactly once after restart and re-registration is idempotent (also
+  removes the duplicate evolution block). `src/agents/registry.ts`
+  *(Foundation for full progressive skill disclosure — lazy skill bodies + a
+  load-on-demand tool — which remains the next step.)*
+
+---
+
 ## ✅ Fixed in the 2026-06-27 hardening batch
 
 **Engine / HDTE durability (north star: ≥500 tasks, no perfunctory completion)**
