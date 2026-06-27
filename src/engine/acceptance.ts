@@ -188,7 +188,18 @@ export class AcceptanceEvaluator {
       );
       handle.timer = setTimeout(() => {
         timedOut = true;
+        // Best-effort kill of the child + its tree. We then resolve the promise
+        // immediately rather than waiting for exec's callback to fire after the
+        // kill — under Bun (and after a SIGKILL generally) that callback may
+        // never arrive, which would otherwise hang the evaluation until the
+        // command finished on its own.
         if (child.pid) this.killTree(child.pid);
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+        finish("timeout");
       }, timeout);
       child.on("error", () => finish(-1));
     });
