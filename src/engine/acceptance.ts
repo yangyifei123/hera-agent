@@ -176,7 +176,6 @@ export class AcceptanceEvaluator {
         {
           cwd: check.cwd ?? ctx.cwd,
           windowsHide: true,
-          ...(process.platform === "win32" ? {} : { detached: true }),
         },
         (err) => {
           if (timedOut) return finish("timeout");
@@ -207,23 +206,22 @@ export class AcceptanceEvaluator {
     return this.result(check, code === expectExit, now, `exit ${code}`);
   }
 
-  /** Best-effort kill of a child process and its descendants, cross-platform. */
+  /** Best-effort kill of a child process (and, on Windows, its tree). */
   private killTree(pid: number): void {
     if (process.platform === "win32") {
-      // taskkill /T terminates the process tree; /F forces it.
+      // taskkill /T terminates the process tree (e.g. cmd.exe + its `ping`
+      // child); /F forces it.
       execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
         /* best effort: process may already be gone */
       });
     } else {
+      // Direct SIGKILL of the spawned `sh -c ...` child. We intentionally do NOT
+      // spawn detached / kill a negative process group: under Bun a detached
+      // child can keep the runtime from exiting cleanly.
       try {
-        // Negative pid targets the whole process group (requires detached spawn).
-        process.kill(-pid, "SIGKILL");
+        process.kill(pid, "SIGKILL");
       } catch {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          /* already exited */
-        }
+        /* already exited */
       }
     }
   }
