@@ -53,6 +53,9 @@ export class TaskStore {
     const succeeded = await this.succeededIds();
     const ready = this.byStatus("pending")
       .filter((t) => (t.dependsOn ?? []).every((dep) => succeeded.has(dep)))
+      // honor retry backoff: a task re-queued after a failure is not eligible
+      // until its nextEligibleAt has passed.
+      .filter((t) => t.nextEligibleAt == null || t.nextEligibleAt <= now)
       .sort((a, b) => a.createdAt - b.createdAt)
       .slice(0, limit);
     const claimed: TaskRecord[] = [];
@@ -71,16 +74,65 @@ export class TaskStore {
     return claimed;
   }
 
-  async recover(now: number): Promise<number> {
+  /**
+   * Reclaim orphaned `running` tasks whose lease has expired (crash / lease
+   * timeout). Each reclaim counts as an attempt so a task that repeatedly
+   * crashes the host (and thus never reaches executor.fail) cannot retry
+   * forever — once attempts exhaust maxAttempts it is moved to `failed`.
+   *
+   * `activeIds` are task ids this process is still actively running; they are
+   * never reclaimed even with an expired lease, preventing the same task from
+   * being dispatched twice concurrently (duplicate side effects).
+   */
+  async recover(now: number, activeIds?: ReadonlySet<string>): Promise<number> {
     let count = 0;
     for (const task of this.byStatus("running")) {
+      if (activeIds?.has(task.id)) continue;
       if (task.leaseExpiresAt == null || task.leaseExpiresAt <= now) {
+        const attempts = task.attempts + 1;
+        const exhausted = attempts >= task.maxAttempts;
         await this.save({
           ...task,
-          status: "pending",
+          status: exhausted ? "failed" : "pending",
+          attempts,
+          leaseOwner: undefined,
+          leaseExpiresAt: undefined,
+          lastError: exhausted
+            ? "reclaimed after crash/lease-expiry: max attempts exhausted"
+            : (task.lastError ?? "reclaimed after crash/lease-expiry"),
+          updatedAt: now,
+          completedAt: exhausted ? now : undefined,
+        });
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Cascade terminal dependency failures: a `pending` task that depends on a
+   * `failed`/`cancelled` task can never become ready, so mark it `failed`
+   * instead of leaving it stranded forever (which would block batch completion
+   * and burn a supervisor scan every tick). Returns how many were failed.
+   */
+  async failBlockedTasks(now: number): Promise<number> {
+    const dead = new Set<string>([
+      ...this.byStatus("failed").map((t) => t.id),
+      ...this.byStatus("cancelled").map((t) => t.id),
+    ]);
+    if (dead.size === 0) return 0;
+    let count = 0;
+    for (const task of this.byStatus("pending")) {
+      const blocker = (task.dependsOn ?? []).find((dep) => dead.has(dep));
+      if (blocker) {
+        await this.save({
+          ...task,
+          status: "failed",
+          lastError: `dependency ${blocker} failed`,
           leaseOwner: undefined,
           leaseExpiresAt: undefined,
           updatedAt: now,
+          completedAt: now,
         });
         count++;
       }

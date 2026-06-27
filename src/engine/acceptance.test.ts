@@ -13,7 +13,9 @@ describe("AcceptanceEvaluator", () => {
     evalr = new AcceptanceEvaluator({ shellEnabled: true, defaultTimeoutMs: 5000 });
   });
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    // maxRetries tolerates transient Windows EBUSY/EPERM while a just-killed
+    // child process releases its handle on the temp dir.
+    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it("passes file_exists when the file is present", async () => {

@@ -1,5 +1,5 @@
 // src/engine/acceptance.ts
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { AcceptanceCheck, AcceptanceResult } from "./task-types.js";
@@ -97,19 +97,63 @@ export class AcceptanceEvaluator {
     const expectExit = check.expectExit ?? 0;
     const timeout = check.timeoutMs ?? this.defaultTimeoutMs;
     const code = await new Promise<number | "timeout">((resolve) => {
-      const child = exec(check.command, { cwd: check.cwd ?? ctx.cwd, timeout }, (err) => {
-        if (err && (err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
-          resolve("timeout");
-        } else if (err && typeof (err as { code?: number }).code === "number") {
-          resolve((err as { code: number }).code);
-        } else {
-          resolve(0);
+      let settled = false;
+      let timedOut = false;
+      const handle: { timer?: ReturnType<typeof setTimeout> } = {};
+      const finish = (v: number | "timeout") => {
+        if (settled) return;
+        settled = true;
+        if (handle.timer) clearTimeout(handle.timer);
+        resolve(v);
+      };
+      // Manual timeout + process-tree kill. Node's built-in exec `timeout` only
+      // signals the top-level shell; on Windows `cmd.exe /c` does not propagate
+      // the kill to its children, leaking the child process (e.g. a blocking
+      // `ping`) which keeps holding `cwd` and breaks downstream cleanup.
+      const child = exec(
+        check.command,
+        {
+          cwd: check.cwd ?? ctx.cwd,
+          windowsHide: true,
+          ...(process.platform === "win32" ? {} : { detached: true }),
+        },
+        (err) => {
+          if (timedOut) return finish("timeout");
+          const c = (err as { code?: number } | null)?.code;
+          if (err && typeof c === "number") return finish(c);
+          if (err) return finish(-1);
+          finish(0);
         }
-      });
-      child.on("error", () => resolve(-1));
+      );
+      handle.timer = setTimeout(() => {
+        timedOut = true;
+        if (child.pid) this.killTree(child.pid);
+      }, timeout);
+      child.on("error", () => finish(-1));
     });
     if (code === "timeout") return this.result(check, false, now, "timeout");
     return this.result(check, code === expectExit, now, `exit ${code}`);
+  }
+
+  /** Best-effort kill of a child process and its descendants, cross-platform. */
+  private killTree(pid: number): void {
+    if (process.platform === "win32") {
+      // taskkill /T terminates the process tree; /F forces it.
+      execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
+        /* best effort: process may already be gone */
+      });
+    } else {
+      try {
+        // Negative pid targets the whole process group (requires detached spawn).
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          /* already exited */
+        }
+      }
+    }
   }
 
   private result(

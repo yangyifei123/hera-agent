@@ -51,36 +51,64 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const heraConfigPath = join(configRoot, "hera.json");
   let config = (options ?? {}) as HeraConfig;
 
+  let heraConfigContent: string | undefined;
   try {
     const { readFile } = await import("node:fs/promises");
-    const heraConfigContent = await readFile(heraConfigPath, "utf-8");
-    const heraConfig = JSON.parse(heraConfigContent);
-    config = { ...config, ...heraConfig };
-  } catch {
-    // hera.json doesn't exist, create it automatically
+    heraConfigContent = await readFile(heraConfigPath, "utf-8");
+  } catch (readErr) {
+    const code = (readErr as NodeJS.ErrnoException)?.code;
+    if (code && code !== "ENOENT") {
+      // File exists but is unreadable (EACCES, EISDIR...). Do not overwrite it.
+      heraLog("warn", `Could not read hera.json (${code}); using in-memory defaults`, readErr);
+    } else {
+      // Missing — create the default config.
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        // Use relative path for schema to avoid network dependency in internal networks
+        const defaultConfig = {
+          $schema: "./hera.schema.json",
+          disabled_agents: [],
+          disabled_skills: [],
+          disabled_tools: [],
+          agent_overrides: {},
+          templates: {},
+          auto_evolve: false,
+          auto_memory: false,
+          memory_limit: DEFAULT_MEMORY_LIMIT,
+          memory_ttl_ms: 0,
+          team_defaults: {
+            coordination: "parallel",
+            timeout: DEFAULT_TEAM_TIMEOUT_MS,
+          },
+        };
+        await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
+        heraLog("info", `Created config file: ${heraConfigPath}`);
+      } catch (err) {
+        heraLog("warn", `Could not create config file`, err);
+      }
+    }
+  }
+
+  if (heraConfigContent !== undefined) {
     try {
-      const { writeFile } = await import("node:fs/promises");
-      // Use relative path for schema to avoid network dependency in internal networks
-      const defaultConfig = {
-        $schema: "./hera.schema.json",
-        disabled_agents: [],
-        disabled_skills: [],
-        disabled_tools: [],
-        agent_overrides: {},
-        templates: {},
-        auto_evolve: false,
-        auto_memory: false,
-        memory_limit: DEFAULT_MEMORY_LIMIT,
-        memory_ttl_ms: 0,
-        team_defaults: {
-          coordination: "parallel",
-          timeout: DEFAULT_TEAM_TIMEOUT_MS,
-        },
-      };
-      await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
-      heraLog("info", `Created config file: ${heraConfigPath}`);
-    } catch (err) {
-      heraLog("warn", `Could not create config file`, err);
+      const heraConfig = JSON.parse(heraConfigContent);
+      config = { ...config, ...heraConfig };
+    } catch (parseErr) {
+      // File exists but is invalid JSON. Preserve the user's file (a typo must
+      // not silently wipe disabled_agents/team_defaults/etc.): back it up and
+      // run on defaults this session, leaving the original untouched to fix.
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        await writeFile(`${heraConfigPath}.bak`, heraConfigContent, "utf-8");
+      } catch {
+        // best-effort backup
+      }
+      heraLog(
+        "warn",
+        `hera.json is invalid JSON — backed up to hera.json.bak and using defaults this session. ` +
+          `Your settings are NOT lost; fix the JSON to restore them.`,
+        parseErr
+      );
     }
   }
 

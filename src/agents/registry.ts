@@ -158,7 +158,14 @@ export class AgentRegistry {
   private buildFrontmatter(def: AgentDefinition): string {
     const lines = ["---"];
     lines.push(`name: ${def.name}`);
-    lines.push(`description: "${def.description.replace(/"/g, '\\"')}"`);
+    // Collapse newlines/control chars before quoting: an un-sanitized newline in
+    // the description would inject arbitrary frontmatter keys (mode, permission,
+    // ...) that parseMarkdownAgent reads back on the next reload.
+    const safeDescription = def.description
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/"/g, '\\"')
+      .trim();
+    lines.push(`description: "${safeDescription}"`);
     lines.push(`mode: ${def.mode}`);
     if (def.model) lines.push(`model: ${def.model}`);
     if (def.maxSteps) lines.push(`maxSteps: ${def.maxSteps}`);

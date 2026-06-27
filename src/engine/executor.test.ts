@@ -113,6 +113,22 @@ describe("TaskExecutor", () => {
     expect(updated.output).toBe("AGENT_SAID_THIS");
   });
 
+  it("stamps an exponential backoff nextEligibleAt on a retry", async () => {
+    const runner: AgentRunner = { run: async () => "nothing" };
+    const exec = new TaskExecutor(store, evalr, runner, dir);
+    const task = makeTask({
+      acceptance: [{ type: "file_exists", path: join(dir, "missing") }],
+      attempts: 0,
+      maxAttempts: 3,
+      backoffMs: 100,
+    });
+    await store.save(task);
+    const updated = await exec.runAttempt(task, 1000);
+    expect(updated.status).toBe("pending");
+    // attempts=1 → backoff*2^0 = 100, eligible at now+100
+    expect(updated.nextEligibleAt).toBe(1100);
+  });
+
   it("records the agent output on a retry (acceptance failed)", async () => {
     const runner: AgentRunner = { run: async () => "PARTIAL_WORK" };
     const exec = new TaskExecutor(store, evalr, runner, dir);

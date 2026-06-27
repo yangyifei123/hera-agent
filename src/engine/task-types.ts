@@ -30,6 +30,8 @@ export interface TaskRecord {
   dependsOn?: string[];
   leaseOwner?: string;
   leaseExpiresAt?: number;
+  /** Earliest time this pending task may be re-claimed (retry backoff gate). */
+  nextEligibleAt?: number;
   createdAt: number;
   startedAt?: number;
   updatedAt: number;

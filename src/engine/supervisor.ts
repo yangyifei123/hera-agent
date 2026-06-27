@@ -12,6 +12,7 @@ export interface SupervisorOptions {
 
 export class Supervisor {
   private active = new Set<Promise<unknown>>();
+  private activeIds = new Set<string>();
   private timer: ReturnType<typeof setInterval> | undefined;
   private stopped = false;
   private dispatching = false;
@@ -25,7 +26,8 @@ export class Supervisor {
   ) {}
 
   async recover(): Promise<number> {
-    const count = await this.store.recover(this.clock());
+    const count = await this.store.recover(this.clock(), this.activeIds);
+    await this.store.failBlockedTasks(this.clock());
     if (count > 0) heraLog("info", `Supervisor recovered ${count} crashed task(s)`);
     return count;
   }
@@ -46,7 +48,8 @@ export class Supervisor {
     if (this.dispatching) return 0;
     this.dispatching = true;
     try {
-      this.reclaimedCount += await this.store.recover(this.clock());
+      this.reclaimedCount += await this.store.recover(this.clock(), this.activeIds);
+      await this.store.failBlockedTasks(this.clock());
       const slots = this.options.concurrency - this.active.size;
       if (slots <= 0) return 0;
       const claimed = await this.store.claimReady(
@@ -56,10 +59,14 @@ export class Supervisor {
         this.clock()
       );
       for (const task of claimed) {
+        this.activeIds.add(task.id);
         const p = this.executor
           .runAttempt(task, this.clock())
           .catch((err) => heraLog("warn", `Task attempt threw: ${task.id}`, err))
-          .finally(() => this.active.delete(p));
+          .finally(() => {
+            this.active.delete(p);
+            this.activeIds.delete(task.id);
+          });
         this.active.add(p);
       }
       return claimed.length;

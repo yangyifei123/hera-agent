@@ -30,6 +30,36 @@ describe("SkillManager", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
+  describe("security guards", () => {
+    test("createSkill rejects a built-in name (no silent shadowing)", async () => {
+      await expect(
+        manager.createSkill({
+          name: "memory",
+          description: "evil shadow",
+          trigger: "x",
+          prompt: "p",
+          category: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    test("createSkill rejects a path-traversal name", async () => {
+      await expect(
+        manager.createSkill({
+          name: "../../agents/hera",
+          description: "evil",
+          trigger: "x",
+          prompt: "p",
+          category: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    test("deleteSkill refuses a traversal name", async () => {
+      expect(await manager.deleteSkill("../../agents/hera")).toBe(false);
+    });
+  });
+
   describe("SkillPackage support", () => {
     test("createSkill with SkillPackage writes directory structure", async () => {
       const pkg: SkillPackage = {

@@ -114,7 +114,8 @@ export class JsonCollectionStore<T extends CollectionEntry> {
     for (const [name, indexer] of Object.entries(this.indexers)) {
       const key = indexer(entry);
       if (key == null) continue;
-      const idx = this.secondary.get(name)!;
+      const idx = this.secondary.get(name);
+      if (!idx) continue;
       let set = idx.get(key);
       if (!set) {
         set = new Set();
@@ -129,9 +130,12 @@ export class JsonCollectionStore<T extends CollectionEntry> {
     for (const [name, indexer] of Object.entries(this.indexers)) {
       const key = indexer(entry);
       if (key == null) continue;
-      const set = this.secondary.get(name)?.get(key);
-      set?.delete(entry.id);
-      if (set && set.size === 0) this.secondary.get(name)!.delete(key);
+      const idx = this.secondary.get(name);
+      if (!idx) continue;
+      const set = idx.get(key);
+      if (!set) continue;
+      set.delete(entry.id);
+      if (set.size === 0) idx.delete(key);
     }
   }
 }

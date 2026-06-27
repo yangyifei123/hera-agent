@@ -1,6 +1,6 @@
 // src/store/json-collection-store.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonCollectionStore, assertSafeId } from "./json-collection-store.js";

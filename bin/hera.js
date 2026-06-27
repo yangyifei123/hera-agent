@@ -815,8 +815,19 @@ If you installed with Bun, replace npm uninstall with:
   }
 
   case "help":
+  case "--help":
+  case "-h": {
+    printHelp();
+    break;
+  }
+
   default:
-    console.log(`
+    console.error(`[✗] Unknown command "${cmd}". Run 'hera help' for usage.`);
+    process.exit(1);
+}
+
+function printHelp() {
+  console.log(`
 Hera Agent Factory v${VERSION}
 
 Commands:
@@ -856,5 +867,4 @@ Agent Templates (10):
   general, coder, reviewer, researcher, coordinator,
   architect, debugger, tester, documenter, optimizer
 `);
-    break;
 }

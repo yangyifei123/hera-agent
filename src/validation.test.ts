@@ -1,5 +1,39 @@
 import { describe, test, expect } from "bun:test";
-import { validateAgentName, validateAgentNameWithConflict } from "./validation.js";
+import {
+  validateAgentName,
+  validateAgentNameWithConflict,
+  validateSkillName,
+  isSafeRelativePath,
+} from "./validation.js";
+
+describe("validateSkillName", () => {
+  test("accepts a normal skill name", () => {
+    expect(validateSkillName("my-skill").valid).toBe(true);
+  });
+  test("rejects path-traversal names used as a delete primitive", () => {
+    expect(validateSkillName("../../agents/hera").valid).toBe(false);
+    expect(validateSkillName("../../../x").valid).toBe(false);
+  });
+  test("rejects slashes, backslashes, and empty", () => {
+    expect(validateSkillName("a/b").valid).toBe(false);
+    expect(validateSkillName("a\\b").valid).toBe(false);
+    expect(validateSkillName("").valid).toBe(false);
+  });
+});
+
+describe("isSafeRelativePath", () => {
+  test("allows nested relative paths", () => {
+    expect(isSafeRelativePath("scripts/run.sh")).toBe(true);
+    expect(isSafeRelativePath("a/b/c.txt")).toBe(true);
+  });
+  test("rejects traversal, absolute, drive-letter, and NUL", () => {
+    expect(isSafeRelativePath("../../hera.json")).toBe(false);
+    expect(isSafeRelativePath("/etc/passwd")).toBe(false);
+    expect(isSafeRelativePath("C:/Windows/x")).toBe(false);
+    expect(isSafeRelativePath("a/../../b")).toBe(false);
+    expect(isSafeRelativePath("a\0b")).toBe(false);
+  });
+});
 
 describe("validateAgentName", () => {
   describe("valid names", () => {

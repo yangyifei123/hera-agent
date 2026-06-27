@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir, stat, rm } from "node:fs/promises"
 import { join, relative, sep } from "node:path";
 import type { SkillDefinition, SkillPackage, SkillFile, SkillTrigger } from "../types.js";
 import type { MemoryStore } from "../memory/store.js";
+import { validateSkillName, isSafeRelativePath } from "../validation.js";
 import { CAVEMAN_SKILL } from "./caveman.js";
 import { INIT_SKILL } from "./init.js";
 import { SKILL_COMBO_SKILL } from "./skill-combo.js";
@@ -134,6 +135,10 @@ export class SkillManager {
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const skillDir = join(this.skillsDir, entry.name);
+      // A disk package must never shadow a built-in skill: built-ins are the
+      // canonical prompts embedded into every agent, and a shadow can never be
+      // deleted (deleteSkill refuses built-in names), so it would be permanent.
+      if (this.isBuiltin(entry.name)) continue;
       try {
         const pkg = await this.readPackageFromDisk(entry.name, skillDir);
         if (pkg) {
@@ -154,6 +159,15 @@ export class SkillManager {
    */
   async createSkill(skill: SkillDefinition | SkillPackage): Promise<void> {
     const pkg = toPackage(skill);
+    const nameCheck = validateSkillName(pkg.name);
+    if (!nameCheck.valid) {
+      throw new Error(`Invalid skill name "${pkg.name}": ${nameCheck.error}`);
+    }
+    if (this.isBuiltin(pkg.name)) {
+      throw new Error(
+        `"${pkg.name}" is a built-in skill and cannot be overridden. Choose a different name.`
+      );
+    }
     const def = packageToDefinition(pkg);
 
     this.loadedSkills.set(def.name, def);
@@ -175,6 +189,7 @@ export class SkillManager {
    * Load a SkillPackage from disk by name.
    */
   async loadSkill(name: string): Promise<SkillPackage | undefined> {
+    if (!validateSkillName(name).valid) return undefined;
     const skillDir = join(this.skillsDir, name);
     try {
       await stat(skillDir);
@@ -188,6 +203,7 @@ export class SkillManager {
    * Delete a skill entirely (directory + memory store).
    */
   async deleteSkill(name: string): Promise<boolean> {
+    if (!validateSkillName(name).valid) return false;
     if (this.isBuiltin(name)) return false;
 
     this.loadedSkills.delete(name);
@@ -272,6 +288,9 @@ export class SkillManager {
   // --- Private helpers ---
 
   private async writePackageToDisk(pkg: SkillPackage): Promise<void> {
+    if (!validateSkillName(pkg.name).valid) {
+      throw new Error(`Refusing to write skill with unsafe name "${pkg.name}".`);
+    }
     const skillDir = join(this.skillsDir, pkg.name);
     await mkdir(skillDir, { recursive: true });
 
@@ -297,6 +316,11 @@ export class SkillManager {
     // Additional files (scripts, templates, references)
     if (pkg.files && pkg.files.length > 0) {
       for (const file of pkg.files) {
+        // Guard against zip-slip: a package-supplied file.path like
+        // "../../hera.json" would otherwise escape the skill directory.
+        if (!isSafeRelativePath(file.path)) {
+          throw new Error(`Refusing to write skill file with unsafe path "${file.path}".`);
+        }
         const filePath = join(skillDir, file.path);
         const fileDir = join(filePath, "..");
         await mkdir(fileDir, { recursive: true });
