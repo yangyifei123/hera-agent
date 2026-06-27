@@ -1,6 +1,6 @@
 // src/store/json-collection-store.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JsonCollectionStore, assertSafeId } from "./json-collection-store.js";
@@ -88,5 +88,35 @@ describe("JsonCollectionStore", () => {
   it("rejects unsafe ids", async () => {
     expect(() => assertSafeId("../escape")).toThrow();
     await expect(store.save({ id: "a/b", status: "x", value: 1 })).rejects.toThrow();
+  });
+
+  it("serializes concurrent saves of the same id so memory matches the last write", async () => {
+    // Both fired without awaiting; the second-queued save completes last and wins.
+    const first = store.save({ id: "k", status: "first", value: 1 });
+    const second = store.save({ id: "k", status: "second", value: 2 });
+    await Promise.all([first, second]);
+
+    const winner = { id: "k", status: "second", value: 2 };
+    expect(await store.load("k")).toEqual(winner);
+    const onDisk = JSON.parse(await readFile(join(dir, "rows", "k.json"), "utf-8"));
+    expect(onDisk).toEqual(winner);
+    expect(store.byIndex("status", "first")).toHaveLength(0);
+    expect(store.byIndex("status", "second").map((r) => r.id)).toEqual(["k"]);
+    expect(store.size()).toBe(1);
+  });
+
+  it("runs concurrent saves of different ids without dropping either", async () => {
+    await Promise.all([
+      store.save({ id: "x", status: "pending", value: 1 }),
+      store.save({ id: "y", status: "pending", value: 2 }),
+    ]);
+    expect(await store.load("x")).toEqual({ id: "x", status: "pending", value: 1 });
+    expect(await store.load("y")).toEqual({ id: "y", status: "pending", value: 2 });
+    expect(
+      store
+        .byIndex("status", "pending")
+        .map((r) => r.id)
+        .sort()
+    ).toEqual(["x", "y"]);
   });
 });
