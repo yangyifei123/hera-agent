@@ -108,6 +108,34 @@ describe("MemoryStore", () => {
     expect(results).toHaveLength(0);
   });
 
+  test("multi-word query matches non-contiguous terms and ranks by coverage", async () => {
+    await store.save({
+      id: "best",
+      type: "session",
+      content: "fixed the token error on the login page",
+      timestamp: 1000,
+    });
+    await store.save({
+      id: "partial",
+      type: "session",
+      content: "the login form was restyled",
+      timestamp: 2000,
+    });
+    await store.save({
+      id: "nope",
+      type: "session",
+      content: "unrelated note about caching",
+      timestamp: 3000,
+    });
+    const results = await store.search("login token error");
+    // The old flat-substring search returned 0 here (no contiguous phrase).
+    expect(results.map((r) => r.id)).toContain("best");
+    expect(results.map((r) => r.id)).toContain("partial");
+    expect(results.map((r) => r.id)).not.toContain("nope");
+    // Full-coverage match ranks above the single-term match.
+    expect(results[0].id).toBe("best");
+  });
+
   test("rejects unsafe memory ids", async () => {
     await expect(
       store.save({ id: "../escape", type: "session", content: "bad", timestamp: 1000 })

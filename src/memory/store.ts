@@ -113,16 +113,21 @@ export class MemoryStore {
       const since = options.since;
       all = all.filter((m) => m.timestamp >= since);
     }
-    const lower = query.toLowerCase();
-    const wordBoundaryRe = new RegExp(`\\b${escapeRegex(lower)}`, "i");
+    const lower = query.toLowerCase().trim();
+    const terms = lower.split(/\s+/).filter(Boolean);
+
+    // Empty query returns everything (recency order from list()), since/limit still apply.
+    if (terms.length === 0) return all.slice(0, options?.limit);
+
+    // Tokenized, term-coverage relevance ranking. A multi-word query like
+    // "login token error" matches memories containing those terms anywhere
+    // (not only the exact contiguous phrase), ranked by how many terms hit and
+    // whether the whole phrase / the id matched; ties break by recency.
     return all
-      .filter(
-        (m) =>
-          wordBoundaryRe.test(m.content) ||
-          wordBoundaryRe.test(m.id) ||
-          m.content.toLowerCase().includes(lower) ||
-          m.id.toLowerCase().includes(lower)
-      )
+      .map((m) => ({ m, score: relevanceScore(m, lower, terms) }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score || b.m.timestamp - a.m.timestamp)
+      .map((s) => s.m)
       .slice(0, options?.limit);
   }
 
@@ -148,6 +153,35 @@ export class MemoryStore {
 
 function isExpired(memory: HeraMemory): boolean {
   return memory.expiresAt != null && memory.expiresAt <= Date.now();
+}
+
+/**
+ * Relevance score for a memory against a tokenized query. 0 means "no match"
+ * (excluded). Higher is more relevant: whole-phrase presence, per-term
+ * word-boundary hits (weighted higher than loose substring), id/title matches,
+ * and a term-coverage bonus.
+ */
+function relevanceScore(m: HeraMemory, lower: string, terms: string[]): number {
+  const content = m.content.toLowerCase();
+  const id = m.id.toLowerCase();
+  const hay = `${content} ${id}`;
+  let score = 0;
+  let matched = 0;
+  if (content.includes(lower) || id.includes(lower)) score += 10; // exact phrase present
+  for (const t of terms) {
+    const wordBoundary = new RegExp(`\\b${escapeRegex(t)}`);
+    if (wordBoundary.test(hay)) {
+      matched++;
+      score += 2;
+      if (id.includes(t)) score += 1; // id/title matches weigh more
+    } else if (hay.includes(t)) {
+      matched++;
+      score += 1;
+    }
+  }
+  if (matched === 0) return 0;
+  score += (matched / terms.length) * 3; // reward broader term coverage
+  return score;
 }
 
 function escapeRegex(s: string): string {

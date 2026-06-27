@@ -15,7 +15,7 @@ import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
 import { extractMemories } from "./memory/smart-extractor.js";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
 
 // Module-level engine reference prevents garbage collection of the running supervisor/loopManager.
@@ -254,7 +254,8 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           def.description,
           fullPrompt,
           def.model ?? model,
-          def.mode as import("./types.js").AgentMode
+          def.mode as import("./types.js").AgentMode,
+          { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
         );
         configInput.agent[name] = childConfig;
       }
@@ -307,8 +308,16 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           if (messages && messages.length > 0) {
             const extracted = extractMemories(messages);
             for (const memory of extracted) {
+              // Deterministic content-hash id so re-extraction of an overlapping
+              // message window (every compaction re-scans recent messages)
+              // overwrites the same entry instead of accumulating duplicates.
+              const normalized = memory.content.toLowerCase().replace(/\s+/g, " ").trim();
+              const hash = createHash("sha1")
+                .update(`${memory.category}:${normalized}`)
+                .digest("hex")
+                .slice(0, 12);
               await store.save({
-                id: `auto-${memory.category}-${randomUUID().slice(0, 8)}`,
+                id: `auto-${memory.category}-${hash}`,
                 type: memory.category,
                 content: memory.content,
                 timestamp: Date.now(),
