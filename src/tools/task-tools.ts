@@ -7,6 +7,36 @@ import { randomUUID } from "node:crypto";
 
 const z = tool.schema;
 
+/**
+ * Strict schema for a single AcceptanceCheck. Replaces the previous
+ * `z.array(z.any())` so malformed checks are rejected at enqueue with a clear
+ * message instead of failing opaquely later in the supervisor.
+ */
+const acceptanceCheckSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("shell"),
+    command: z.string().min(1),
+    cwd: z.string().optional(),
+    expectExit: z.number().optional(),
+    timeoutMs: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("file_exists"),
+    path: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("regex"),
+    source: z.enum(["output", "file"]),
+    path: z.string().optional(),
+    pattern: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("llm_judge"),
+    rubric: z.string().min(1),
+    threshold: z.number().optional(),
+  }),
+]);
+
 interface EnqueueInput {
   goal: string;
   executor?: string;
@@ -20,6 +50,13 @@ function validateEnqueue(input: EnqueueInput): string | null {
   if (!input.goal || input.goal.trim().length === 0) return "Error: task goal is required.";
   if (!Array.isArray(input.acceptance) || input.acceptance.length === 0) {
     return "Error: at least one acceptance check is required (a task with no acceptance check cannot be verified complete).";
+  }
+  for (let i = 0; i < input.acceptance.length; i++) {
+    const parsed = acceptanceCheckSchema.safeParse(input.acceptance[i]);
+    if (!parsed.success) {
+      const reason = parsed.error.issues.map((iss) => iss.message).join("; ") || "invalid shape";
+      return `Error: acceptance check #${i} is malformed (${reason}). Expected one of shell/file_exists/regex.`;
+    }
   }
   return null;
 }
@@ -52,7 +89,7 @@ export function createTaskTools(ctx: PluginContext) {
         goal: z.string().describe("What the task must accomplish"),
         executor: z.string().optional().describe("Agent name to run it (default: hera)"),
         acceptance: z
-          .array(z.any())
+          .array(acceptanceCheckSchema)
           .describe(
             "Acceptance checks (shell/file_exists/regex); ALL must pass. Required, non-empty."
           ),

@@ -120,6 +120,40 @@ describe("AcceptanceEvaluator", () => {
     expect(evalr.allPassed(r)).toBe(true);
   });
 
+  it("fails an over-long regex pattern instead of hanging", async () => {
+    const tooLong = "a".repeat(2000);
+    const start = Date.now();
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern: tooLong }],
+      { output: "a".repeat(2000), cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it("does not hang on a catastrophic-backtracking pattern against large input", async () => {
+    const pattern = "(a+)+$";
+    const output = "a".repeat(60000) + "!";
+    const start = Date.now();
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern }],
+      { output, cwd: dir },
+      1
+    );
+    expect(typeof r[0].passed).toBe("boolean");
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+
+  it("still matches a normal regex against bounded output", async () => {
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern: "BUILD (OK|DONE)" }],
+      { output: "result: BUILD OK", cwd: dir },
+      1
+    );
+    expect(evalr.allPassed(r)).toBe(true);
+  });
+
   it("fails shell checks when shell is disabled", async () => {
     const disabled = new AcceptanceEvaluator({ shellEnabled: false });
     const r = await disabled.evaluate(

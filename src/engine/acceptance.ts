@@ -9,6 +9,56 @@ export interface AcceptanceContext {
   cwd: string;
 }
 
+/**
+ * Reject regex patterns longer than this. Catastrophic backtracking (ReDoS)
+ * needs a sufficiently nested/ambiguous pattern; a hard length cap removes the
+ * worst offenders before they ever compile.
+ */
+const MAX_REGEX_PATTERN_LENGTH = 1000;
+/**
+ * Only test the regex against the first N chars of source. Backtracking blowup
+ * scales with input length, so bounding the haystack bounds worst-case work
+ * (a synchronous regex cannot be interrupted mid-`exec`).
+ */
+const MAX_REGEX_SOURCE_LENGTH = 256_000;
+
+/**
+ * Static heuristic for catastrophic-backtracking shapes (e.g. `(a+)+`, `(.*)*`,
+ * `([a-z]+)*`): a quantifier immediately inside a group that is itself quantified
+ * with an unbounded repeat. Synchronous JS regex cannot be interrupted once it
+ * starts, so we refuse to run these rather than risk wedging the loop tick.
+ */
+function looksCatastrophic(pattern: string): boolean {
+  // Drop escaped chars so `\+\)` and the like don't trip the detector.
+  const stripped = pattern.replace(/\\./g, "");
+  return /[+*?}]\)[+*{]/.test(stripped);
+}
+
+/**
+ * Run a single regex test with bounds against catastrophic backtracking (ReDoS).
+ * Over-long, statically dangerous, or invalid patterns fail the check (return
+ * false) rather than risk wedging the supervisor/loop tick, and the source is
+ * truncated so the matcher's work is bounded.
+ */
+export function boundedRegexTest(pattern: string, source: string): boolean {
+  if (typeof pattern !== "string" || pattern.length === 0) return false;
+  if (pattern.length > MAX_REGEX_PATTERN_LENGTH) return false;
+  if (looksCatastrophic(pattern)) return false;
+  const haystack =
+    source.length > MAX_REGEX_SOURCE_LENGTH ? source.slice(0, MAX_REGEX_SOURCE_LENGTH) : source;
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern);
+  } catch {
+    return false;
+  }
+  try {
+    return re.test(haystack);
+  } catch {
+    return false;
+  }
+}
+
 /** Calls an LLM to judge work output; returns the model's raw text reply. */
 export type JudgeRunner = (prompt: string) => Promise<string>;
 
@@ -95,7 +145,7 @@ export class AcceptanceEvaluator {
       if (!check.path) return this.result(check, false, now, "regex file source requires path");
       source = await readFile(this.resolvePath(check.path, ctx.cwd), "utf-8");
     }
-    const matched = new RegExp(check.pattern).test(source);
+    const matched = boundedRegexTest(check.pattern, source);
     return this.result(check, matched, now, matched ? "matched" : "no match");
   }
 
