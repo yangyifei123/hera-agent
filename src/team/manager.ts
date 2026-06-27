@@ -31,6 +31,32 @@ export interface SpawnedSession {
   result?: string;
 }
 
+/**
+ * Discriminated outcome of polling a spawned session for completion.
+ * Only `completed` carries a real assistant result that may be forwarded
+ * downstream; every other status signals the chain should abort rather than
+ * treat the sentinel text as a genuine prior-agent output.
+ */
+export interface PollResult {
+  status: "completed" | "timeout" | "error" | "no-client";
+  text: string;
+}
+
+/**
+ * Upper bound on how many spawned-session records we retain per team across
+ * re-spawns. Prior in-flight sessions are merged into newer runs so they stay
+ * reachable for recovery; this cap keeps the merged list from growing without
+ * bound. Defined locally to avoid editing the shared constants module.
+ */
+const TEAM_MAX_TRACKED_SESSIONS = 200;
+
+function pollStatusToSessionStatus(status: PollResult["status"]): SpawnedSession["status"] {
+  // A hard `error` is terminal; `timeout`/`no-client` leave the session in an
+  // indeterminate state where it may still be alive, so mark it `unknown` so
+  // recoverSessions can reconcile it later.
+  return status === "error" ? "error" : "unknown";
+}
+
 export class TeamManager {
   private store: MemoryStore;
   private teams: Map<string, TeamDefinition> = new Map();
@@ -165,9 +191,18 @@ export class TeamManager {
           );
           if (hasClient) {
             const result = await this.pollSessionCompletion(session.sessionId);
+            if (result.status !== "completed") {
+              // Upstream produced no genuine output. Do NOT forward the sentinel
+              // text downstream (which would poison the next member); surface the
+              // failure on this session and abort the rest of the chain.
+              session.status = pollStatusToSessionStatus(result.status);
+              session.result = `Chain aborted: upstream @${member.agentName} produced no output (${result.status}).`;
+              sessions.push(session);
+              break;
+            }
             session.status = "completed";
-            session.result = result;
-            accumulated = `Previous agent (${member.agentName}) output:\n${result}\n\nContinue with your task based on the above.`;
+            session.result = result.text;
+            accumulated = `Previous agent (${member.agentName}) output:\n${result.text}\n\nContinue with your task based on the above.`;
           }
           sessions.push(session);
         }
@@ -184,14 +219,23 @@ export class TeamManager {
           hasClient
         );
         let plan = taskPrompt;
+        let planReady = true;
         if (hasClient && team.members.length > 1) {
           const planResult = await this.pollSessionCompletion(planSession.sessionId);
-          planSession.status = "completed";
-          planSession.result = planResult;
-          plan = `Plan from ${planner.agentName}:\n${planResult}\n\nExecute your part of this plan.`;
+          if (planResult.status === "completed") {
+            planSession.status = "completed";
+            planSession.result = planResult.text;
+            plan = `Plan from ${planner.agentName}:\n${planResult.text}\n\nExecute your part of this plan.`;
+          } else {
+            // The planner produced no genuine plan. Do NOT fan out the sentinel
+            // text to executors; surface the failure and skip downstream spawns.
+            planSession.status = pollStatusToSessionStatus(planResult.status);
+            planSession.result = `Plan aborted: planner @${planner.agentName} produced no plan (${planResult.status}).`;
+            planReady = false;
+          }
         }
         sessions.push(planSession);
-        if (team.members.length > 1) {
+        if (planReady && team.members.length > 1) {
           const promises = team.members.slice(1).map(async (member) => {
             const session = await this.spawnMemberSession(
               member.agentName,
@@ -208,15 +252,40 @@ export class TeamManager {
       }
     }
 
-    this.spawnedSessions.set(teamName, sessions);
+    const reconciled = this.reconcileSpawnedSessions(teamName, sessions);
+    this.spawnedSessions.set(teamName, reconciled);
     await this.store.save({
       id: teamSessionMemoryId(teamName),
       type: "team-session",
-      content: JSON.stringify({ teamName, sessions }),
+      content: JSON.stringify({ teamName, sessions: reconciled }),
       timestamp: Date.now(),
-      metadata: { sessionCount: sessions.length },
+      metadata: { sessionCount: reconciled.length },
     });
     return sessions;
+  }
+
+  /**
+   * Merge a freshly spawned batch with any still in-flight sessions from prior
+   * runs so re-spawning a team does not orphan earlier live sessions. Prior
+   * sessions that already reached a terminal state (completed/error) are
+   * dropped; non-terminal ones are retained ahead of the new batch. Records are
+   * deduplicated by sessionId (the new batch wins) and bounded to avoid
+   * unbounded growth across many re-spawns.
+   */
+  private reconcileSpawnedSessions(teamName: string, fresh: SpawnedSession[]): SpawnedSession[] {
+    const prior = this.spawnedSessions.get(teamName) ?? [];
+    const inFlightPrior = prior.filter(
+      (session) =>
+        session.status === "running" || session.status === "pending" || session.status === "unknown"
+    );
+    const bySession = new Map<string, SpawnedSession>();
+    for (const session of inFlightPrior) bySession.set(session.sessionId, session);
+    // New batch takes precedence on sessionId collisions.
+    for (const session of fresh) bySession.set(session.sessionId, session);
+    const merged = Array.from(bySession.values());
+    return merged.length > TEAM_MAX_TRACKED_SESSIONS
+      ? merged.slice(merged.length - TEAM_MAX_TRACKED_SESSIONS)
+      : merged;
   }
 
   private async spawnMemberSession(
@@ -257,11 +326,11 @@ export class TeamManager {
     }
   }
 
-  private async pollSessionCompletion(sessionId: string): Promise<string> {
+  private async pollSessionCompletion(sessionId: string): Promise<PollResult> {
     const maxAttempts = TEAM_POLL_MAX_ATTEMPTS;
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        if (!this.client) return "(no client)";
+        if (!this.client) return { status: "no-client", text: "" };
         const statusResult = await this.client.session.status();
         const status = statusResult.data?.[sessionId]?.type;
         if (status === "idle") {
@@ -270,17 +339,19 @@ export class TeamManager {
           for (let j = messages.length - 1; j >= 0; j--) {
             const message = messages[j];
             if (message?.info.role === "assistant") {
-              return message.parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
+              const text = message.parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
+              return { status: "completed", text };
             }
           }
-          return "(no response)";
+          // Idle but no assistant message: not a genuine completion.
+          return { status: "error", text: "" };
         }
       } catch {
         // continue
       }
       await new Promise((r) => setTimeout(r, TEAM_POLL_INTERVAL_MS));
     }
-    return "(timeout)";
+    return { status: "timeout", text: "" };
   }
 
   async sendMessage(
@@ -317,13 +388,49 @@ export class TeamManager {
     return msg;
   }
 
+  /**
+   * A message is "protected" while a required recipient has not yet
+   * acknowledged it. Directed messages (to a specific member) require that
+   * member's acknowledgement; broadcasts have no single required recipient and
+   * are therefore always eligible for eviction under FIFO/TTL pressure.
+   */
+  private isMessageProtected(message: TeamMessage): boolean {
+    if (message.to === "broadcast") return false;
+    const acknowledged = message.acknowledgedBy ?? [];
+    return !acknowledged.includes(message.to);
+  }
+
   private pruneMessageQueue(queue: TeamMessage[]): TeamMessage[] {
     const cutoff = Date.now() - TEAM_MESSAGE_TTL_MS;
-    const retained = queue.filter((message) => message.timestamp >= cutoff);
-    const expired = queue.filter((message) => message.timestamp < cutoff);
-    const overflowCount = Math.max(0, retained.length - TEAM_MESSAGE_QUEUE_CAP);
-    const overflow = overflowCount > 0 ? retained.splice(0, overflowCount) : [];
-    queue.splice(0, queue.length, ...retained);
+
+    // TTL eviction: never expire a message that still has an unacknowledged
+    // required recipient, even if it is past the TTL window.
+    const expired: TeamMessage[] = [];
+    const afterTtl: TeamMessage[] = [];
+    for (const message of queue) {
+      if (message.timestamp < cutoff && !this.isMessageProtected(message)) {
+        expired.push(message);
+      } else {
+        afterTtl.push(message);
+      }
+    }
+
+    // Overflow eviction: drop oldest fully-acknowledged messages first; protected
+    // messages are kept even if that leaves the queue above the soft cap.
+    const overflowCount = Math.max(0, afterTtl.length - TEAM_MESSAGE_QUEUE_CAP);
+    const overflow: TeamMessage[] = [];
+    const survivors: TeamMessage[] = [];
+    let remainingToEvict = overflowCount;
+    for (const message of afterTtl) {
+      if (remainingToEvict > 0 && !this.isMessageProtected(message)) {
+        overflow.push(message);
+        remainingToEvict--;
+      } else {
+        survivors.push(message);
+      }
+    }
+
+    queue.splice(0, queue.length, ...survivors);
     return [...expired, ...overflow];
   }
 
