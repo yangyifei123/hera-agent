@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readdir, unlink, readFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AgentDefinition,
@@ -8,7 +8,7 @@ import type {
   AgentTemplateName,
 } from "../types.js";
 import { buildAgentPrompt } from "./hera.js";
-import { getDefaultSkills, getDefaultPermission } from "../helpers.js";
+import { getDefaultSkills, getDefaultPermission, atomicWriteText } from "../helpers.js";
 import { heraLog } from "../logger.js";
 
 export class AgentRegistry {
@@ -35,7 +35,7 @@ export class AgentRegistry {
     const frontmatter = this.buildFrontmatter(def);
     const content = frontmatter + fullPrompt;
     const filePath = join(this.agentsDir, `${def.name}.md`);
-    await writeFile(filePath, content, "utf-8");
+    await atomicWriteText(filePath, content);
 
     const config: Record<string, unknown> = {
       description: def.description,
@@ -117,7 +117,7 @@ export class AgentRegistry {
       "- `hera_recall` - Search memory",
       "",
     ].join("\n");
-    await writeFile(filePath, content, "utf-8");
+    await atomicWriteText(filePath, content);
   }
 
   async listRegistered(): Promise<string[]> {
@@ -149,9 +149,14 @@ export class AgentRegistry {
     // Re-write the full file
     const filePath = join(this.agentsDir, `${name}.md`);
     const content = await readFile(filePath, "utf-8");
-    // Find and update evolution section
-    const updated = this.injectEvolutionBlock(content, def.evolutionLog);
-    await writeFile(filePath, updated, "utf-8");
+    // Split off the existing frontmatter so we can regenerate it with the
+    // updated structured evolution log; otherwise evolutionLogJson is stale
+    // and def.evolutionLog comes back empty on reload.
+    const fmMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+    const body = fmMatch ? fmMatch[1] : content;
+    const updatedBody = this.injectEvolutionBlock(body, def.evolutionLog);
+    const updated = this.buildFrontmatter(def) + updatedBody;
+    await atomicWriteText(filePath, updated);
     return true;
   }
 

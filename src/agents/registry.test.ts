@@ -147,6 +147,38 @@ describe("AgentRegistry metadata round-trip", () => {
     expect(read!.prompt).toContain("Legacy prompt");
   });
 
+  it("round-trips an appended evolution entry across reload", async () => {
+    const def: AgentDefinition = {
+      name: "evolving-agent",
+      description: "Evolving agent",
+      mode: "subagent",
+      prompt: "You evolve over time.",
+      skills: ["caveman"],
+    };
+    await registry.register(def, new Map<string, SkillDefinition>());
+
+    const entry = {
+      timestamp: 1717000000000,
+      trigger: "reflection",
+      observation: "needed to be more careful",
+      directive: "double-check edge cases before finishing",
+      rolledBack: false,
+    };
+    expect(await registry.appendEvolution("evolving-agent", entry)).toBe(true);
+
+    // Fresh registry simulates a restart.
+    const reloaded = new AgentRegistry(tmp);
+    const read = await reloaded.readDefinition("evolving-agent");
+    expect(read).toBeDefined();
+    // The structured log now round-trips (was lost before: evolutionLogJson
+    // was never rewritten by appendEvolution).
+    expect(read!.evolutionLog).toEqual([entry]);
+    expect(read!.evolvedAt).toBeGreaterThan(0);
+    // With promptB64, def.prompt round-trips to the raw author prompt; the
+    // directive reaches the live prompt via the evolution log, not def.prompt.
+    expect(read!.prompt).toBe("You evolve over time.");
+  });
+
   it("ignores malformed permission metadata", async () => {
     const malformed = [
       "---",
