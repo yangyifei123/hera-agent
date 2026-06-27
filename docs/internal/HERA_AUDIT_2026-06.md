@@ -37,6 +37,41 @@ research-driven capability proposals.
 
 ---
 
+## ✅ Fixed — team-implemented batch (6 worktree agents, integrated + verified, 827 tests green)
+
+A team of 6 worktree-isolated agents implemented the remaining backlog in
+parallel (file-disjoint). Their branches were based on a stale commit, so each
+change was re-applied/integrated onto the current hardening tree by hand, with
+the full gate (typecheck + lint + 827 tests) green at every commit:
+
+- **Per-id write locking** in `JsonCollectionStore.save` (promise-chain mutex) —
+  concurrent same-id saves can no longer diverge memory from disk (the
+  cancel-vs-executor-success terminal-task resurrection). `src/store`
+- **Team coordination** (`src/team/manager.ts`): `pollSessionCompletion` returns
+  a discriminated result so a timed-out/empty upstream session no longer marks
+  "completed" or poisons the downstream prompt; `spawnTeam` reconciles prior
+  in-flight sessions on re-spawn instead of orphaning them; `pruneMessageQueue`
+  never evicts a directed message with an unacknowledged recipient.
+- **Progressive skill disclosure**: the config hook embeds a compact skill
+  manifest (name + description) instead of full bodies, and `hera_load_skill`
+  loads a skill's full guidance on demand. `src/index.ts`, `src/skills`, `src/tools`
+- **Evolution-log round-trip + atomic agent writes** (`src/agents/registry.ts`):
+  `appendEvolution` rewrites frontmatter so the structured log survives reload;
+  agent `.md` writes go through `atomicWriteText`.
+- **Acceptance validation**: strict zod schema at enqueue + `boundedRegexTest`
+  (length cap + catastrophic-shape guard + truncated haystack) so a ReDoS
+  pattern can't wedge the supervisor/loop tick. `src/tools/task-tools.ts`, `src/engine/acceptance.ts`
+- **Generated plugins** honor `HERA_CONFIG_ROOT`/`OPENCODE_CONFIG_ROOT` (not only
+  `HERA_DIR`) for both the engine dataDir and the memory pool. `src/generators`
+
+Still open (smaller / needs care): session abort/cleanup on timeout/cancel
+(thread an AbortSignal + session.delete); cross-process lease heartbeat (now
+unblocked by per-id locking, but re-verify it doesn't race the executor's
+terminal save); the deeper "Hera authors acceptance from the goal" anti-gaming
+measure; assorted low-severity items in the appendix.
+
+---
+
 ## ✅ Fixed in the 2026-06-27 hardening batch
 
 **Engine / HDTE durability (north star: ≥500 tasks, no perfunctory completion)**
