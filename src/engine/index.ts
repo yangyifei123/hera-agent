@@ -51,7 +51,18 @@ export interface EngineOptions {
   config?: EngineConfig;
   ownerId?: string;
   teamManager?: { recoverSessions(): Promise<number> };
+  /**
+   * When true, reuse a single process-wide engine per dataDir. OpenCode loads
+   * Hera and every generated agent/team plugin in ONE process; without this each
+   * createEngine builds its own in-memory TaskStore over the SAME hera-data dir,
+   * so two engines both see a task as pending and both run it (duplicate side
+   * effects, last-writer-wins). The singleton makes them share one store.
+   */
+  singleton?: boolean;
 }
+
+// Process-wide engine registry keyed by absolute dataDir.
+const engineRegistry = new Map<string, Engine>();
 
 export interface Engine {
   taskStore: TaskStore;
@@ -70,6 +81,10 @@ export interface Engine {
 const NOOP_TEAM = { recoverSessions: async () => 0 };
 
 export function createEngine(opts: EngineOptions): Engine {
+  if (opts.singleton) {
+    const existing = engineRegistry.get(opts.dataDir);
+    if (existing) return existing;
+  }
   const c = opts.config ?? {};
   const taskStore = new TaskStore(opts.dataDir);
   const loopStore = new LoopStore(opts.dataDir);
@@ -112,7 +127,7 @@ export function createEngine(opts: EngineOptions): Engine {
     ...createRecoveryTools(toolCtx),
   };
 
-  return {
+  const engine: Engine = {
     taskStore,
     loopStore,
     loopManager,
@@ -135,6 +150,12 @@ export function createEngine(opts: EngineOptions): Engine {
     stop() {
       supervisor.stop();
       loopManager.stop();
+      if (opts.singleton && engineRegistry.get(opts.dataDir) === engine) {
+        engineRegistry.delete(opts.dataDir);
+      }
     },
   };
+
+  if (opts.singleton) engineRegistry.set(opts.dataDir, engine);
+  return engine;
 }

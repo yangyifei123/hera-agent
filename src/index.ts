@@ -152,6 +152,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     client,
     config,
     teamManager,
+    singleton: true,
   });
   await engine.init();
   await engine.recover();

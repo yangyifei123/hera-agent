@@ -27,6 +27,19 @@ describe("createEngine", () => {
     expect(typeof engine.stop).toBe("function");
   });
 
+  it("returns the same engine instance per dataDir when singleton is set", () => {
+    const a = createEngine({ dataDir: dir, cwd: dir, client: undefined, singleton: true });
+    const b = createEngine({ dataDir: dir, cwd: dir, client: undefined, singleton: true });
+    expect(a).toBe(b);
+    a.stop(); // deregister so the shared dataDir does not leak into other tests
+  });
+
+  it("builds independent engines per dataDir without singleton", () => {
+    const a = createEngine({ dataDir: dir, cwd: dir, client: undefined });
+    const b = createEngine({ dataDir: dir, cwd: dir, client: undefined });
+    expect(a).not.toBe(b);
+  });
+
   it("runs a task end-to-end through the factory", async () => {
     // a stub runner that writes the acceptance file: inject via the engine's executor?
     // Instead, drive the supervisor with a custom runner by constructing through createEngine

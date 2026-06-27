@@ -196,7 +196,7 @@ function getHeraDataDir(): string {
 
     // Conditional engine bootstrap (only when withEngine)
     const engineBootstrap = withEngine
-      ? `  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client });
+      ? `  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client, singleton: true });
   await engine.init();
   await engine.recover();
   engine.start();
