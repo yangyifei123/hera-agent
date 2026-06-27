@@ -186,8 +186,10 @@ export class PluginGenerator {
     const heraDataDirHelper = withEngine
       ? `
 function getHeraDataDir(): string {
-  const env = process.env.HERA_DIR;
-  if (env) return env;
+  const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
+  if (configRoot) return join(configRoot, "hera-data");
+  const heraDir = process.env.HERA_DIR;
+  if (heraDir) return heraDir;
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
   return join(home, ".config", "opencode", "hera-data");
 }
@@ -230,8 +232,13 @@ const SUBDIR: Record<string, string> = {
 };
 
 function getMemoryDir(): string {
-  const env = process.env.HERA_DIR;
-  if (env) return join(env, "memory");
+  // Mirror Hera's config-root precedence so generated agents share Hera's memory
+  // pool even under a custom config root:
+  //   HERA_CONFIG_ROOT -> OPENCODE_CONFIG_ROOT -> HERA_DIR (compat) -> home default.
+  const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
+  if (configRoot) return join(configRoot, "hera-data", "memory");
+  const heraDir = process.env.HERA_DIR;
+  if (heraDir) return join(heraDir, "memory");
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
   return join(home, ".config", "opencode", "hera-data", "memory");
 }

@@ -455,6 +455,14 @@ describe("PluginGenerator", () => {
       expect(code).toContain("memory");
     });
 
+    it("should honor HERA_CONFIG_ROOT / OPENCODE_CONFIG_ROOT precedence before HERA_DIR", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("HERA_CONFIG_ROOT");
+      expect(code).toContain("OPENCODE_CONFIG_ROOT");
+      expect(code.indexOf("HERA_CONFIG_ROOT")).toBeLessThan(code.indexOf("HERA_DIR"));
+    });
+
     it("memory tool implementation should be inline (no hera-agent runtime dep for memory)", () => {
       // Use withEngine=false to verify that memory tools are fully self-contained
       // when engine injection is not requested. When withEngine=true the generated

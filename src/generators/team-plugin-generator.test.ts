@@ -133,6 +133,16 @@ describe("TeamPluginGenerator", () => {
       expect(code).not.toContain("TeamManager");
       expect(code).not.toContain("MemoryStore");
     });
+
+    it("honors HERA_CONFIG_ROOT / OPENCODE_CONFIG_ROOT precedence before HERA_DIR", () => {
+      const team = makeTeam();
+      const members = team.members.map((m) => makeAgent(m.agentName));
+      const code = gen.generatePluginIndex(team, members, []);
+      expect(code).toContain("HERA_CONFIG_ROOT");
+      expect(code).toContain("OPENCODE_CONFIG_ROOT");
+      expect(code).toContain("hera-data");
+      expect(code.indexOf("HERA_CONFIG_ROOT")).toBeLessThan(code.indexOf("HERA_DIR"));
+    });
   });
 
   describe("engine injection", () => {
