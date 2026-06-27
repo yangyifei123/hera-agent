@@ -14,8 +14,7 @@ import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./ty
 import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
-import { extractMemories } from "./memory/smart-extractor.js";
-import { createHash } from "node:crypto";
+import { fetchSessionMessages, saveAutoMemories } from "./memory/session-messages.js";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
 
 // Module-level engine reference prevents garbage collection of the running supervisor/loopManager.
@@ -29,8 +28,10 @@ type ChatTransformInput = {
   agent?: string;
 };
 
+// Current OpenCode passes only a sessionID to the compacting hook; older
+// versions passed `messages`. We fetch messages by id via the client.
 type CompactingInput = {
-  messages?: Array<{ role: string; content: string }>;
+  sessionID?: string;
 };
 
 const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
@@ -310,35 +311,16 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         );
       }
 
-      // Auto-memory extraction
+      // Auto-memory extraction. The hook input only carries a sessionID on
+      // current OpenCode, so fetch the messages by id via the client rather than
+      // reading a (no-longer-present) input.messages field.
       if (config.auto_memory === true) {
         try {
-          const messages = (input as CompactingInput).messages;
-          if (messages && messages.length > 0) {
-            const extracted = extractMemories(messages);
-            for (const memory of extracted) {
-              // Deterministic content-hash id so re-extraction of an overlapping
-              // message window (every compaction re-scans recent messages)
-              // overwrites the same entry instead of accumulating duplicates.
-              const normalized = memory.content.toLowerCase().replace(/\s+/g, " ").trim();
-              const hash = createHash("sha1")
-                .update(`${memory.category}:${normalized}`)
-                .digest("hex")
-                .slice(0, 12);
-              await store.save({
-                id: `auto-${memory.category}-${hash}`,
-                type: memory.category,
-                content: memory.content,
-                timestamp: Date.now(),
-                metadata: { source: "auto-memory", confidence: memory.confidence },
-              });
-            }
-            if (extracted.length > 0) {
-              heraLog(
-                "debug",
-                `Auto-memory: extracted ${extracted.length} memories from session compaction`
-              );
-            }
+          const sessionID = (input as CompactingInput).sessionID;
+          const messages = await fetchSessionMessages(client, sessionID);
+          const saved = await saveAutoMemories(store, messages);
+          if (saved > 0) {
+            heraLog("debug", `Auto-memory: extracted ${saved} memories from session compaction`);
           }
         } catch (err) {
           heraLog("debug", "Auto-memory extraction failed during compaction", err);

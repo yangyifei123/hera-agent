@@ -1,21 +1,9 @@
 import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import { proposeEvolution } from "../evolution/auto-evolve.js";
+import { fetchSessionMessages } from "../memory/session-messages.js";
 
 const z = tool.schema;
-
-interface SessionPart {
-  text?: string;
-}
-
-interface SessionMessage {
-  info?: { role?: string };
-  parts?: SessionPart[];
-}
-
-function isSessionMessage(message: unknown): message is SessionMessage {
-  return typeof message === "object" && message !== null;
-}
 
 export function createEvolutionTools(ctx: PluginContext) {
   const { agentRegistry, registeredAgents, store, skillManager } = ctx;
@@ -104,33 +92,12 @@ export function createEvolutionTools(ctx: PluginContext) {
       },
       async execute(args) {
         const { distillation, client } = ctx;
-        let messages: Array<{ role: string; content: string }> | undefined;
 
-        // Try to fetch real session messages via client API
-        try {
-          if (client && typeof client.session?.messages === "function") {
-            const response = await client.session.messages({ path: { id: args.session_id } });
-            const raw = response.data ?? [];
-            messages = raw
-              .filter(isSessionMessage)
-              .filter(
-                (m) =>
-                  typeof m.info?.role === "string" && Array.isArray(m.parts) && m.parts.length > 0
-              )
-              .map((m) => ({
-                role: m.info?.role ?? "unknown",
-                content: (m.parts ?? [])
-                  .map((p) => ("text" in p && typeof p.text === "string" ? p.text : ""))
-                  .join(""),
-              }));
-          }
-        } catch {
-          // Client unavailable or messages fetch failed — fall through to fallback
-        }
-
-        // Fallback: dummy message if no real messages were fetched
+        // Fetch real session messages via the shared client helper; fall back to
+        // a placeholder when none are available so distillation still runs.
+        const messages = await fetchSessionMessages(client, args.session_id);
         const sessionMessages =
-          messages && messages.length > 0
+          messages.length > 0
             ? messages
             : [{ role: "system", content: "Session distillation requested by Hera" }];
 
