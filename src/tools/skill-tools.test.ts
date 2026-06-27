@@ -41,6 +41,35 @@ describe("createSkillTools (integration)", () => {
     expect(harness.ctx.registeredAgents.has("memory-specialist")).toBe(false);
   });
 
+  it("hera_load_skill returns the full body for a known skill", async () => {
+    const execute = skillTools.hera_load_skill.execute as (
+      args: { name: string },
+      ctx: unknown
+    ) => Promise<unknown>;
+    const result = String(await execute({ name: "caveman" }, {}));
+    expect(result).toContain("## Skill: caveman");
+    // The full body is far longer than a one-line manifest description.
+    expect(result.length).toBeGreaterThan(80);
+  });
+
+  it("hera_load_skill returns an error for an unknown skill", async () => {
+    const execute = skillTools.hera_load_skill.execute as (
+      args: { name: string },
+      ctx: unknown
+    ) => Promise<unknown>;
+    const result = String(await execute({ name: "no-such-skill" }, {}));
+    expect(result).toContain("not found");
+  });
+
+  it("hera_load_skill rejects an invalid skill name", async () => {
+    const execute = skillTools.hera_load_skill.execute as (
+      args: { name: string },
+      ctx: unknown
+    ) => Promise<unknown>;
+    const result = String(await execute({ name: "../escape" }, {}));
+    expect(result.startsWith("Error")).toBe(true);
+  });
+
   it("previews skill-to-team upgrades without persisting", async () => {
     const execute = skillTools.hera_upgrade_to_team.execute as (
       args: {

@@ -33,6 +33,23 @@ const BUILTIN_SKILLS: SkillDefinition[] = [
 const AUTO_GENERATED_FILES = ["SKILL.json", "SKILL.md", "config.json"];
 
 /**
+ * One-line instruction appended to progressive-disclosure skill manifests so an
+ * agent knows how to pull a skill's full guidance only when it is relevant.
+ */
+export const SKILL_DISCLOSURE_INSTRUCTION =
+  "Call hera_load_skill(name) to load a skill's full guidance when it is relevant to the task.";
+
+/** Collapse whitespace so a (possibly multi-line) description fits one manifest line. */
+function oneLineDescription(description: string): string {
+  return description.replace(/\s+/g, " ").trim();
+}
+
+/** Render "- name: description" manifest lines for a list of skill summaries. */
+export function renderSkillManifest(skills: Array<{ name: string; description: string }>): string {
+  return skills.map((s) => `- ${s.name}: ${oneLineDescription(s.description)}`).join("\n");
+}
+
+/**
  * Normalize a file path to forward slashes (cross-platform).
  */
 function normalizePath(p: string): string {
@@ -250,6 +267,19 @@ export class SkillManager {
 
   getSkillMap(): Map<string, SkillDefinition> {
     return new Map(this.loadedSkills);
+  }
+
+  /**
+   * Progressive-disclosure manifest: render "- name: description" lines for the
+   * given skill names (unknown names are skipped). Used to embed a compact skill
+   * index in agent prompts instead of full skill bodies.
+   */
+  describeSkills(skillNames: string[]): string {
+    const summaries = skillNames
+      .map((name) => this.loadedSkills.get(name))
+      .filter((s): s is SkillDefinition => s !== undefined)
+      .map((s) => ({ name: s.name, description: s.description }));
+    return renderSkillManifest(summaries);
   }
 
   upgradeSkillsToAgentPrompt(

@@ -30,6 +30,22 @@ describe("SkillManager", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
+  describe("progressive disclosure", () => {
+    test("describeSkills renders a name+description manifest, not full bodies", () => {
+      const manifest = manager.describeSkills(["caveman", "memory"]);
+      expect(manifest).toContain("- caveman:");
+      expect(manifest).toContain("- memory:");
+      // One line per skill — the full multi-paragraph body is NOT included.
+      expect(manifest.split("\n")).toHaveLength(2);
+    });
+
+    test("describeSkills skips unknown skill names", () => {
+      const manifest = manager.describeSkills(["caveman", "does-not-exist"]);
+      expect(manifest).toContain("- caveman:");
+      expect(manifest).not.toContain("does-not-exist");
+    });
+  });
+
   describe("security guards", () => {
     test("createSkill rejects a built-in name (no silent shadowing)", async () => {
       await expect(

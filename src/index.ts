@@ -1,6 +1,6 @@
 import type { Plugin, PluginInput, Hooks, Config } from "@opencode-ai/plugin";
 import { MemoryStore } from "./memory/store.js";
-import { SkillManager } from "./skills/manager.js";
+import { SkillManager, SKILL_DISCLOSURE_INSTRUCTION } from "./skills/manager.js";
 import { TeamManager } from "./team/manager.js";
 import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
@@ -224,13 +224,21 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       for (const [name, def] of registeredAgents) {
         if (config.disabled_agents?.includes(name)) continue;
 
-        const childSkills = def.skills
-          .map((sn) => skillManager.getSkill(sn))
-          .filter((skill): skill is NonNullable<typeof skill> => skill !== undefined);
-
-        const skillPrompts = childSkills
-          .map((s) => `## Skill: ${s.name}\n${s.prompt}`)
-          .join("\n\n");
+        // Progressive disclosure: embed a compact skill manifest (name +
+        // one-line description) instead of full skill bodies. The agent pulls a
+        // skill's full guidance on demand via hera_load_skill, shrinking the
+        // live per-agent context and letting an agent carry many skills.
+        const skillManifest = skillManager.describeSkills(def.skills);
+        const skillPrompts =
+          skillManifest.trim().length > 0
+            ? [
+                "## Skills (load on demand with hera_load_skill)",
+                "",
+                skillManifest,
+                "",
+                SKILL_DISCLOSURE_INSTRUCTION,
+              ].join("\n")
+            : "";
 
         // Include evolution log if present
         let evolutionBlock = "";

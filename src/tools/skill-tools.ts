@@ -50,6 +50,22 @@ export function createSkillTools(ctx: PluginContext) {
       },
     }),
 
+    hera_load_skill: tool({
+      description:
+        "Load a skill's full guidance/body by name. Use this when a skill listed in your skill manifest is relevant to the current task (progressive disclosure).",
+      args: { name: z.string().describe("Skill name to load") },
+      async execute(args) {
+        if (!validateSkillName(args.name).valid) {
+          return `Error: Invalid skill name "${args.name}".`;
+        }
+        const skill = skillManager.getSkill(args.name);
+        if (!skill) {
+          return `Error: Skill "${args.name}" not found. Use hera_list_skills to see available skills.`;
+        }
+        return [`## Skill: ${skill.name}`, ``, skill.prompt].join("\n");
+      },
+    }),
+
     hera_delete_skill: tool({
       description: "Delete a user-created skill. Built-in skills cannot be removed.",
       args: { name: z.string().describe("Skill name") },
