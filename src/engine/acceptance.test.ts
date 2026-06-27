@@ -65,6 +65,52 @@ describe("AcceptanceEvaluator", () => {
     expect(r[0].detail?.toLowerCase()).toContain("timeout");
   });
 
+  it("llm_judge passes when the judge returns pass + score >= threshold", async () => {
+    const judge = new AcceptanceEvaluator({
+      judge: async () => '{"pass": true, "score": 0.9, "reasoning": "solid work"}',
+    });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "the function must be implemented" }],
+      { output: "done", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(true);
+    expect(r[0].detail).toContain("0.90");
+  });
+
+  it("llm_judge fails when score is below threshold", async () => {
+    const judge = new AcceptanceEvaluator({
+      judge: async () => 'Here: {"pass": true, "score": 0.4, "reasoning": "shallow"} ok',
+    });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "x", threshold: 0.7 }],
+      { output: "meh", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+  });
+
+  it("llm_judge fails closed when no judge is configured", async () => {
+    const r = await evalr.evaluate(
+      [{ type: "llm_judge", rubric: "x" }],
+      { output: "anything", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toContain("no judge");
+  });
+
+  it("llm_judge fails closed on unparseable judge output", async () => {
+    const judge = new AcceptanceEvaluator({ judge: async () => "I think it is fine, yes." });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "x" }],
+      { output: "y", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toContain("unparseable");
+  });
+
   it("matches regex against output", async () => {
     const r = await evalr.evaluate(
       [{ type: "regex", source: "output", pattern: "DONE" }],

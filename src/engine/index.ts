@@ -73,11 +73,13 @@ export function createEngine(opts: EngineOptions): Engine {
   const c = opts.config ?? {};
   const taskStore = new TaskStore(opts.dataDir);
   const loopStore = new LoopStore(opts.dataDir);
+  const runner = new OpenCodeAgentRunner(opts.client, opts.cwd);
   const evaluator = new AcceptanceEvaluator({
     shellEnabled: getDefaultPermission()?.bash !== "deny",
     defaultTimeoutMs: c.task_lease_ms ?? TASK_LEASE_MS,
+    // Reuse the agent runner as the llm_judge backend when a client is present.
+    judge: opts.client ? (prompt) => runner.run("hera", prompt) : undefined,
   });
-  const runner = new OpenCodeAgentRunner(opts.client, opts.cwd);
   const executor = new TaskExecutor(
     taskStore,
     evaluator,

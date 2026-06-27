@@ -9,18 +9,27 @@ export interface AcceptanceContext {
   cwd: string;
 }
 
+/** Calls an LLM to judge work output; returns the model's raw text reply. */
+export type JudgeRunner = (prompt: string) => Promise<string>;
+
 export interface AcceptanceEvaluatorOptions {
   shellEnabled?: boolean;
   defaultTimeoutMs?: number;
+  judge?: JudgeRunner;
+  judgeTimeoutMs?: number;
 }
 
 export class AcceptanceEvaluator {
   private shellEnabled: boolean;
   private defaultTimeoutMs: number;
+  private judge: JudgeRunner | undefined;
+  private judgeTimeoutMs: number;
 
   constructor(options: AcceptanceEvaluatorOptions = {}) {
     this.shellEnabled = options.shellEnabled ?? true;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 300000;
+    this.judge = options.judge;
+    this.judgeTimeoutMs = options.judgeTimeoutMs ?? 120000;
   }
 
   async evaluate(
@@ -52,6 +61,8 @@ export class AcceptanceEvaluator {
           return this.regex(check, ctx, now);
         case "shell":
           return this.shell(check, ctx, now);
+        case "llm_judge":
+          return this.llmJudge(check, ctx, now);
         default:
           return this.result(check as AcceptanceCheck, false, now, "unknown check type");
       }
@@ -156,6 +167,66 @@ export class AcceptanceEvaluator {
     }
   }
 
+  private async llmJudge(
+    check: Extract<AcceptanceCheck, { type: "llm_judge" }>,
+    ctx: AcceptanceContext,
+    now: number
+  ): Promise<AcceptanceResult> {
+    if (!this.judge) return this.result(check, false, now, "no judge configured");
+    const threshold = check.threshold ?? 0.7;
+    const prompt = [
+      "You are a STRICT acceptance judge. Decide whether the work output below",
+      "genuinely satisfies the rubric. Be skeptical: default to pass=false unless",
+      "the work clearly and verifiably meets the rubric. Do not be swayed by the",
+      "author merely claiming success.",
+      "",
+      `RUBRIC:\n${check.rubric}`,
+      "",
+      `WORK OUTPUT:\n${ctx.output || "(empty)"}`,
+      "",
+      'Respond with ONLY a JSON object: {"pass": boolean, "score": number between 0 and 1, "reasoning": string}.',
+    ].join("\n");
+
+    let reply: string;
+    try {
+      reply = await this.withDeadline(this.judge(prompt), this.judgeTimeoutMs);
+    } catch (err) {
+      return this.result(
+        check,
+        false,
+        now,
+        `judge error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    const parsed = parseJudgeReply(reply);
+    if (!parsed) return this.result(check, false, now, "judge returned unparseable output");
+    const passed = parsed.pass === true && parsed.score >= threshold;
+    return this.result(
+      check,
+      passed,
+      now,
+      `judge score ${parsed.score.toFixed(2)} (threshold ${threshold}): ${parsed.reasoning}`
+    );
+  }
+
+  private withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+    if (!ms || ms <= 0) return p;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`judge timed out after ${ms}ms`)), ms);
+      p.then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(timer);
+          reject(e);
+        }
+      );
+    });
+  }
+
   private result(
     check: AcceptanceCheck,
     passed: boolean,
@@ -163,5 +234,30 @@ export class AcceptanceEvaluator {
     detail?: string
   ): AcceptanceResult {
     return { check, passed, detail, at };
+  }
+}
+
+interface JudgeVerdict {
+  pass: boolean;
+  score: number;
+  reasoning: string;
+}
+
+/** Tolerantly extract the JSON verdict object from a judge's raw reply. */
+function parseJudgeReply(reply: string): JudgeVerdict | null {
+  const start = reply.indexOf("{");
+  const end = reply.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    const obj = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>;
+    const score = typeof obj.score === "number" ? obj.score : NaN;
+    if (Number.isNaN(score)) return null;
+    return {
+      pass: obj.pass === true,
+      score: Math.max(0, Math.min(1, score)),
+      reasoning: typeof obj.reasoning === "string" ? obj.reasoning : "",
+    };
+  } catch {
+    return null;
   }
 }
