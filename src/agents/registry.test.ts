@@ -76,6 +76,41 @@ describe("AgentRegistry metadata round-trip", () => {
     expect(read!.model).toBe("test/model");
   });
 
+  it("round-trips the raw author prompt so built-in skills are not double-embedded", async () => {
+    const def: AgentDefinition = {
+      name: "round-trip-agent",
+      description: "x",
+      mode: "subagent",
+      prompt: "RAW_AUTHOR_PROMPT_ONLY\nwith multiple lines",
+      skills: ["caveman"],
+      createdAt: 1,
+    };
+    await registry.register(def, new Map());
+    const read = await registry.readDefinition("round-trip-agent");
+    expect(read).toBeDefined();
+    // def.prompt round-trips to the raw author text, NOT the rendered body that
+    // embeds the 11 built-in skill sections (which the config hook re-adds).
+    expect(read!.prompt).toBe("RAW_AUTHOR_PROMPT_ONLY\nwith multiple lines");
+    expect(read!.prompt).not.toContain("## Built-in Skill");
+  });
+
+  it("re-registering a reloaded agent stays idempotent (no compounding skills)", async () => {
+    const def: AgentDefinition = {
+      name: "idem-agent",
+      description: "x",
+      mode: "subagent",
+      prompt: "STABLE_RAW_PROMPT",
+      skills: ["caveman"],
+      createdAt: 1,
+    };
+    await registry.register(def, new Map());
+    const first = await registry.readDefinition("idem-agent");
+    // Simulate evolve/backup/restore: re-register the reloaded def.
+    await registry.register(first!, new Map());
+    const second = await registry.readDefinition("idem-agent");
+    expect(second!.prompt).toBe("STABLE_RAW_PROMPT");
+  });
+
   it("neutralizes newline injection in the description so no frontmatter keys leak", async () => {
     const def: AgentDefinition = {
       name: "inject-agent",

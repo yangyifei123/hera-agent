@@ -167,6 +167,11 @@ export class AgentRegistry {
       .trim();
     lines.push(`description: "${safeDescription}"`);
     lines.push(`mode: ${def.mode}`);
+    // Persist the RAW author prompt (base64, newline/quote-safe) so it round-trips
+    // on reload instead of def.prompt becoming the fully-rendered body (which
+    // already embeds the built-in skills). Without this, the config hook re-adds
+    // the skills on top of the body and every agent ships them twice.
+    if (def.prompt) lines.push(`promptB64: ${Buffer.from(def.prompt, "utf-8").toString("base64")}`);
     if (def.model) lines.push(`model: ${def.model}`);
     if (def.maxSteps) lines.push(`maxSteps: ${def.maxSteps}`);
     if (def.template) lines.push(`template: ${def.template}`);
@@ -201,6 +206,9 @@ export class AgentRegistry {
       return m?.[1]?.trim()?.replace(/^"(.*)"$/, "$1");
     };
 
+    const promptB64 = get("promptB64");
+    const rawPrompt =
+      promptB64 !== undefined ? Buffer.from(promptB64, "base64").toString("utf-8") : undefined;
     const maxSteps = get("maxSteps");
     const createdAt = get("createdAt");
     const evolvedAt = get("evolvedAt");
@@ -224,7 +232,9 @@ export class AgentRegistry {
       name: get("name") ?? "unknown",
       description: get("description") ?? "",
       mode: (get("mode") as AgentMode) ?? "subagent",
-      prompt: body.trim(),
+      // Prefer the round-tripped raw prompt; fall back to the body for legacy
+      // agents written before promptB64 existed.
+      prompt: rawPrompt ?? body.trim(),
       model: get("model"),
       skills: parsedSkills ?? getDefaultSkills(),
       tools: parsedTools,
