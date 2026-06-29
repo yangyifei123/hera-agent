@@ -1,6 +1,14 @@
 import { describe, it, expect } from "bun:test";
-import { createChildAgentConfig } from "./hera.js";
+import { createChildAgentConfig, createAgentFromTemplate } from "./hera.js";
 import { DEFAULT_CHILD_MAX_STEPS } from "../constants.js";
+
+describe("createAgentFromTemplate", () => {
+  it("does not duplicate skills that templates redundantly list (e.g. skill-combo)", () => {
+    const def = createAgentFromTemplate("coder", "c1");
+    expect(def.skills.filter((s) => s === "skill-combo")).toHaveLength(1);
+    expect(new Set(def.skills).size).toBe(def.skills.length);
+  });
+});
 
 describe("createChildAgentConfig", () => {
   it("uses defaults when no overrides are given", () => {

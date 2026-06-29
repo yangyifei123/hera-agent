@@ -241,6 +241,27 @@ describe("createAgentTools (integration)", () => {
       const def = harness.ctx.registeredAgents.get("audit-bot");
       expect(def?.template).toBe("reviewer");
     });
+
+    it("honors max_steps and extra skills on the template path (was silently dropped)", async () => {
+      await tools.hera_create_agent.execute(
+        {
+          name: "budgeted-bot",
+          description: "x",
+          prompt: "p",
+          mode: "all",
+          template: "coder",
+          max_steps: 7,
+          skills: ["caveman", "my-extra-skill"],
+        } as any,
+        {} as any
+      );
+      const def = harness.ctx.registeredAgents.get("budgeted-bot");
+      expect(def?.maxSteps).toBe(7);
+      // extra skill merged in; built-in skills not duplicated
+      expect(def?.skills).toContain("my-extra-skill");
+      expect(def?.skills.filter((s) => s === "skill-combo")).toHaveLength(1);
+      expect(def?.skills.filter((s) => s === "caveman")).toHaveLength(1);
+    });
   });
 
   describe("hera_create_agent (plugin mode)", () => {

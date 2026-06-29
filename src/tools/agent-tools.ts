@@ -157,6 +157,13 @@ export function createAgentTools(ctx: PluginContext) {
             args.model
           );
           agentDef.description = args.description;
+          // Apply caller overrides the template path previously dropped silently:
+          // additional skills (merged + deduped onto the template's defaults) and
+          // the step budget.
+          if (args.skills?.length) {
+            agentDef.skills = [...new Set([...agentDef.skills, ...args.skills])];
+          }
+          agentDef.maxSteps = args.max_steps ?? DEFAULT_CHILD_MAX_STEPS;
         } else {
           agentDef = {
             name: args.name,

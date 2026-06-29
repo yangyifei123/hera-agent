@@ -355,7 +355,9 @@ export function createAgentFromTemplate(
     mode: tpl.defaultMode,
     prompt: customPrompt ?? tpl.promptFn(agentName),
     model,
-    skills: [...tpl.defaultSkills],
+    // Dedupe: some templates list a skill (e.g. skill-combo) that is already in
+    // DEFAULT_SKILLS, which would otherwise persist + render twice.
+    skills: [...new Set(tpl.defaultSkills)],
     template: templateName,
     createdAt: Date.now(),
     evolutionLog: [],
