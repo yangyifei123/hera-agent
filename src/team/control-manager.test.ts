@@ -88,6 +88,18 @@ describe("control-manager", () => {
       expect(result.status).toBe("passed");
     });
 
+    it("should evaluate >= at the boundary (was dead code before operator-order fix)", () => {
+      const cp = createControlPoint("Coverage", "gate", "coverage>=80", "approve");
+      expect(evaluateControlPoint(cp, { coverage: 80 }).status).toBe("passed");
+      expect(evaluateControlPoint(cp, { coverage: 79 }).status).toBe("failed");
+    });
+
+    it("should evaluate <= at the boundary", () => {
+      const cp = createControlPoint("Errors", "gate", "errors<=0", "approve");
+      expect(evaluateControlPoint(cp, { errors: 0 }).status).toBe("passed");
+      expect(evaluateControlPoint(cp, { errors: 1 }).status).toBe("failed");
+    });
+
     it("should fail greater-than when value is lower", () => {
       const cp = createControlPoint("Coverage", "gate", "coverage>80", "approve");
       const result = evaluateControlPoint(cp, { coverage: 70 });

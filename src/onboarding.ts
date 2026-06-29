@@ -4,6 +4,7 @@
  */
 
 import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentRegistry } from "./agents/registry.js";
 import type { TeamManager } from "./team/manager.js";
@@ -16,16 +17,10 @@ import { heraLog } from "./logger.js";
 const ONBOARDING_FLAG = ".onboarded";
 
 export function isFirstRun(paths: HeraPaths): boolean {
-  // Check if .onboarded exists in hera-data/
-  const flagPath = join(paths.dataDir, ONBOARDING_FLAG);
-  // Synchronous check during init phase
-  try {
-    // Use require for synchronous existence check
-    require("fs").accessSync(flagPath);
-    return false;
-  } catch {
-    return true;
-  }
+  // Synchronous existence check during the init phase. Uses existsSync (not
+  // require("fs"), which is undefined under pure ESM and would make this throw,
+  // get swallowed, and re-onboard on every launch).
+  return !existsSync(join(paths.dataDir, ONBOARDING_FLAG));
 }
 
 export async function runOnboarding(
@@ -36,6 +31,7 @@ export async function runOnboarding(
   skillManager: SkillManager
 ): Promise<void> {
   const flagPath = join(paths.dataDir, ONBOARDING_FLAG);
+  const failures: string[] = [];
 
   // Create default agent: quick-fixer (mode: subagent, template: debugger)
   const skills = skillManager.getSkillMap();
@@ -44,7 +40,8 @@ export async function runOnboarding(
     await agentRegistry.register(quickFixerDef, skills);
     heraLog("info", "Onboarding: Created default agent 'quick-fixer' (debugger template)");
   } catch (err) {
-    heraLog("warn", "Onboarding: Could not create quick-fixer agent (may already exist)", err);
+    failures.push("quick-fixer");
+    heraLog("warn", "Onboarding: Could not create quick-fixer agent", err);
   }
 
   // Create the dev-team member agents BEFORE the team itself, so the team
@@ -60,11 +57,8 @@ export async function runOnboarding(
       await agentRegistry.register(def, skills);
       heraLog("info", `Onboarding: Created team member '${m.name}' (${m.template} template)`);
     } catch (err) {
-      heraLog(
-        "warn",
-        `Onboarding: Could not create team member '${m.name}' (may already exist)`,
-        err
-      );
+      failures.push(m.name);
+      heraLog("warn", `Onboarding: Could not create team member '${m.name}'`, err);
     }
   }
 
@@ -101,10 +95,22 @@ export async function runOnboarding(
     await teamManager.createTeam(devTeam);
     heraLog("info", "Onboarding: Created default team 'dev-team' (sequential)");
   } catch (err) {
-    heraLog("warn", "Onboarding: Could not create dev-team (may already exist)", err);
+    failures.push("dev-team");
+    heraLog("warn", "Onboarding: Could not create dev-team", err);
   }
 
-  // Write onboarding flag
+  // Only mark onboarding complete when every default was created. Writing the
+  // flag on partial failure would permanently lock in a broken setup (isFirstRun
+  // never returns true again, so onboarding never retries). On failure, leave the
+  // flag unwritten so the next launch re-attempts the missing pieces.
+  if (failures.length > 0) {
+    heraLog(
+      "warn",
+      `Onboarding: incomplete — failed to create [${failures.join(", ")}]; will retry on next launch.`
+    );
+    return;
+  }
+
   try {
     await writeFile(flagPath, JSON.stringify({ timestamp: Date.now() }, null, 2), "utf-8");
     heraLog("info", "Onboarding: Complete — flag written to " + flagPath);

@@ -89,8 +89,14 @@ export class PluginGenerator {
 
   /**
    * Generate package.json — mirrors Hera's own package.json
+   *
+   * @param withEngine - When true (default), adds `hera-agent` as a dependency so
+   *   the generated plugin can import `createEngine` from `hera-agent/engine`.
    */
-  generatePackageJson(agent: AgentDefinition): {
+  generatePackageJson(
+    agent: AgentDefinition,
+    withEngine = true
+  ): {
     name: string;
     version: string;
     description: string;
@@ -128,6 +134,7 @@ export class PluginGenerator {
       },
       dependencies: {
         "@opencode-ai/plugin": "^1.4.6",
+        ...(withEngine ? { "hera-agent": "^2.2.1" } : {}),
       },
       files: ["dist", "INSTALL.md"],
       license: "MIT",
@@ -146,8 +153,16 @@ export class PluginGenerator {
    * agent's memory skill is actually functional. The tools read/write the same
    * `<configRoot>/hera-data/memory/` directory Hera itself uses, so generated
    * agents share a memory pool with Hera and with each other.
+   *
+   * @param withEngine - When true (default), the generated plugin bootstraps the
+   *   HDTE engine via `createEngine` from `hera-agent/engine` and spreads
+   *   `engine.tools` into the returned tool map.
    */
-  generatePluginIndex(agent: AgentDefinition, resolvedSkills: SkillDefinition[] = []): string {
+  generatePluginIndex(
+    agent: AgentDefinition,
+    resolvedSkills: SkillDefinition[] = [],
+    withEngine = true
+  ): string {
     const fullPrompt = buildAgentPrompt(agent, resolvedSkills);
 
     const agentConfig = {
@@ -164,9 +179,38 @@ export class PluginGenerator {
       },
     };
 
+    // Conditional engine import fragment (only when withEngine)
+    const engineImport = withEngine ? `import { createEngine } from "hera-agent/engine";\n` : "";
+
+    // Conditional getHeraDataDir helper (only when withEngine)
+    const heraDataDirHelper = withEngine
+      ? `
+function getHeraDataDir(): string {
+  const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
+  if (configRoot) return join(configRoot, "hera-data");
+  const heraDir = process.env.HERA_DIR;
+  if (heraDir) return heraDir;
+  const home = process.env.USERPROFILE || process.env.HOME || homedir();
+  return join(home, ".config", "opencode", "hera-data");
+}
+`
+      : "";
+
+    // Conditional engine bootstrap (only when withEngine)
+    const engineBootstrap = withEngine
+      ? `  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client, singleton: true });
+  await engine.init();
+  await engine.recover();
+  engine.start();
+`
+      : "";
+
+    // Conditional engine tools spread (only when withEngine)
+    const engineToolsSpread = withEngine ? `      ...engine.tools,\n` : "";
+
     const code = `import { tool } from "@opencode-ai/plugin";
 import type { Plugin } from "@opencode-ai/plugin";
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+${engineImport}import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
@@ -188,12 +232,17 @@ const SUBDIR: Record<string, string> = {
 };
 
 function getMemoryDir(): string {
-  const env = process.env.HERA_DIR;
-  if (env) return join(env, "memory");
+  // Mirror Hera's config-root precedence so generated agents share Hera's memory
+  // pool even under a custom config root:
+  //   HERA_CONFIG_ROOT -> OPENCODE_CONFIG_ROOT -> HERA_DIR (compat) -> home default.
+  const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
+  if (configRoot) return join(configRoot, "hera-data", "memory");
+  const heraDir = process.env.HERA_DIR;
+  if (heraDir) return join(heraDir, "memory");
   const home = process.env.USERPROFILE || process.env.HOME || homedir();
   return join(home, ".config", "opencode", "hera-data", "memory");
 }
-
+${heraDataDirHelper}
 async function saveMemory(content: string, category: string): Promise<string> {
   const sub = SUBDIR[category] ?? category + "s";
   const dir = join(getMemoryDir(), sub);
@@ -245,14 +294,14 @@ async function searchMemory(
 }
 
 const ${camelCase(agent.name)}Plugin: Plugin = async (input) => {
-  return {
+${engineBootstrap}  return {
     async config(input) {
       // Register agent — same pattern as Hera's own config hook
       input.agent = input.agent ?? {};
       input.agent["${agent.name}"] = ${JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ")};
     },
     tool: {
-      hera_remember: tool({
+${engineToolsSpread}      hera_remember: tool({
         description: "Store information in Hera's persistent memory (shared with Hera and other generated agents).",
         args: {
           content: z.string().describe("Information to remember"),
@@ -375,12 +424,17 @@ opencode --agent ${pluginName} "Hello, are you working?"
    * Pass `resolvedSkills` so additional user skills (anything beyond the four
    * built-ins always embedded by buildAgentPrompt) are baked into the prompt.
    */
-  generate(agentDef: AgentDefinition, resolvedSkills: SkillDefinition[] = []): PluginPackage {
+  generate(
+    agentDef: AgentDefinition,
+    resolvedSkills: SkillDefinition[] = [],
+    opts: { withEngine?: boolean } = {}
+  ): PluginPackage {
     heraLog("debug", `Generating plugin package for agent: ${agentDef.name}`);
 
+    const withEngine = opts.withEngine ?? true;
     const files: PluginFile[] = [];
 
-    const pkgJson = this.generatePackageJson(agentDef);
+    const pkgJson = this.generatePackageJson(agentDef, withEngine);
     files.push({
       path: "package.json",
       content: JSON.stringify(pkgJson, null, 2) + "\n",
@@ -393,7 +447,7 @@ opencode --agent ${pluginName} "Hello, are you working?"
 
     files.push({
       path: "src/index.ts",
-      content: this.generatePluginIndex(agentDef, resolvedSkills),
+      content: this.generatePluginIndex(agentDef, resolvedSkills, withEngine),
     });
 
     files.push({

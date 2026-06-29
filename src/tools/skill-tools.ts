@@ -1,9 +1,9 @@
 ﻿import { tool } from "@opencode-ai/plugin";
 import type { PluginContext, AgentDefinition } from "../types.js";
 import { DEFAULT_CHILD_MAX_STEPS } from "../constants.js";
-import { getDefaultSkills } from "../helpers.js";
+import { getDefaultSkills, errorMessage } from "../helpers.js";
 import { persistAgent } from "../persistence.js";
-import { validateAgentNameWithConflict } from "../validation.js";
+import { validateAgentNameWithConflict, validateSkillName } from "../validation.js";
 import { SkillAnalyzer, SkillDecomposer, CapabilityMapper } from "../skills/analyzer.js";
 import { upgradeSkillsToTeam } from "./skill-to-team.js";
 
@@ -22,14 +22,22 @@ export function createSkillTools(ctx: PluginContext) {
         prompt: z.string().describe("Instruction prompt"),
       },
       async execute(args) {
-        await skillManager.createSkill({
-          name: args.name,
-          description: args.description,
-          trigger: args.trigger,
-          prompt: args.prompt,
-          category: "user",
-        });
-        return `Skill "${args.name}" created and persisted.`;
+        const check = validateSkillName(args.name);
+        if (!check.valid) {
+          return `Error: ${check.error}${check.suggestion ? ` Try "${check.suggestion}".` : ""}`;
+        }
+        try {
+          await skillManager.createSkill({
+            name: args.name,
+            description: args.description,
+            trigger: args.trigger,
+            prompt: args.prompt,
+            category: "user",
+          });
+          return `Skill "${args.name}" created and persisted.`;
+        } catch (err) {
+          return `Error: ${errorMessage(err)}`;
+        }
       },
     }),
 
@@ -39,6 +47,22 @@ export function createSkillTools(ctx: PluginContext) {
       async execute() {
         const skills = skillManager.getAllSkills();
         return skills.map((s) => `- **${s.name}** (${s.category}): ${s.description}`).join("\n");
+      },
+    }),
+
+    hera_load_skill: tool({
+      description:
+        "Load a skill's full guidance/body by name. Use this when a skill listed in your skill manifest is relevant to the current task (progressive disclosure).",
+      args: { name: z.string().describe("Skill name to load") },
+      async execute(args) {
+        if (!validateSkillName(args.name).valid) {
+          return `Error: Invalid skill name "${args.name}".`;
+        }
+        const skill = skillManager.getSkill(args.name);
+        if (!skill) {
+          return `Error: Skill "${args.name}" not found. Use hera_list_skills to see available skills.`;
+        }
+        return [`## Skill: ${skill.name}`, ``, skill.prompt].join("\n");
       },
     }),
 

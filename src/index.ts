@@ -1,44 +1,24 @@
 import type { Plugin, PluginInput, Hooks, Config } from "@opencode-ai/plugin";
 import { MemoryStore } from "./memory/store.js";
-import { SkillManager } from "./skills/manager.js";
+import { SkillManager, SKILL_DISCLOSURE_INSTRUCTION } from "./skills/manager.js";
 import { TeamManager } from "./team/manager.js";
 import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
 import { AgentRegistry } from "./agents/registry.js";
-import { TaskStore } from "./engine/task-store.js";
-import { LoopStore } from "./engine/loop-store.js";
-import { LoopManager } from "./engine/loop-manager.js";
-import { AcceptanceEvaluator } from "./engine/acceptance.js";
-import { TaskExecutor } from "./engine/executor.js";
-import { Supervisor } from "./engine/supervisor.js";
-import { OpenCodeAgentRunner } from "./engine/opencode-agent-runner.js";
+import { createEngine } from "./engine/index.js";
+import { buildActiveWorkContext } from "./engine/active-work.js";
+import type { Engine } from "./engine/index.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
-import {
-  DEFAULT_MEMORY_LIMIT,
-  DEFAULT_TEAM_TIMEOUT_MS,
-  getConfigRoot,
-  TASK_CONCURRENCY,
-  TASK_LEASE_MS,
-  SUPERVISOR_TICK_MS,
-  LOOP_TICK_MS,
-  LOOP_DEFAULT_MAX_ITERATIONS,
-  LOOP_MIN_INTERVAL_MS,
-  LOOP_MAX_CONSECUTIVE_FAILURES,
-  TASK_ATTEMPT_TIMEOUT_MS,
-} from "./constants.js";
-import { getDefaultPermission } from "./helpers.js";
+import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
 import { join } from "node:path";
 import { heraLog } from "./logger.js";
-import { extractMemories } from "./memory/smart-extractor.js";
-import { randomUUID } from "node:crypto";
+import { fetchSessionMessages, saveAutoMemories } from "./memory/session-messages.js";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
 
-// Module-level supervisor reference prevents garbage collection of the running supervisor.
-let _supervisor: Supervisor | undefined;
-// Module-level loop manager reference prevents garbage collection.
-let _loopManager: LoopManager | undefined;
+// Module-level engine reference prevents garbage collection of the running supervisor/loopManager.
+let _engine: Engine | undefined;
 
 type ConfigWithAgents = Config & {
   agent?: Record<string, unknown>;
@@ -48,8 +28,10 @@ type ChatTransformInput = {
   agent?: string;
 };
 
+// Current OpenCode passes only a sessionID to the compacting hook; older
+// versions passed `messages`. We fetch messages by id via the client.
 type CompactingInput = {
-  messages?: Array<{ role: string; content: string }>;
+  sessionID?: string;
 };
 
 const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
@@ -70,36 +52,64 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const heraConfigPath = join(configRoot, "hera.json");
   let config = (options ?? {}) as HeraConfig;
 
+  let heraConfigContent: string | undefined;
   try {
     const { readFile } = await import("node:fs/promises");
-    const heraConfigContent = await readFile(heraConfigPath, "utf-8");
-    const heraConfig = JSON.parse(heraConfigContent);
-    config = { ...config, ...heraConfig };
-  } catch {
-    // hera.json doesn't exist, create it automatically
+    heraConfigContent = await readFile(heraConfigPath, "utf-8");
+  } catch (readErr) {
+    const code = (readErr as NodeJS.ErrnoException)?.code;
+    if (code && code !== "ENOENT") {
+      // File exists but is unreadable (EACCES, EISDIR...). Do not overwrite it.
+      heraLog("warn", `Could not read hera.json (${code}); using in-memory defaults`, readErr);
+    } else {
+      // Missing — create the default config.
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        // Use relative path for schema to avoid network dependency in internal networks
+        const defaultConfig = {
+          $schema: "./hera.schema.json",
+          disabled_agents: [],
+          disabled_skills: [],
+          disabled_tools: [],
+          agent_overrides: {},
+          templates: {},
+          auto_evolve: false,
+          auto_memory: false,
+          memory_limit: DEFAULT_MEMORY_LIMIT,
+          memory_ttl_ms: 0,
+          team_defaults: {
+            coordination: "parallel",
+            timeout: DEFAULT_TEAM_TIMEOUT_MS,
+          },
+        };
+        await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
+        heraLog("info", `Created config file: ${heraConfigPath}`);
+      } catch (err) {
+        heraLog("warn", `Could not create config file`, err);
+      }
+    }
+  }
+
+  if (heraConfigContent !== undefined) {
     try {
-      const { writeFile } = await import("node:fs/promises");
-      // Use relative path for schema to avoid network dependency in internal networks
-      const defaultConfig = {
-        $schema: "./hera.schema.json",
-        disabled_agents: [],
-        disabled_skills: [],
-        disabled_tools: [],
-        agent_overrides: {},
-        templates: {},
-        auto_evolve: false,
-        auto_memory: false,
-        memory_limit: DEFAULT_MEMORY_LIMIT,
-        memory_ttl_ms: 0,
-        team_defaults: {
-          coordination: "parallel",
-          timeout: DEFAULT_TEAM_TIMEOUT_MS,
-        },
-      };
-      await writeFile(heraConfigPath, JSON.stringify(defaultConfig, null, 2), "utf-8");
-      heraLog("info", `Created config file: ${heraConfigPath}`);
-    } catch (err) {
-      heraLog("warn", `Could not create config file`, err);
+      const heraConfig = JSON.parse(heraConfigContent);
+      config = { ...config, ...heraConfig };
+    } catch (parseErr) {
+      // File exists but is invalid JSON. Preserve the user's file (a typo must
+      // not silently wipe disabled_agents/team_defaults/etc.): back it up and
+      // run on defaults this session, leaving the original untouched to fix.
+      try {
+        const { writeFile } = await import("node:fs/promises");
+        await writeFile(`${heraConfigPath}.bak`, heraConfigContent, "utf-8");
+      } catch {
+        // best-effort backup
+      }
+      heraLog(
+        "warn",
+        `hera.json is invalid JSON — backed up to hera.json.bak and using defaults this session. ` +
+          `Your settings are NOT lost; fix the JSON to restore them.`,
+        parseErr
+      );
     }
   }
 
@@ -137,44 +147,20 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   const agentRegistry = new AgentRegistry(paths.agentsDir);
   await agentRegistry.init();
 
-  const taskStore = new TaskStore(paths.dataDir);
-  await taskStore.init();
+  const engine = createEngine({
+    dataDir: paths.dataDir,
+    cwd: paths.configRoot,
+    client,
+    config,
+    teamManager,
+    singleton: true,
+  });
+  await engine.init();
+  await engine.recover();
+  engine.start();
+  _engine = engine;
 
-  // Wire the task engine: AcceptanceEvaluator, runner, executor, supervisor
-  const bashPerm = getDefaultPermission()?.bash;
-  const acceptance = new AcceptanceEvaluator({
-    shellEnabled: bashPerm !== "deny",
-    defaultTimeoutMs: TASK_LEASE_MS,
-  });
-  const agentRunner = new OpenCodeAgentRunner(client, paths.configRoot);
-  const taskExecutor = new TaskExecutor(
-    taskStore,
-    acceptance,
-    agentRunner,
-    paths.configRoot,
-    config.task_attempt_timeout_ms ?? TASK_ATTEMPT_TIMEOUT_MS
-  );
-  const supervisor = new Supervisor(taskStore, taskExecutor, {
-    concurrency: config.task_concurrency ?? TASK_CONCURRENCY,
-    leaseMs: config.task_lease_ms ?? TASK_LEASE_MS,
-    tickMs: SUPERVISOR_TICK_MS,
-    ownerId: randomUUID(),
-  });
-  await supervisor.recover();
-  supervisor.start();
-  _supervisor = supervisor;
-
-  const loopStore = new LoopStore(paths.dataDir);
-  await loopStore.init();
-  const loopManager = new LoopManager(loopStore, taskStore, acceptance, paths.configRoot, {
-    tickMs: config.loop_tick_ms ?? LOOP_TICK_MS,
-    defaultMaxIterations: config.loop_default_max_iterations ?? LOOP_DEFAULT_MAX_ITERATIONS,
-    minIntervalMs: config.loop_min_interval_ms ?? LOOP_MIN_INTERVAL_MS,
-    maxConsecutiveFailures: config.loop_max_consecutive_failures ?? LOOP_MAX_CONSECUTIVE_FAILURES,
-  });
-  await loopManager.recover();
-  loopManager.start();
-  _loopManager = loopManager;
+  const { taskStore, loopManager, supervisor } = engine;
 
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);
@@ -239,13 +225,21 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       for (const [name, def] of registeredAgents) {
         if (config.disabled_agents?.includes(name)) continue;
 
-        const childSkills = def.skills
-          .map((sn) => skillManager.getSkill(sn))
-          .filter((skill): skill is NonNullable<typeof skill> => skill !== undefined);
-
-        const skillPrompts = childSkills
-          .map((s) => `## Skill: ${s.name}\n${s.prompt}`)
-          .join("\n\n");
+        // Progressive disclosure: embed a compact skill manifest (name +
+        // one-line description) instead of full skill bodies. The agent pulls a
+        // skill's full guidance on demand via hera_load_skill, shrinking the
+        // live per-agent context and letting an agent carry many skills.
+        const skillManifest = skillManager.describeSkills(def.skills);
+        const skillPrompts =
+          skillManifest.trim().length > 0
+            ? [
+                "## Skills (load on demand with hera_load_skill)",
+                "",
+                skillManifest,
+                "",
+                SKILL_DISCLOSURE_INSTRUCTION,
+              ].join("\n")
+            : "";
 
         // Include evolution log if present
         let evolutionBlock = "";
@@ -270,7 +264,8 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           def.description,
           fullPrompt,
           def.model ?? model,
-          def.mode as import("./types.js").AgentMode
+          def.mode as import("./types.js").AgentMode,
+          { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
         );
         configInput.agent[name] = childConfig;
       }
@@ -316,31 +311,30 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         );
       }
 
-      // Auto-memory extraction
+      // Auto-memory extraction. The hook input only carries a sessionID on
+      // current OpenCode, so fetch the messages by id via the client rather than
+      // reading a (no-longer-present) input.messages field.
       if (config.auto_memory === true) {
         try {
-          const messages = (input as CompactingInput).messages;
-          if (messages && messages.length > 0) {
-            const extracted = extractMemories(messages);
-            for (const memory of extracted) {
-              await store.save({
-                id: `auto-${memory.category}-${randomUUID().slice(0, 8)}`,
-                type: memory.category,
-                content: memory.content,
-                timestamp: Date.now(),
-                metadata: { source: "auto-memory", confidence: memory.confidence },
-              });
-            }
-            if (extracted.length > 0) {
-              heraLog(
-                "debug",
-                `Auto-memory: extracted ${extracted.length} memories from session compaction`
-              );
-            }
+          const sessionID = (input as CompactingInput).sessionID;
+          const messages = await fetchSessionMessages(client, sessionID);
+          const saved = await saveAutoMemories(store, messages);
+          if (saved > 0) {
+            heraLog("debug", `Auto-memory: extracted ${saved} memories from session compaction`);
           }
         } catch (err) {
           heraLog("debug", "Auto-memory extraction failed during compaction", err);
         }
+      }
+
+      // Compaction relay: inject active durable-work context so it survives compaction
+      try {
+        const activeWorkCtx = await buildActiveWorkContext(engine.taskStore, engine.loopManager);
+        if (activeWorkCtx) {
+          output.context.push(activeWorkCtx);
+        }
+      } catch (err) {
+        heraLog("warn", "Active-work context relay failed during compaction", err);
       }
     },
   };

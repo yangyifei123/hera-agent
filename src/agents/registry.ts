@@ -1,4 +1,4 @@
-import { writeFile, mkdir, readdir, unlink, readFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AgentDefinition,
@@ -8,7 +8,7 @@ import type {
   AgentTemplateName,
 } from "../types.js";
 import { buildAgentPrompt } from "./hera.js";
-import { getDefaultSkills, getDefaultPermission } from "../helpers.js";
+import { getDefaultSkills, getDefaultPermission, atomicWriteText } from "../helpers.js";
 import { heraLog } from "../logger.js";
 
 export class AgentRegistry {
@@ -35,7 +35,7 @@ export class AgentRegistry {
     const frontmatter = this.buildFrontmatter(def);
     const content = frontmatter + fullPrompt;
     const filePath = join(this.agentsDir, `${def.name}.md`);
-    await writeFile(filePath, content, "utf-8");
+    await atomicWriteText(filePath, content);
 
     const config: Record<string, unknown> = {
       description: def.description,
@@ -117,7 +117,7 @@ export class AgentRegistry {
       "- `hera_recall` - Search memory",
       "",
     ].join("\n");
-    await writeFile(filePath, content, "utf-8");
+    await atomicWriteText(filePath, content);
   }
 
   async listRegistered(): Promise<string[]> {
@@ -149,17 +149,34 @@ export class AgentRegistry {
     // Re-write the full file
     const filePath = join(this.agentsDir, `${name}.md`);
     const content = await readFile(filePath, "utf-8");
-    // Find and update evolution section
-    const updated = this.injectEvolutionBlock(content, def.evolutionLog);
-    await writeFile(filePath, updated, "utf-8");
+    // Split off the existing frontmatter so we can regenerate it with the
+    // updated structured evolution log; otherwise evolutionLogJson is stale
+    // and def.evolutionLog comes back empty on reload.
+    const fmMatch = content.match(/^---\n[\s\S]*?\n---\n([\s\S]*)$/);
+    const body = fmMatch ? fmMatch[1] : content;
+    const updatedBody = this.injectEvolutionBlock(body, def.evolutionLog);
+    const updated = this.buildFrontmatter(def) + updatedBody;
+    await atomicWriteText(filePath, updated);
     return true;
   }
 
   private buildFrontmatter(def: AgentDefinition): string {
     const lines = ["---"];
     lines.push(`name: ${def.name}`);
-    lines.push(`description: "${def.description.replace(/"/g, '\\"')}"`);
+    // Collapse newlines/control chars before quoting: an un-sanitized newline in
+    // the description would inject arbitrary frontmatter keys (mode, permission,
+    // ...) that parseMarkdownAgent reads back on the next reload.
+    const safeDescription = def.description
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/"/g, '\\"')
+      .trim();
+    lines.push(`description: "${safeDescription}"`);
     lines.push(`mode: ${def.mode}`);
+    // Persist the RAW author prompt (base64, newline/quote-safe) so it round-trips
+    // on reload instead of def.prompt becoming the fully-rendered body (which
+    // already embeds the built-in skills). Without this, the config hook re-adds
+    // the skills on top of the body and every agent ships them twice.
+    if (def.prompt) lines.push(`promptB64: ${Buffer.from(def.prompt, "utf-8").toString("base64")}`);
     if (def.model) lines.push(`model: ${def.model}`);
     if (def.maxSteps) lines.push(`maxSteps: ${def.maxSteps}`);
     if (def.template) lines.push(`template: ${def.template}`);
@@ -194,6 +211,9 @@ export class AgentRegistry {
       return m?.[1]?.trim()?.replace(/^"(.*)"$/, "$1");
     };
 
+    const promptB64 = get("promptB64");
+    const rawPrompt =
+      promptB64 !== undefined ? Buffer.from(promptB64, "base64").toString("utf-8") : undefined;
     const maxSteps = get("maxSteps");
     const createdAt = get("createdAt");
     const evolvedAt = get("evolvedAt");
@@ -217,7 +237,9 @@ export class AgentRegistry {
       name: get("name") ?? "unknown",
       description: get("description") ?? "",
       mode: (get("mode") as AgentMode) ?? "subagent",
-      prompt: body.trim(),
+      // Prefer the round-tripped raw prompt; fall back to the body for legacy
+      // agents written before promptB64 existed.
+      prompt: rawPrompt ?? body.trim(),
       model: get("model"),
       skills: parsedSkills ?? getDefaultSkills(),
       tools: parsedTools,

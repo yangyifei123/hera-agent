@@ -7,7 +7,6 @@ import { TaskStore } from "./task-store.js";
 import { AcceptanceEvaluator } from "./acceptance.js";
 import { LoopStore } from "./loop-store.js";
 import { LoopManager } from "./loop-manager.js";
-import type { CreateLoopInput } from "./loop-manager.js";
 
 const OPTS = {
   tickMs: 10,

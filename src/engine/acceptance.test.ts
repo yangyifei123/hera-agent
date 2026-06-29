@@ -13,7 +13,9 @@ describe("AcceptanceEvaluator", () => {
     evalr = new AcceptanceEvaluator({ shellEnabled: true, defaultTimeoutMs: 5000 });
   });
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    // maxRetries tolerates transient Windows EBUSY/EPERM while a just-killed
+    // child process releases its handle on the temp dir.
+    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it("passes file_exists when the file is present", async () => {
@@ -63,10 +65,90 @@ describe("AcceptanceEvaluator", () => {
     expect(r[0].detail?.toLowerCase()).toContain("timeout");
   });
 
+  it("llm_judge passes when the judge returns pass + score >= threshold", async () => {
+    const judge = new AcceptanceEvaluator({
+      judge: async () => '{"pass": true, "score": 0.9, "reasoning": "solid work"}',
+    });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "the function must be implemented" }],
+      { output: "done", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(true);
+    expect(r[0].detail).toContain("0.90");
+  });
+
+  it("llm_judge fails when score is below threshold", async () => {
+    const judge = new AcceptanceEvaluator({
+      judge: async () => 'Here: {"pass": true, "score": 0.4, "reasoning": "shallow"} ok',
+    });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "x", threshold: 0.7 }],
+      { output: "meh", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+  });
+
+  it("llm_judge fails closed when no judge is configured", async () => {
+    const r = await evalr.evaluate(
+      [{ type: "llm_judge", rubric: "x" }],
+      { output: "anything", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toContain("no judge");
+  });
+
+  it("llm_judge fails closed on unparseable judge output", async () => {
+    const judge = new AcceptanceEvaluator({ judge: async () => "I think it is fine, yes." });
+    const r = await judge.evaluate(
+      [{ type: "llm_judge", rubric: "x" }],
+      { output: "y", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toContain("unparseable");
+  });
+
   it("matches regex against output", async () => {
     const r = await evalr.evaluate(
       [{ type: "regex", source: "output", pattern: "DONE" }],
       { output: "build DONE", cwd: dir },
+      1
+    );
+    expect(evalr.allPassed(r)).toBe(true);
+  });
+
+  it("fails an over-long regex pattern instead of hanging", async () => {
+    const tooLong = "a".repeat(2000);
+    const start = Date.now();
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern: tooLong }],
+      { output: "a".repeat(2000), cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  it("does not hang on a catastrophic-backtracking pattern against large input", async () => {
+    const pattern = "(a+)+$";
+    const output = "a".repeat(60000) + "!";
+    const start = Date.now();
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern }],
+      { output, cwd: dir },
+      1
+    );
+    expect(typeof r[0].passed).toBe("boolean");
+    expect(Date.now() - start).toBeLessThan(5000);
+  });
+
+  it("still matches a normal regex against bounded output", async () => {
+    const r = await evalr.evaluate(
+      [{ type: "regex", source: "output", pattern: "BUILD (OK|DONE)" }],
+      { output: "result: BUILD OK", cwd: dir },
       1
     );
     expect(evalr.allPassed(r)).toBe(true);

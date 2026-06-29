@@ -119,47 +119,32 @@ export function formatControlPoints(points: ControlPoint[]): string {
 function evaluateCondition(condition: string, context: Record<string, unknown>): boolean {
   const trimmed = condition.trim();
 
-  // key=value
+  // Multi-character operators MUST be tested before their single-char prefixes,
+  // otherwise "coverage>=80" matches the ">" branch first, splits to ["coverage",
+  // "=80"], and Number("=80") is NaN → the >=/<= gates would be dead code.
+  const numericCompare = (op: string, cmp: (a: number, b: number) => boolean): boolean | null => {
+    if (!trimmed.includes(op)) return null;
+    const [key, val] = trimmed.split(op).map((s) => s.trim());
+    const ctxVal = Number(context[key]);
+    const target = Number(val);
+    if (isNaN(ctxVal) || isNaN(target)) return false;
+    return cmp(ctxVal, target);
+  };
+
+  // key==value
   if (trimmed.includes("==")) {
     const [key, val] = trimmed.split("==").map((s) => s.trim());
     return String(context[key]) === val;
   }
 
-  // key>value (numeric)
-  if (trimmed.includes(">")) {
-    const [key, val] = trimmed.split(">").map((s) => s.trim());
-    const ctxVal = Number(context[key]);
-    const target = Number(val);
-    if (isNaN(ctxVal) || isNaN(target)) return false;
-    return ctxVal > target;
-  }
-
-  // key<value (numeric)
-  if (trimmed.includes("<")) {
-    const [key, val] = trimmed.split("<").map((s) => s.trim());
-    const ctxVal = Number(context[key]);
-    const target = Number(val);
-    if (isNaN(ctxVal) || isNaN(target)) return false;
-    return ctxVal < target;
-  }
-
-  // key>=value
-  if (trimmed.includes(">=")) {
-    const [key, val] = trimmed.split(">=").map((s) => s.trim());
-    const ctxVal = Number(context[key]);
-    const target = Number(val);
-    if (isNaN(ctxVal) || isNaN(target)) return false;
-    return ctxVal >= target;
-  }
-
-  // key<=value
-  if (trimmed.includes("<=")) {
-    const [key, val] = trimmed.split("<=").map((s) => s.trim());
-    const ctxVal = Number(context[key]);
-    const target = Number(val);
-    if (isNaN(ctxVal) || isNaN(target)) return false;
-    return ctxVal <= target;
-  }
+  const ge = numericCompare(">=", (a, b) => a >= b);
+  if (ge !== null) return ge;
+  const le = numericCompare("<=", (a, b) => a <= b);
+  if (le !== null) return le;
+  const gt = numericCompare(">", (a, b) => a > b);
+  if (gt !== null) return gt;
+  const lt = numericCompare("<", (a, b) => a < b);
+  if (lt !== null) return lt;
 
   // truthy check
   return Boolean(context[trimmed]);

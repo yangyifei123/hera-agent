@@ -78,7 +78,7 @@ describe("E2E: generated plugin builds with bun build", () => {
           },
         ],
       };
-      const pkg = gen.generate(agent, []);
+      const pkg = gen.generate(agent, [], { withEngine: false });
       const pluginDir = join(tmp, "e2e-test-agent");
       await gen.writeToDisk(pkg, pluginDir);
 
@@ -125,7 +125,7 @@ describe("E2E: generated plugin builds with bun build", () => {
         createdAt: Date.now(),
         evolutionLog: [],
       }));
-      const pkg = gen.generate(team, members, []);
+      const pkg = gen.generate(team, members, [], { withEngine: false });
       const pluginDir = join(tmp, "e2e-test-team-plugin");
       await gen.writeToDisk(pkg, pluginDir);
 

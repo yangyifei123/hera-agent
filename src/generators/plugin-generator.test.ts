@@ -202,8 +202,10 @@ describe("PluginGenerator", () => {
   // ============================================================
   describe("integration: generated plugin code structure", () => {
     it("should produce code that follows the Plugin contract", async () => {
+      // Use withEngine:false to test the baseline Plugin contract without engine
+      // injection (the engine import is verified separately in "engine injection" tests).
       const agent = makeTestAgent({ name: "my-reviewer", mode: "subagent" });
-      const pkg = generator.generate(agent);
+      const pkg = generator.generate(agent, [], { withEngine: false });
       const outputDir = join(tmpDir, "my-reviewer");
       await generator.writeToDisk(pkg, outputDir);
 
@@ -453,9 +455,20 @@ describe("PluginGenerator", () => {
       expect(code).toContain("memory");
     });
 
-    it("memory tool implementation should be inline (no hera-agent runtime dep)", () => {
+    it("should honor HERA_CONFIG_ROOT / OPENCODE_CONFIG_ROOT precedence before HERA_DIR", () => {
       const agent = makeTestAgent();
       const code = generator.generatePluginIndex(agent);
+      expect(code).toContain("HERA_CONFIG_ROOT");
+      expect(code).toContain("OPENCODE_CONFIG_ROOT");
+      expect(code.indexOf("HERA_CONFIG_ROOT")).toBeLessThan(code.indexOf("HERA_DIR"));
+    });
+
+    it("memory tool implementation should be inline (no hera-agent runtime dep for memory)", () => {
+      // Use withEngine=false to verify that memory tools are fully self-contained
+      // when engine injection is not requested. When withEngine=true the generated
+      // plugin explicitly depends on hera-agent/engine — tested separately.
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent, [], false);
       // Must NOT import MemoryStore from hera-agent
       expect(code).not.toMatch(/from\s+["'][^"']*hera-agent[^"']*["']/);
       expect(code).not.toContain("MemoryStore");
@@ -570,6 +583,31 @@ describe("PluginGenerator", () => {
       expect(installStat.isFile()).toBe(true);
 
       await cleanup();
+    });
+  });
+
+  // ============================================================
+  // Engine injection (withEngine)
+  // ============================================================
+  describe("engine injection", () => {
+    it("injects createEngine wiring and the hera-agent dependency by default", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent);
+      expect(Object.keys(pkg.dependencies)).toContain("hera-agent");
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain('from "hera-agent/engine"');
+      expect(code).toContain("createEngine(");
+      expect(code).toContain("engine.start()");
+      expect(code).toContain("...engine.tools");
+    });
+
+    it("omits engine wiring when withEngine is false (back-compat)", () => {
+      const agent = makeTestAgent();
+      const pkg = generator.generatePackageJson(agent, false);
+      expect(Object.keys(pkg.dependencies)).not.toContain("hera-agent");
+      const code = generator.generatePluginIndex(agent, [], false);
+      expect(code).not.toContain("hera-agent/engine");
+      expect(code).not.toContain("createEngine(");
     });
   });
 });

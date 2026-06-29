@@ -251,16 +251,24 @@ export function createChildAgentConfig(
   description: string,
   prompt: string,
   model: string,
-  mode: AgentMode = "subagent"
+  mode: AgentMode = "subagent",
+  overrides?: {
+    permission?: AgentConfig["permission"];
+    tools?: Record<string, boolean>;
+    maxSteps?: number;
+  }
 ): AgentConfig {
+  // Honor per-agent permission/tools/maxSteps so agent-level restrictions are
+  // actually enforced at runtime (previously hardcoded → restrictions cosmetic).
   return {
     description,
     mode,
     prompt,
     model,
     temperature: 0.3,
-    maxSteps: DEFAULT_CHILD_MAX_STEPS,
-    permission: getDefaultPermission(),
+    maxSteps: overrides?.maxSteps ?? DEFAULT_CHILD_MAX_STEPS,
+    permission: overrides?.permission ?? getDefaultPermission(),
+    ...(overrides?.tools ? { tools: overrides.tools } : {}),
   };
 }
 

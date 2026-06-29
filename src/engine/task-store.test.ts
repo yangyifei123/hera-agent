@@ -91,4 +91,64 @@ describe("TaskStore", () => {
     expect((await store.get("a"))?.status).toBe("pending");
     expect((await store.get("b"))?.status).toBe("running");
   });
+
+  it("recover counts an attempt and fails a task once it exhausts maxAttempts", async () => {
+    await store.save(
+      makeTask({
+        id: "poison",
+        status: "running",
+        attempts: 2,
+        maxAttempts: 3,
+        leaseExpiresAt: 500,
+      })
+    );
+    await store.recover(1000);
+    const t = await store.get("poison");
+    expect(t?.status).toBe("failed");
+    expect(t?.attempts).toBe(3);
+    expect(t?.lastError).toContain("max attempts");
+  });
+
+  it("recover re-queues a below-budget reclaimed task as pending with attempts++", async () => {
+    await store.save(
+      makeTask({ id: "a", status: "running", attempts: 0, maxAttempts: 3, leaseExpiresAt: 500 })
+    );
+    await store.recover(1000);
+    const t = await store.get("a");
+    expect(t?.status).toBe("pending");
+    expect(t?.attempts).toBe(1);
+  });
+
+  it("recover never reclaims a task this process is still actively running", async () => {
+    await store.save(
+      makeTask({ id: "a", status: "running", leaseOwner: "me", leaseExpiresAt: 500 })
+    );
+    const count = await store.recover(1000, new Set(["a"]));
+    expect(count).toBe(0);
+    expect((await store.get("a"))?.status).toBe("running");
+  });
+
+  it("failBlockedTasks fails a pending task whose dependency failed", async () => {
+    await store.save(makeTask({ id: "dep", status: "failed" }));
+    await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["dep"] }));
+    const count = await store.failBlockedTasks(2000);
+    expect(count).toBe(1);
+    const child = await store.get("child");
+    expect(child?.status).toBe("failed");
+    expect(child?.lastError).toContain("dep");
+  });
+
+  it("failBlockedTasks also cascades cancelled dependencies", async () => {
+    await store.save(makeTask({ id: "dep", status: "cancelled" }));
+    await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["dep"] }));
+    await store.failBlockedTasks(2000);
+    expect((await store.get("child"))?.status).toBe("failed");
+  });
+
+  it("claimReady skips a pending task until its backoff nextEligibleAt passes", async () => {
+    await store.save(makeTask({ id: "a", status: "pending", nextEligibleAt: 2000 }));
+    expect(await store.claimReady(10, 5000, "o", 1000)).toHaveLength(0);
+    const claimed = await store.claimReady(10, 5000, "o", 2000);
+    expect(claimed.map((t) => t.id)).toEqual(["a"]);
+  });
 });

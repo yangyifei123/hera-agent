@@ -73,14 +73,20 @@ async function writeTextAtomically(filePath: string, content: string): Promise<v
   const tempPath = join(dirname(filePath), `.hera-tmp-${Date.now()}-${randomUUID()}`);
   try {
     await writeFile(tempPath, content, "utf-8");
-    if (process.platform === "win32") {
-      try {
-        await unlink(filePath);
-      } catch {
-        // Target may not exist yet.
-      }
+    // POSIX rename atomically replaces an existing target. On Windows rename
+    // fails if the target exists, so try the direct (gap-free) rename first —
+    // which always works when the file is new — and only fall back to
+    // unlink-then-rename for the overwrite case, narrowing the no-file window
+    // to that rare path instead of every single write.
+    try {
+      await rename(tempPath, filePath);
+    } catch (renameErr) {
+      if (process.platform !== "win32") throw renameErr;
+      await unlink(filePath).catch(() => {
+        // Target may not exist; rethrow original error below if still failing.
+      });
+      await rename(tempPath, filePath);
     }
-    await rename(tempPath, filePath);
   } catch (err) {
     try {
       await unlink(tempPath);

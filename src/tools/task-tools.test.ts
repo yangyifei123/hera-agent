@@ -42,6 +42,24 @@ describe("task-tools", () => {
     expect(store.byStatus("pending")).toHaveLength(0);
   });
 
+  it("rejects a task with a malformed acceptance check", async () => {
+    const res = await tools.hera_enqueue_task.execute(
+      { goal: "build", acceptance: [{ type: "bogus", foo: 1 }] } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("malformed");
+    expect(store.byStatus("pending")).toHaveLength(0);
+  });
+
+  it("rejects a regex acceptance check missing its pattern", async () => {
+    const res = await tools.hera_enqueue_task.execute(
+      { goal: "build", acceptance: [{ type: "regex", source: "output" }] } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("malformed");
+    expect(store.byStatus("pending")).toHaveLength(0);
+  });
+
   it("rejects a task with an empty goal", async () => {
     const res = await tools.hera_enqueue_task.execute(
       { goal: "  ", acceptance: [{ type: "file_exists", path: "/tmp/z" }] } as any,

@@ -104,4 +104,205 @@ describe("TeamManager resource limits", () => {
     const persisted = await store.list("team-message");
     expect(persisted).toHaveLength(TEAM_MESSAGE_QUEUE_CAP);
   });
+
+  test("keeps an unacknowledged directed message through broadcast overflow", async () => {
+    // A directed message that no one has acknowledged yet.
+    await manager.sendMessage("cap-team", "beta", "alpha", "IMPORTANT-DIRECTED", "task");
+
+    // Flood the queue with broadcast chatter to force overflow eviction.
+    for (let i = 0; i < TEAM_MESSAGE_QUEUE_CAP + 5; i++) {
+      await manager.sendMessage("cap-team", "alpha", "broadcast", `chatter-${i}`);
+    }
+
+    const messages = manager.getMessages("cap-team", "alpha", TEAM_MESSAGE_QUEUE_CAP + 50);
+    // The directed message survives even though it is the oldest entry.
+    expect(messages.some((m) => m.content === "IMPORTANT-DIRECTED")).toBe(true);
+    // Queue stays at the cap; broadcasts are evicted first.
+    expect(messages).toHaveLength(TEAM_MESSAGE_QUEUE_CAP);
+
+    const persisted = await store.list("team-message");
+    expect(persisted.some((m) => m.content.includes("IMPORTANT-DIRECTED"))).toBe(true);
+  });
+
+  test("evicts a directed message once its required recipient acknowledges it", async () => {
+    await manager.sendMessage("cap-team", "beta", "alpha", "ACKED-DIRECTED", "task");
+    await manager.acknowledgeMessages("cap-team", "alpha");
+
+    for (let i = 0; i < TEAM_MESSAGE_QUEUE_CAP + 5; i++) {
+      await manager.sendMessage("cap-team", "alpha", "broadcast", `chatter-${i}`);
+    }
+
+    const messages = manager.getMessages("cap-team", "alpha", TEAM_MESSAGE_QUEUE_CAP + 50);
+    // Now fully acknowledged, it is eligible for normal FIFO eviction.
+    expect(messages.some((m) => m.content === "ACKED-DIRECTED")).toBe(false);
+    expect(messages).toHaveLength(TEAM_MESSAGE_QUEUE_CAP);
+  });
+});
+
+describe("TeamManager.spawnTeam coordination correctness", () => {
+  let dir: string;
+  let store: MemoryStore;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "teamspawn-"));
+    store = new MemoryStore(join(dir, "memory"));
+    await store.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("does not poison the downstream prompt when an upstream session fails", async () => {
+    const prompts: { sessionId: string; agent: string; text: string }[] = [];
+    let nextId = 0;
+    const client = {
+      session: {
+        create: async () => ({ data: { id: `sess-${++nextId}` } }),
+        promptAsync: async ({
+          path,
+          body,
+        }: {
+          path: { id: string };
+          body: { agent: string; parts: { text?: string }[] };
+        }) => {
+          prompts.push({
+            sessionId: path.id,
+            agent: body.agent,
+            text: body.parts.map((p) => p.text ?? "").join(""),
+          });
+          return {};
+        },
+        // Every session reports idle immediately.
+        status: async () => ({ data: { "sess-1": { type: "idle" }, "sess-2": { type: "idle" } } }),
+        // The upstream session (sess-1) goes idle with NO assistant message,
+        // i.e. it failed to produce a real result.
+        messages: async ({ path }: { path: { id: string } }) =>
+          path.id === "sess-1"
+            ? { data: [{ info: { role: "user" }, parts: [{ text: "task" }] }] }
+            : { data: [{ info: { role: "assistant" }, parts: [{ text: "downstream output" }] }] },
+      },
+    } as never;
+
+    const mgr = new TeamManager(store, client);
+    await mgr.createTeam({
+      name: "seq",
+      description: "d",
+      coordination: "sequential",
+      members: [
+        { agentName: "upstream", role: "dev" },
+        { agentName: "downstream", role: "dev" },
+      ],
+    } as never);
+
+    const sessions = await mgr.spawnTeam("seq", "do the thing", "parent", dir);
+
+    // Downstream must never be spawned/prompted once upstream failed.
+    expect(prompts.some((p) => p.agent === "downstream")).toBe(false);
+    // No prompt should carry a sentinel like "(error)"/"(timeout)" as input.
+    expect(prompts.every((p) => !/\((error|timeout|no-client|no response)\)/.test(p.text))).toBe(
+      true
+    );
+    // The chain aborted at upstream; only one session recorded, not completed.
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].agentName).toBe("upstream");
+    expect(sessions[0].status).not.toBe("completed");
+  });
+
+  it("forwards real upstream output to the downstream member when completed", async () => {
+    const prompts: { agent: string; text: string }[] = [];
+    let nextId = 0;
+    const client = {
+      session: {
+        create: async () => ({ data: { id: `sess-${++nextId}` } }),
+        promptAsync: async ({ body }: { body: { agent: string; parts: { text?: string }[] } }) => {
+          prompts.push({ agent: body.agent, text: body.parts.map((p) => p.text ?? "").join("") });
+          return {};
+        },
+        status: async () => ({ data: { "sess-1": { type: "idle" }, "sess-2": { type: "idle" } } }),
+        messages: async () => ({
+          data: [{ info: { role: "assistant" }, parts: [{ text: "UPSTREAM RESULT" }] }],
+        }),
+      },
+    } as never;
+
+    const mgr = new TeamManager(store, client);
+    await mgr.createTeam({
+      name: "seq2",
+      description: "d",
+      coordination: "sequential",
+      members: [
+        { agentName: "upstream", role: "dev" },
+        { agentName: "downstream", role: "dev" },
+      ],
+    } as never);
+
+    const sessions = await mgr.spawnTeam("seq2", "do the thing", "parent", dir);
+    const downstreamPrompt = prompts.find((p) => p.agent === "downstream");
+    expect(downstreamPrompt).toBeDefined();
+    expect(downstreamPrompt?.text).toContain("UPSTREAM RESULT");
+    expect(sessions).toHaveLength(2);
+    expect(sessions.every((s) => s.status === "completed")).toBe(true);
+  });
+
+  it("does not fan out to executors when the adaptive planner fails", async () => {
+    const prompts: { agent: string }[] = [];
+    let nextId = 0;
+    const client = {
+      session: {
+        create: async () => ({ data: { id: `sess-${++nextId}` } }),
+        promptAsync: async ({ body }: { body: { agent: string } }) => {
+          prompts.push({ agent: body.agent });
+          return {};
+        },
+        status: async () => ({ data: { "sess-1": { type: "idle" } } }),
+        // Planner goes idle without producing any assistant plan.
+        messages: async () => ({ data: [{ info: { role: "user" }, parts: [{ text: "x" }] }] }),
+      },
+    } as never;
+
+    const mgr = new TeamManager(store, client);
+    await mgr.createTeam({
+      name: "adapt",
+      description: "d",
+      coordination: "adaptive",
+      members: [
+        { agentName: "planner", role: "lead" },
+        { agentName: "executor", role: "dev" },
+      ],
+    } as never);
+
+    const sessions = await mgr.spawnTeam("adapt", "plan it", "parent", dir);
+    expect(prompts.some((p) => p.agent === "executor")).toBe(false);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].agentName).toBe("planner");
+    expect(sessions[0].status).not.toBe("completed");
+  });
+
+  it("retains in-flight sessions from a prior spawn when re-spawning", async () => {
+    // No client => sessions are recorded as in-flight (pending).
+    const mgr = new TeamManager(store, undefined);
+    await mgr.createTeam({
+      name: "respawn",
+      description: "d",
+      coordination: "parallel",
+      members: [{ agentName: "worker", role: "dev" }],
+    } as never);
+
+    const first = await mgr.spawnTeam("respawn", "task one", "parent", dir);
+    const firstId = first[0].sessionId;
+    expect(mgr.getSpawnedSessions("respawn").map((s) => s.sessionId)).toContain(firstId);
+
+    const second = await mgr.spawnTeam("respawn", "task two", "parent", dir);
+    const secondId = second[0].sessionId;
+
+    const tracked = mgr.getSpawnedSessions("respawn").map((s) => s.sessionId);
+    // The first run's still-live session is not orphaned by the second spawn.
+    expect(tracked).toContain(firstId);
+    expect(tracked).toContain(secondId);
+
+    // And the merged set is persisted so recovery can still reach it.
+    const reloaded = new TeamManager(store, undefined);
+    await reloaded.init();
+    expect(reloaded.getSpawnedSessions("respawn").map((s) => s.sessionId)).toContain(firstId);
+  });
 });

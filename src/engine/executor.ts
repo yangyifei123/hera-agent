@@ -82,6 +82,12 @@ export class TaskExecutor {
   ): Promise<TaskRecord> {
     const attempts = task.attempts + 1;
     const exhausted = attempts >= task.maxAttempts;
+    // Exponential retry backoff: a re-queued task waits backoffMs * 2^(attempts-1)
+    // before claimReady will lease it again. Without this, failed tasks spin at
+    // full tick rate with zero delay.
+    const backoff = task.backoffMs ?? 0;
+    const nextEligibleAt =
+      !exhausted && backoff > 0 ? now + backoff * Math.pow(2, attempts - 1) : undefined;
     const updated: TaskRecord = {
       ...task,
       status: exhausted ? "failed" : "pending",
@@ -91,6 +97,7 @@ export class TaskExecutor {
       lastError: reason,
       leaseOwner: undefined,
       leaseExpiresAt: undefined,
+      nextEligibleAt,
       updatedAt: now,
       completedAt: exhausted ? now : undefined,
     };

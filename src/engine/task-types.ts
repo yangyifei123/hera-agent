@@ -4,7 +4,11 @@ export type TaskStatus = "pending" | "running" | "succeeded" | "failed" | "cance
 export type AcceptanceCheck =
   | { type: "shell"; command: string; cwd?: string; expectExit?: number; timeoutMs?: number }
   | { type: "file_exists"; path: string }
-  | { type: "regex"; source: "output" | "file"; path?: string; pattern: string };
+  | { type: "regex"; source: "output" | "file"; path?: string; pattern: string }
+  // Semantic completion gate: an LLM judge scores the task output against a
+  // rubric (0-1) and must meet threshold. Defends against perfunctory completion
+  // that trivially passes presence checks. Requires a judge to be configured.
+  | { type: "llm_judge"; rubric: string; threshold?: number };
 
 export interface AcceptanceResult {
   check: AcceptanceCheck;
@@ -30,6 +34,8 @@ export interface TaskRecord {
   dependsOn?: string[];
   leaseOwner?: string;
   leaseExpiresAt?: number;
+  /** Earliest time this pending task may be re-claimed (retry backoff gate). */
+  nextEligibleAt?: number;
   createdAt: number;
   startedAt?: number;
   updatedAt: number;

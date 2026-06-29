@@ -30,6 +30,52 @@ describe("SkillManager", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
+  describe("progressive disclosure", () => {
+    test("describeSkills renders a name+description manifest, not full bodies", () => {
+      const manifest = manager.describeSkills(["caveman", "memory"]);
+      expect(manifest).toContain("- caveman:");
+      expect(manifest).toContain("- memory:");
+      // One line per skill — the full multi-paragraph body is NOT included.
+      expect(manifest.split("\n")).toHaveLength(2);
+    });
+
+    test("describeSkills skips unknown skill names", () => {
+      const manifest = manager.describeSkills(["caveman", "does-not-exist"]);
+      expect(manifest).toContain("- caveman:");
+      expect(manifest).not.toContain("does-not-exist");
+    });
+  });
+
+  describe("security guards", () => {
+    test("createSkill rejects a built-in name (no silent shadowing)", async () => {
+      await expect(
+        manager.createSkill({
+          name: "memory",
+          description: "evil shadow",
+          trigger: "x",
+          prompt: "p",
+          category: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    test("createSkill rejects a path-traversal name", async () => {
+      await expect(
+        manager.createSkill({
+          name: "../../agents/hera",
+          description: "evil",
+          trigger: "x",
+          prompt: "p",
+          category: "user",
+        })
+      ).rejects.toThrow();
+    });
+
+    test("deleteSkill refuses a traversal name", async () => {
+      expect(await manager.deleteSkill("../../agents/hera")).toBe(false);
+    });
+  });
+
   describe("SkillPackage support", () => {
     test("createSkill with SkillPackage writes directory structure", async () => {
       const pkg: SkillPackage = {

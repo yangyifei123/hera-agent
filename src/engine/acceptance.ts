@@ -1,5 +1,5 @@
 // src/engine/acceptance.ts
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { AcceptanceCheck, AcceptanceResult } from "./task-types.js";
@@ -9,18 +9,77 @@ export interface AcceptanceContext {
   cwd: string;
 }
 
+/**
+ * Reject regex patterns longer than this. Catastrophic backtracking (ReDoS)
+ * needs a sufficiently nested/ambiguous pattern; a hard length cap removes the
+ * worst offenders before they ever compile.
+ */
+const MAX_REGEX_PATTERN_LENGTH = 1000;
+/**
+ * Only test the regex against the first N chars of source. Backtracking blowup
+ * scales with input length, so bounding the haystack bounds worst-case work
+ * (a synchronous regex cannot be interrupted mid-`exec`).
+ */
+const MAX_REGEX_SOURCE_LENGTH = 256_000;
+
+/**
+ * Static heuristic for catastrophic-backtracking shapes (e.g. `(a+)+`, `(.*)*`,
+ * `([a-z]+)*`): a quantifier immediately inside a group that is itself quantified
+ * with an unbounded repeat. Synchronous JS regex cannot be interrupted once it
+ * starts, so we refuse to run these rather than risk wedging the loop tick.
+ */
+function looksCatastrophic(pattern: string): boolean {
+  // Drop escaped chars so `\+\)` and the like don't trip the detector.
+  const stripped = pattern.replace(/\\./g, "");
+  return /[+*?}]\)[+*{]/.test(stripped);
+}
+
+/**
+ * Run a single regex test with bounds against catastrophic backtracking (ReDoS).
+ * Over-long, statically dangerous, or invalid patterns fail the check (return
+ * false) rather than risk wedging the supervisor/loop tick, and the source is
+ * truncated so the matcher's work is bounded.
+ */
+export function boundedRegexTest(pattern: string, source: string): boolean {
+  if (typeof pattern !== "string" || pattern.length === 0) return false;
+  if (pattern.length > MAX_REGEX_PATTERN_LENGTH) return false;
+  if (looksCatastrophic(pattern)) return false;
+  const haystack =
+    source.length > MAX_REGEX_SOURCE_LENGTH ? source.slice(0, MAX_REGEX_SOURCE_LENGTH) : source;
+  let re: RegExp;
+  try {
+    re = new RegExp(pattern);
+  } catch {
+    return false;
+  }
+  try {
+    return re.test(haystack);
+  } catch {
+    return false;
+  }
+}
+
+/** Calls an LLM to judge work output; returns the model's raw text reply. */
+export type JudgeRunner = (prompt: string) => Promise<string>;
+
 export interface AcceptanceEvaluatorOptions {
   shellEnabled?: boolean;
   defaultTimeoutMs?: number;
+  judge?: JudgeRunner;
+  judgeTimeoutMs?: number;
 }
 
 export class AcceptanceEvaluator {
   private shellEnabled: boolean;
   private defaultTimeoutMs: number;
+  private judge: JudgeRunner | undefined;
+  private judgeTimeoutMs: number;
 
   constructor(options: AcceptanceEvaluatorOptions = {}) {
     this.shellEnabled = options.shellEnabled ?? true;
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 300000;
+    this.judge = options.judge;
+    this.judgeTimeoutMs = options.judgeTimeoutMs ?? 120000;
   }
 
   async evaluate(
@@ -52,6 +111,8 @@ export class AcceptanceEvaluator {
           return this.regex(check, ctx, now);
         case "shell":
           return this.shell(check, ctx, now);
+        case "llm_judge":
+          return this.llmJudge(check, ctx, now);
         default:
           return this.result(check as AcceptanceCheck, false, now, "unknown check type");
       }
@@ -84,7 +145,7 @@ export class AcceptanceEvaluator {
       if (!check.path) return this.result(check, false, now, "regex file source requires path");
       source = await readFile(this.resolvePath(check.path, ctx.cwd), "utf-8");
     }
-    const matched = new RegExp(check.pattern).test(source);
+    const matched = boundedRegexTest(check.pattern, source);
     return this.result(check, matched, now, matched ? "matched" : "no match");
   }
 
@@ -97,19 +158,132 @@ export class AcceptanceEvaluator {
     const expectExit = check.expectExit ?? 0;
     const timeout = check.timeoutMs ?? this.defaultTimeoutMs;
     const code = await new Promise<number | "timeout">((resolve) => {
-      const child = exec(check.command, { cwd: check.cwd ?? ctx.cwd, timeout }, (err) => {
-        if (err && (err as NodeJS.ErrnoException & { killed?: boolean }).killed) {
-          resolve("timeout");
-        } else if (err && typeof (err as { code?: number }).code === "number") {
-          resolve((err as { code: number }).code);
-        } else {
-          resolve(0);
+      let settled = false;
+      let timedOut = false;
+      const handle: { timer?: ReturnType<typeof setTimeout> } = {};
+      const finish = (v: number | "timeout") => {
+        if (settled) return;
+        settled = true;
+        if (handle.timer) clearTimeout(handle.timer);
+        resolve(v);
+      };
+      // Manual timeout + process-tree kill. Node's built-in exec `timeout` only
+      // signals the top-level shell; on Windows `cmd.exe /c` does not propagate
+      // the kill to its children, leaking the child process (e.g. a blocking
+      // `ping`) which keeps holding `cwd` and breaks downstream cleanup.
+      const child = exec(
+        check.command,
+        {
+          cwd: check.cwd ?? ctx.cwd,
+          windowsHide: true,
+        },
+        (err) => {
+          if (timedOut) return finish("timeout");
+          const c = (err as { code?: number } | null)?.code;
+          if (err && typeof c === "number") return finish(c);
+          if (err) return finish(-1);
+          finish(0);
         }
-      });
-      child.on("error", () => resolve(-1));
+      );
+      handle.timer = setTimeout(() => {
+        timedOut = true;
+        // Best-effort kill of the child + its tree. We then resolve the promise
+        // immediately rather than waiting for exec's callback to fire after the
+        // kill — under Bun (and after a SIGKILL generally) that callback may
+        // never arrive, which would otherwise hang the evaluation until the
+        // command finished on its own.
+        if (child.pid) this.killTree(child.pid);
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already gone
+        }
+        finish("timeout");
+      }, timeout);
+      child.on("error", () => finish(-1));
     });
     if (code === "timeout") return this.result(check, false, now, "timeout");
     return this.result(check, code === expectExit, now, `exit ${code}`);
+  }
+
+  /** Best-effort kill of a child process (and, on Windows, its tree). */
+  private killTree(pid: number): void {
+    if (process.platform === "win32") {
+      // taskkill /T terminates the process tree (e.g. cmd.exe + its `ping`
+      // child); /F forces it.
+      execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
+        /* best effort: process may already be gone */
+      });
+    } else {
+      // Direct SIGKILL of the spawned `sh -c ...` child. We intentionally do NOT
+      // spawn detached / kill a negative process group: under Bun a detached
+      // child can keep the runtime from exiting cleanly.
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* already exited */
+      }
+    }
+  }
+
+  private async llmJudge(
+    check: Extract<AcceptanceCheck, { type: "llm_judge" }>,
+    ctx: AcceptanceContext,
+    now: number
+  ): Promise<AcceptanceResult> {
+    if (!this.judge) return this.result(check, false, now, "no judge configured");
+    const threshold = check.threshold ?? 0.7;
+    const prompt = [
+      "You are a STRICT acceptance judge. Decide whether the work output below",
+      "genuinely satisfies the rubric. Be skeptical: default to pass=false unless",
+      "the work clearly and verifiably meets the rubric. Do not be swayed by the",
+      "author merely claiming success.",
+      "",
+      `RUBRIC:\n${check.rubric}`,
+      "",
+      `WORK OUTPUT:\n${ctx.output || "(empty)"}`,
+      "",
+      'Respond with ONLY a JSON object: {"pass": boolean, "score": number between 0 and 1, "reasoning": string}.',
+    ].join("\n");
+
+    let reply: string;
+    try {
+      reply = await this.withDeadline(this.judge(prompt), this.judgeTimeoutMs);
+    } catch (err) {
+      return this.result(
+        check,
+        false,
+        now,
+        `judge error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+
+    const parsed = parseJudgeReply(reply);
+    if (!parsed) return this.result(check, false, now, "judge returned unparseable output");
+    const passed = parsed.pass === true && parsed.score >= threshold;
+    return this.result(
+      check,
+      passed,
+      now,
+      `judge score ${parsed.score.toFixed(2)} (threshold ${threshold}): ${parsed.reasoning}`
+    );
+  }
+
+  private withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+    if (!ms || ms <= 0) return p;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`judge timed out after ${ms}ms`)), ms);
+      p.then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(timer);
+          reject(e);
+        }
+      );
+    });
   }
 
   private result(
@@ -119,5 +293,30 @@ export class AcceptanceEvaluator {
     detail?: string
   ): AcceptanceResult {
     return { check, passed, detail, at };
+  }
+}
+
+interface JudgeVerdict {
+  pass: boolean;
+  score: number;
+  reasoning: string;
+}
+
+/** Tolerantly extract the JSON verdict object from a judge's raw reply. */
+function parseJudgeReply(reply: string): JudgeVerdict | null {
+  const start = reply.indexOf("{");
+  const end = reply.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  try {
+    const obj = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>;
+    const score = typeof obj.score === "number" ? obj.score : NaN;
+    if (Number.isNaN(score)) return null;
+    return {
+      pass: obj.pass === true,
+      score: Math.max(0, Math.min(1, score)),
+      reasoning: typeof obj.reasoning === "string" ? obj.reasoning : "",
+    };
+  } catch {
+    return null;
   }
 }
