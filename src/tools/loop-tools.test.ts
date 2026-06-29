@@ -59,6 +59,21 @@ describe("loop-tools", () => {
     expect(String(res)).toContain("acceptance");
   });
 
+  it("rejects a loop with a malformed acceptance check (same contract as enqueue)", async () => {
+    const res = await tools.hera_create_loop.execute(
+      {
+        mode: "iterate",
+        goal: "g",
+        acceptance: [{ type: "bogus", foo: 1 }],
+        maxIterations: 2,
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("Error");
+    expect(String(res)).toContain("malformed");
+    expect(await mgr.list("active")).toHaveLength(0);
+  });
+
   it("rejects hera_list_loops with an invalid status", async () => {
     const res = await tools.hera_list_loops.execute({ status: "bogus" } as any, {} as any);
     expect(String(res)).toContain("invalid status");

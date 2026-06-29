@@ -107,7 +107,12 @@ export class AcceptanceEvaluator {
       switch (check.type) {
         case "file_exists": {
           const exists = await this.fileExists(check.path, ctx.cwd);
-          return this.result(check, exists, now, exists ? "exists" : `file not found: ${check.path}`);
+          return this.result(
+            check,
+            exists,
+            now,
+            exists ? "exists" : `file not found: ${check.path}`
+          );
         }
         case "regex":
           return this.regex(check, ctx, now);

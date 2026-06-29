@@ -203,6 +203,12 @@ export function createPackageTools(_ctx: PluginContext) {
         const agentName = args.name;
         const includeMemory = args.includeMemory ?? false;
         const outputName = args.outputName || `${agentName}-package`;
+        // Prevent path traversal: outputName is joined with the packages dir to
+        // form the .tar.gz path, so a value like "../../../evil" would write the
+        // archive outside the packages directory (and could clobber files).
+        if (/[\\/]|\.\./.test(outputName)) {
+          return `Error: outputName "${outputName}" must be a simple file name (no path separators or "..").`;
+        }
 
         // Check if agent exists
         const pluginDir = await getAgentPluginDir(agentName);

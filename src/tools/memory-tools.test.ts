@@ -15,15 +15,26 @@ describe("createMemoryTools", () => {
 
   it("dedups byte-identical hera_remember content", async () => {
     for (let i = 0; i < 3; i++) {
-      await tools.hera_remember.execute({ content: "identical abc", category: "fix" } as any, {} as any);
+      await tools.hera_remember.execute(
+        { content: "identical abc", category: "fix" } as any,
+        {} as any
+      );
     }
     expect(await harness.ctx.store.list("fix")).toHaveLength(1);
   });
 
   it("clamps a negative recall limit instead of returning empty", async () => {
-    await tools.hera_remember.execute({ content: "alpha note", category: "decision" } as any, {} as any);
-    await tools.hera_remember.execute({ content: "beta note", category: "decision" } as any, {} as any);
-    const res = String(await tools.hera_recall.execute({ query: "note", limit: -2 } as any, {} as any));
+    await tools.hera_remember.execute(
+      { content: "alpha note", category: "decision" } as any,
+      {} as any
+    );
+    await tools.hera_remember.execute(
+      { content: "beta note", category: "decision" } as any,
+      {} as any
+    );
+    const res = String(
+      await tools.hera_recall.execute({ query: "note", limit: -2 } as any, {} as any)
+    );
     expect(res).not.toContain("No matching");
     expect(res).toContain("note");
   });
