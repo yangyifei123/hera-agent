@@ -26,6 +26,20 @@ describe("okr-manager", () => {
     });
   });
 
+  describe("drive-to-zero key results (target 0)", () => {
+    it("reports 100% when a reduce-to-zero KR is met and not 0% while it is", () => {
+      let obj = createObjective("Zero Bugs", [createKeyResult("open bugs", 0, "count", 5)]);
+      // 5 remaining → 0%
+      expect(calculateProgress(obj)).toBe(0);
+      const krId = obj.keyResults[0].id;
+      // drive it to zero → met → 100%
+      obj = updateKeyResult(obj, krId, 0);
+      expect(obj.keyResults[0].current).toBe(0);
+      expect(calculateProgress(obj)).toBe(100);
+      expect(formatObjective(obj)).toContain("(100%)");
+    });
+  });
+
   describe("createObjective", () => {
     it("should create an objective with generated ID", () => {
       const krs = [createKeyResult("KR1", 100, "units")];

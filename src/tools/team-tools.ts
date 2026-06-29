@@ -253,6 +253,11 @@ export function createTeamTools(ctx: PluginContext) {
         const memberNames = team.members.map((m) => m.agentName);
         if (!memberNames.includes(args.from))
           return `Error: "${args.from}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}. Use hera_create_team to update membership.`;
+        // Validate the recipient too: a directed message to an unknown member is
+        // unreadable AND (being unacked) never evicted, so a typo would leak +
+        // permanently occupy the queue. "broadcast" is the only non-member target.
+        if (args.to !== "broadcast" && !memberNames.includes(args.to))
+          return `Error: recipient "${args.to}" is not a member of "${args.team_name}". Use "broadcast" or one of: ${memberNames.join(", ")}.`;
         const kind = args.kind ?? "message";
         const msg = await teamManager.sendMessage(
           args.team_name,

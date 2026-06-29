@@ -116,18 +116,33 @@ export class TeamManager {
   }
 
   async createTeam(team: TeamDefinition): Promise<void> {
+    const existing = this.teams.get(team.name);
     const existingQueue = this.messageQueue.get(team.name);
     const existingSessions = this.spawnedSessions.get(team.name);
-    this.teams.set(team.name, team);
+    // Preserve governance state across a same-name re-create the same way the
+    // message queue and spawned sessions are preserved: re-creating a team must
+    // not silently wipe its control points / OKR objectives / hierarchy /
+    // workflow recipe / management mode when the new args don't carry them.
+    const merged: TeamDefinition = existing
+      ? {
+          ...team,
+          management: team.management ?? existing.management,
+          workflow: team.workflow ?? existing.workflow,
+          objectives: team.objectives ?? existing.objectives,
+          hierarchy: team.hierarchy ?? existing.hierarchy,
+          controlPoints: team.controlPoints ?? existing.controlPoints,
+        }
+      : team;
+    this.teams.set(team.name, merged);
     if (existingQueue) this.messageQueue.set(team.name, existingQueue);
     else this.messageQueue.set(team.name, []);
     if (existingSessions) this.spawnedSessions.set(team.name, existingSessions);
     await this.store.save({
       id: teamMemoryId(team.name),
       type: "team",
-      content: JSON.stringify(team),
+      content: JSON.stringify(merged),
       timestamp: Date.now(),
-      metadata: { memberCount: team.members.length, coordination: team.coordination },
+      metadata: { memberCount: merged.members.length, coordination: merged.coordination },
     });
   }
 

@@ -65,9 +65,20 @@ export function updateKeyResult(
     throw new Error(`Key result "${krId}" not found in objective "${objective.name}".`);
   }
   const updatedKeyResults = objective.keyResults.map((kr, i) =>
-    i === krIndex ? { ...kr, current: Math.min(progress, kr.target) } : kr
+    // For a drive-to-zero KR (target 0) `current` is the remaining count, so it
+    // must not be capped at the target (Math.min(x,0)=0 froze it at 0%). For a
+    // positive target, cap at the target as before.
+    i === krIndex
+      ? { ...kr, current: kr.target === 0 ? Math.max(0, progress) : Math.min(progress, kr.target) }
+      : kr
   );
   return { ...objective, keyResults: updatedKeyResults };
+}
+
+/** Completion percent of a single key result, supporting drive-to-zero (target 0). */
+function keyResultPercent(kr: { current: number; target: number }): number {
+  if (kr.target === 0) return kr.current <= 0 ? 100 : 0;
+  return (kr.current / kr.target) * 100;
 }
 
 /**
@@ -77,8 +88,7 @@ export function updateKeyResult(
 export function calculateProgress(objective: OKRObjective): number {
   if (objective.keyResults.length === 0) return 0;
   const total = objective.keyResults.reduce((sum, kr) => {
-    const pct = kr.target === 0 ? 0 : (kr.current / kr.target) * 100;
-    return sum + Math.min(pct, 100);
+    return sum + Math.min(keyResultPercent(kr), 100);
   }, 0);
   return Math.round(total / objective.keyResults.length);
 }
@@ -98,7 +108,7 @@ export function calculateTeamProgress(objectives: OKRObjective[]): number {
 export function formatObjective(obj: OKRObjective): string {
   const progress = calculateProgress(obj);
   const krLines = obj.keyResults.map((kr) => {
-    const pct = kr.target === 0 ? 0 : Math.round((kr.current / kr.target) * 100);
+    const pct = Math.round(Math.min(keyResultPercent(kr), 100));
     return `  - ${kr.description}: ${kr.current}/${kr.target} ${kr.metric} (${pct}%)`;
   });
   return [

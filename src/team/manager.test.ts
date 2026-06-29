@@ -306,3 +306,48 @@ describe("TeamManager.spawnTeam coordination correctness", () => {
     expect(reloaded.getSpawnedSessions("respawn").map((s) => s.sessionId)).toContain(firstId);
   });
 });
+
+describe("TeamManager.createTeam governance preservation", () => {
+  let dir: string;
+  let store: MemoryStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "teamgov-"));
+    store = new MemoryStore(join(dir, "memory"));
+    await store.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("preserves control points / objectives / workflow on a same-name re-create", async () => {
+    const mgr = new TeamManager(store, undefined);
+    await mgr.createTeam({
+      name: "gov",
+      description: "d",
+      members: [{ agentName: "a", role: "dev" }],
+      coordination: "parallel",
+      management: "control",
+      controlPoints: [
+        { id: "cp-1", name: "gate", type: "gate", condition: "coverage>=80", action: "approve" },
+      ],
+      objectives: [{ id: "o-1", name: "Obj", keyResults: [] }],
+    } as never);
+
+    // Re-create with a bare definition (no governance fields) — as hera_create_team does.
+    await mgr.createTeam({
+      name: "gov",
+      description: "d2",
+      members: [{ agentName: "a", role: "dev" }],
+      coordination: "parallel",
+    } as never);
+
+    const t = mgr.getTeam("gov") as never as {
+      controlPoints?: unknown[];
+      objectives?: unknown[];
+      management?: string;
+    };
+    expect(t.controlPoints).toHaveLength(1);
+    expect(t.objectives).toHaveLength(1);
+    expect(t.management).toBe("control");
+  });
+});

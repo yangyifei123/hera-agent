@@ -99,6 +99,58 @@ describe("createTeamTools (integration)", () => {
     });
   });
 
+  describe("hera_team_message recipient validation", () => {
+    it("rejects a directed message to a non-member recipient", async () => {
+      await makeAgent("reviewer");
+      await makeAgent("bughunter");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "qa",
+          description: "x",
+          coordination: "parallel",
+          members: [
+            { agent_name: "reviewer", role: "rev" },
+            { agent_name: "bughunter", role: "qa" },
+          ],
+        } as any,
+        {} as any
+      );
+      const result = await teamTools.hera_team_message.execute(
+        { team_name: "qa", from: "reviewer", to: "ghost-recipient", content: "secret" } as any,
+        {} as any
+      );
+      expect(String(result)).toContain("Error");
+      expect(String(result)).toContain("ghost-recipient");
+    });
+
+    it("allows a broadcast and a real member recipient", async () => {
+      await makeAgent("reviewer");
+      await makeAgent("bughunter");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "qa2",
+          description: "x",
+          coordination: "parallel",
+          members: [
+            { agent_name: "reviewer", role: "rev" },
+            { agent_name: "bughunter", role: "qa" },
+          ],
+        } as any,
+        {} as any
+      );
+      const ok1 = await teamTools.hera_team_message.execute(
+        { team_name: "qa2", from: "reviewer", to: "broadcast", content: "hi all" } as any,
+        {} as any
+      );
+      const ok2 = await teamTools.hera_team_message.execute(
+        { team_name: "qa2", from: "reviewer", to: "bughunter", content: "hi" } as any,
+        {} as any
+      );
+      expect(String(ok1)).not.toContain("Error");
+      expect(String(ok2)).not.toContain("Error");
+    });
+  });
+
   describe("workflow recipes", () => {
     it("sets and previews a team workflow recipe", async () => {
       await makeAgent("architect");
