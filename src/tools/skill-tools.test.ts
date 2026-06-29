@@ -15,6 +15,18 @@ describe("createSkillTools (integration)", () => {
     await harness.cleanup();
   });
 
+  it("hera_delete_skill reports a built-in accurately and an invalid name distinctly", async () => {
+    const builtin = String(
+      await (skillTools.hera_delete_skill.execute as any)({ name: "memory" }, {})
+    );
+    expect(builtin).toContain("built-in");
+    const invalid = String(
+      await (skillTools.hera_delete_skill.execute as any)({ name: "../../x" }, {})
+    );
+    expect(invalid).toContain("invalid");
+    expect(invalid).not.toContain("built-in");
+  });
+
   it("previews skill-to-agent upgrades without persisting", async () => {
     const execute = skillTools.hera_upgrade_to_agent.execute as (
       args: {

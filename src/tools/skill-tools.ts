@@ -70,10 +70,16 @@ export function createSkillTools(ctx: PluginContext) {
       description: "Delete a user-created skill. Built-in skills cannot be removed.",
       args: { name: z.string().describe("Skill name") },
       async execute(args) {
+        if (!validateSkillName(args.name).valid) {
+          return `Error: invalid skill name "${args.name}".`;
+        }
+        if (skillManager.isBuiltin(args.name)) {
+          return `Cannot delete "${args.name}": it is a built-in skill and cannot be removed. Create a custom skill with hera_create_skill instead.`;
+        }
         const ok = await skillManager.deleteSkill(args.name);
         return ok
           ? `Skill "${args.name}" deleted.`
-          : `Cannot delete "${args.name}". Built-in skills (caveman, init, skill-combo, memory, evolution) cannot be deleted. Create a custom skill with hera_create_skill instead.`;
+          : `Error: skill "${args.name}" not found or could not be deleted.`;
       },
     }),
 

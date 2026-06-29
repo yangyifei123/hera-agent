@@ -55,8 +55,10 @@ export async function persistAgent(
   agentRegistry: AgentRegistry,
   store: MemoryStore
 ): Promise<PersistResult> {
-  registeredAgents.set(def.name, def);
+  // Write to disk FIRST, then register in-memory — so a failed disk write does
+  // not leave a half-registered agent that blocks re-creating the same name.
   const { config, fileWritten } = await agentRegistry.register(def, skills);
+  registeredAgents.set(def.name, def);
   const memoryId = `agent-${def.name}`;
   await store.save({
     id: memoryId,
