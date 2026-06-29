@@ -105,8 +105,10 @@ export class AcceptanceEvaluator {
   ): Promise<AcceptanceResult> {
     try {
       switch (check.type) {
-        case "file_exists":
-          return this.result(check, await this.fileExists(check.path, ctx.cwd), now);
+        case "file_exists": {
+          const exists = await this.fileExists(check.path, ctx.cwd);
+          return this.result(check, exists, now, exists ? "exists" : `file not found: ${check.path}`);
+        }
         case "regex":
           return this.regex(check, ctx, now);
         case "shell":

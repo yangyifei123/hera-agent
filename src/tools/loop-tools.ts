@@ -3,6 +3,7 @@ import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import type { AcceptanceCheck } from "../engine/task-types.js";
 import type { LoopMode } from "../engine/loop-types.js";
+import { validateAcceptanceChecks } from "./acceptance-schema.js";
 
 const z = tool.schema;
 
@@ -37,6 +38,11 @@ export function createLoopTools(ctx: PluginContext) {
       },
       async execute(args) {
         const a = args as Record<string, unknown>;
+        // Reject malformed acceptance at loop creation — the same contract
+        // hera_enqueue_task enforces. A loop whose tasks carry an unverifiable
+        // check would otherwise spin every task to failure.
+        const acceptanceErr = validateAcceptanceChecks(a.acceptance);
+        if (acceptanceErr) return `Error: ${acceptanceErr}`;
         const res = await loopManager.createLoop({
           mode: a.mode as LoopMode,
           taskTemplate: {

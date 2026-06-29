@@ -25,13 +25,14 @@ describe("AcceptanceEvaluator", () => {
     expect(evalr.allPassed(r)).toBe(true);
   });
 
-  it("fails file_exists when missing", async () => {
+  it("fails file_exists when missing, with an explanatory detail", async () => {
     const r = await evalr.evaluate(
       [{ type: "file_exists", path: join(dir, "nope.txt") }],
       { output: "", cwd: dir },
       1
     );
     expect(evalr.allPassed(r)).toBe(false);
+    expect(r[0].detail).toContain("file not found");
   });
 
   it("passes a shell check on exit 0", async () => {
