@@ -371,6 +371,9 @@ export function createAgentTools(ctx: PluginContext) {
       description: "Delete a Hera-created agent.",
       args: { name: z.string().describe("Agent name to delete") },
       async execute(args) {
+        if (!registeredAgents.has(args.name)) {
+          return `Error: Agent "${args.name}" not found. Use hera_list_agents to see available agents.`;
+        }
         await removeAgent(args.name, registeredAgents, agentRegistry, store);
         return `Agent "${args.name}" deleted.`;
       },

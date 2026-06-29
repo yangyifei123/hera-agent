@@ -106,12 +106,16 @@ export class MemoryStore {
   async search(
     query: string,
     type?: HeraMemory["type"],
-    options?: { since?: number; limit?: number }
+    options?: { since?: number; limit?: number; excludeTypes?: string[] }
   ): Promise<HeraMemory[]> {
     let all = await this.list(type);
     if (options?.since != null) {
       const since = options.since;
       all = all.filter((m) => m.timestamp >= since);
+    }
+    if (options?.excludeTypes && options.excludeTypes.length > 0) {
+      const excluded = new Set(options.excludeTypes);
+      all = all.filter((m) => !excluded.has(m.type));
     }
     const lower = query.toLowerCase().trim();
     const terms = lower.split(/\s+/).filter(Boolean);

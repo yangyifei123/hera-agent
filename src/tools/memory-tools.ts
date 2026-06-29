@@ -1,9 +1,13 @@
 import { tool } from "@opencode-ai/plugin";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { HeraMemory, PluginContext } from "../types.js";
 import { MAX_RECALL_RESULTS, MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
 
 const z = tool.schema;
+
+// Infrastructure memory types (agent/team definition backups + team internals)
+// that should not surface in a user's category-less hera_recall.
+const INFRA_RECALL_TYPES = ["agent", "team", "team-message", "team-session", "team-memory"];
 
 type MemoryCategory = Extract<
   HeraMemory["type"],
@@ -43,8 +47,15 @@ export function createMemoryTools(ctx: PluginContext) {
           .describe("Category"),
       },
       async execute(args) {
+        // Deterministic content-hash id so re-remembering identical content
+        // collapses onto one entry (matches the auto-memory path's dedup).
+        const normalized = args.content.toLowerCase().replace(/\s+/g, " ").trim();
+        const hash = createHash("sha1")
+          .update(`${args.category}:${normalized}`)
+          .digest("hex")
+          .slice(0, 12);
         await store.save({
-          id: `memo-${randomUUID().slice(0, 8)}`,
+          id: `memo-${hash}`,
           type: args.category as MemoryCategory,
           content: args.content,
           timestamp: Date.now(),
@@ -79,13 +90,19 @@ export function createMemoryTools(ctx: PluginContext) {
           .describe("Only return memories from this Unix timestamp onward"),
       },
       async execute(args) {
-        const effectiveLimit = args.limit != null ? Math.min(args.limit, 50) : MAX_RECALL_RESULTS;
+        // Clamp to [1, 50]: a non-positive limit must not silently drop results
+        // (it previously flowed into Array.slice(0, negative) -> empty).
+        const effectiveLimit =
+          args.limit != null ? Math.max(1, Math.min(args.limit, 50)) : MAX_RECALL_RESULTS;
         const results = await store.search(
           args.query,
           args.category as MemoryCategory | undefined,
           {
             limit: effectiveLimit,
             since: args.since,
+            // Without an explicit category, hide internal agent/team definition
+            // backups so user knowledge recall isn't polluted by infrastructure.
+            excludeTypes: args.category ? undefined : INFRA_RECALL_TYPES,
           }
         );
         if (results.length === 0) return "No matching memories found.";

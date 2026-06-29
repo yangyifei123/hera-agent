@@ -242,6 +242,12 @@ describe("createAgentTools (integration)", () => {
       expect(def?.template).toBe("reviewer");
     });
 
+    it("hera_delete_agent reports an error for a non-existent agent", async () => {
+      const result = await tools.hera_delete_agent.execute({ name: "ghost-agent" } as any, {} as any);
+      expect(String(result)).toContain("Error");
+      expect(String(result)).toContain("not found");
+    });
+
     it("honors max_steps and extra skills on the template path (was silently dropped)", async () => {
       await tools.hera_create_agent.execute(
         {
