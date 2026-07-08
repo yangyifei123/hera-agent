@@ -147,4 +147,25 @@ describe("ProgramRunner", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error).toContain("not found");
   });
+
+  it("resolves ok:false (never rejects) when Bun.spawn fails synchronously", async () => {
+    await writeSkill(
+      skillsDir,
+      "fix",
+      `export default async function run() { return { done: true }; }`
+    );
+    const runner = new ProgramRunner({
+      skillManager: skillManagerWith("run.ts"),
+      skillsDir,
+      runner: NOOP_RUNNER,
+      harnessPath: HARNESS,
+    });
+    // A cwd that doesn't exist makes Bun.spawn throw synchronously (uv_spawn ENOENT),
+    // exercising the try/catch around Bun.spawn: run() must resolve {ok:false}, not reject
+    // (if it rejected instead, this `await` would throw and fail the test).
+    const missingDir = join(workDir, "does-not-exist", "nested");
+    const res = await runner.run("fix", null, { sessionID: "s1", directory: missingDir });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain("failed to spawn");
+  });
 });

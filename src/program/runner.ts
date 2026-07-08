@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { heraLog } from "../logger.js";
-import { killTree } from "../engine/shell-exec.js";
+import { killTree, KILL_TREE_WAIT_MS } from "../engine/shell-exec.js";
 import { PROGRAM_TOTAL_TIMEOUT_MS } from "../constants.js";
 import type { AgentRunner } from "../engine/executor.js";
 import type { SkillManager } from "../skills/manager.js";
@@ -104,6 +104,11 @@ export class ProgramRunner implements ProgramRunnerContract {
         // and wait for the kill to complete before resolving: the caller may tear
         // down the session directory right after `run()` resolves, and on Windows
         // that races the OS releasing the child's cwd handle if we resolve first.
+        // The wait is bounded by KILL_TREE_WAIT_MS: killTree's Windows branch has no
+        // internal timeout (a wedged taskkill would otherwise never settle), so `cap`
+        // guarantees `resolve` fires even then. `resolve` is idempotent (Promise
+        // executor), so the race between `cap` and the `.finally` below is safe.
+        const cap = setTimeout(() => resolve(r), KILL_TREE_WAIT_MS);
         void killTree(child.pid)
           .then(() => {
             try {
@@ -112,52 +117,69 @@ export class ProgramRunner implements ProgramRunnerContract {
               /* already gone */
             }
           })
-          .finally(() => resolve(r));
+          .finally(() => {
+            clearTimeout(cap);
+            resolve(r);
+          });
       };
 
-      const child = Bun.spawn(["bun", "run", harness], {
-        cwd: ctx.directory,
-        env: {
-          ...process.env,
-          HERA_PROGRAM_ENTRY: entry,
-          HERA_PROGRAM_ARGS: JSON.stringify(args ?? null),
-          HERA_SESSION_ID: ctx.sessionID,
-        },
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "pipe",
-        serialization: "advanced",
-        ipc: (message: unknown) => {
-          const frame = message as ChildToParent;
-          if (isLog(frame)) {
-            logs.push(frame.message);
-            heraLog("info", `[program ${skillName}] ${frame.message}`);
-            return;
-          }
-          if (isRequest(frame)) {
-            void this.handleLlm(child, frame);
-            return;
-          }
-          if (isResult(frame)) {
-            result = frame;
-            finish(toProgramResult(frame, logs));
-          }
-        },
-        onExit: (_proc, code) => {
-          if (settled) return;
-          if (result) {
-            finish(toProgramResult(result, logs));
-            return;
-          }
-          void stderr.then((se) =>
-            finish({
-              ok: false,
-              error: `program exited (code ${code}) without result${se.trim() ? `: ${se.trim()}` : ""}`,
-              logs,
-            })
-          );
-        },
-      });
+      let child: Bun.Subprocess;
+      try {
+        child = Bun.spawn(["bun", "run", harness], {
+          cwd: ctx.directory,
+          env: {
+            ...process.env,
+            HERA_PROGRAM_ENTRY: entry,
+            HERA_PROGRAM_ARGS: JSON.stringify(args ?? null),
+            HERA_SESSION_ID: ctx.sessionID,
+          },
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "pipe",
+          serialization: "advanced",
+          ipc: (message: unknown) => {
+            const frame = message as ChildToParent;
+            if (isLog(frame)) {
+              logs.push(frame.message);
+              heraLog("info", `[program ${skillName}] ${frame.message}`);
+              return;
+            }
+            if (isRequest(frame)) {
+              void this.handleLlm(child, frame);
+              return;
+            }
+            if (isResult(frame)) {
+              result = frame;
+              finish(toProgramResult(frame, logs));
+            }
+          },
+          onExit: (_proc, code) => {
+            if (settled) return;
+            if (result) {
+              finish(toProgramResult(result, logs));
+              return;
+            }
+            void stderr.then((se) =>
+              finish({
+                ok: false,
+                error: `program exited (code ${code}) without result${se.trim() ? `: ${se.trim()}` : ""}`,
+                logs,
+              })
+            );
+          },
+        });
+      } catch (err) {
+        heraLog(
+          "warn",
+          `[program ${skillName}] spawn failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+        resolve({
+          ok: false,
+          error: `failed to spawn program: ${err instanceof Error ? err.message : String(err)}`,
+          logs,
+        });
+        return;
+      }
 
       const stderr = child.stderr
         ? new Response(child.stderr as ReadableStream).text()
@@ -177,14 +199,30 @@ export class ProgramRunner implements ProgramRunnerContract {
       const value = req.params.schema
         ? parseStructured(text, req.params.schema as Record<string, unknown>)
         : text;
-      child.send({ kind: "response", id: req.id, ok: true, value });
+      try {
+        child.send({ kind: "response", id: req.id, ok: true, value });
+      } catch (sendErr) {
+        // The child may already have been torn down (e.g. total timeout fired
+        // while this RPC was in flight) — the response has nowhere to go.
+        heraLog(
+          "debug",
+          `[program] failed to send llm response, child likely gone: ${sendErr instanceof Error ? sendErr.message : String(sendErr)}`
+        );
+      }
     } catch (err) {
-      child.send({
-        kind: "response",
-        id: req.id,
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
+      try {
+        child.send({
+          kind: "response",
+          id: req.id,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      } catch (sendErr) {
+        heraLog(
+          "debug",
+          `[program] failed to send llm error response, child likely gone: ${sendErr instanceof Error ? sendErr.message : String(sendErr)}`
+        );
+      }
     }
   }
 }
