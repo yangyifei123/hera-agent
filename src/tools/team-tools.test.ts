@@ -550,6 +550,63 @@ describe("createTeamTools (integration)", () => {
       expect(String(recalled)).toContain("strict TypeScript");
     });
 
+    it("scopes recall to the exact team, not name-prefix matches", async () => {
+      await makeAgent("m1");
+      for (const name of ["dev", "dev-team"]) {
+        await teamTools.hera_create_team.execute(
+          {
+            name,
+            description: "scope test",
+            coordination: "parallel",
+            members: [{ agent_name: "m1", role: "member" }],
+          } as any,
+          {} as any
+        );
+      }
+      await teamTools.hera_team_remember.execute(
+        { team_name: "dev-team", key: "secret", content: "DEVTEAM_ONLY_SECRET" } as any,
+        {} as any
+      );
+      await teamTools.hera_team_remember.execute(
+        { team_name: "dev", key: "note", content: "DEV_PLAIN_NOTE" } as any,
+        {} as any
+      );
+
+      // Recall for "dev" must NOT leak the "dev-team" entry (old substring
+      // scoping matched "team:dev" inside "[team:dev-team]").
+      const recalled = String(
+        await teamTools.hera_team_recall.execute(
+          { team_name: "dev", query: "SECRET" } as any,
+          {} as any
+        )
+      );
+      expect(recalled).not.toContain("DEVTEAM_ONLY_SECRET");
+    });
+
+    it("clamps a non-positive recall limit instead of returning nothing", async () => {
+      await makeAgent("m2");
+      await teamTools.hera_create_team.execute(
+        {
+          name: "clamp-team",
+          description: "clamp test",
+          coordination: "parallel",
+          members: [{ agent_name: "m2", role: "member" }],
+        } as any,
+        {} as any
+      );
+      await teamTools.hera_team_remember.execute(
+        { team_name: "clamp-team", key: "k", content: "CLAMP_CONTENT" } as any,
+        {} as any
+      );
+      const recalled = String(
+        await teamTools.hera_team_recall.execute(
+          { team_name: "clamp-team", query: "CLAMP", limit: 0 } as any,
+          {} as any
+        )
+      );
+      expect(recalled).toContain("CLAMP_CONTENT");
+    });
+
     it("stores team memory when team names or keys contain path separators", async () => {
       await makeAgent("memory-agent");
       await teamTools.hera_create_team.execute(

@@ -286,7 +286,7 @@ export function createTeamTools(ctx: PluginContext) {
         if (!memberNames.includes(args.member_name)) {
           return `Error: "${args.member_name}" is not a member of "${args.team_name}". Current members: ${memberNames.join(", ")}.`;
         }
-        const limit = args.limit != null ? Math.min(args.limit, 50) : 20;
+        const limit = args.limit != null ? Math.max(1, Math.min(args.limit, 50)) : 20;
         const messages = teamManager.getMessages(args.team_name, args.member_name, limit);
         if (messages.length === 0)
           return `No messages for ${args.member_name} in ${args.team_name}.`;
@@ -366,13 +366,21 @@ export function createTeamTools(ctx: PluginContext) {
         limit: z.number().optional().describe("Maximum results (default 10, max 50)"),
       },
       async execute(args) {
-        const limit = args.limit != null ? Math.min(args.limit, 50) : 10;
-        const results = await store.search(`team:${args.team_name}`, "team-memory", { limit: 50 });
+        // Clamp to [1,50]: a non-positive limit must not silently drop results
+        // (it previously flowed into slice(0, <=0) -> "no entries found").
+        const limit = args.limit != null ? Math.max(1, Math.min(args.limit, 50)) : 10;
+        // Scope by metadata.teamName (exact), NOT a content substring: querying
+        // "team:dev" used to also match "dev-team"/"developers" entries (cross-
+        // team leak). List all of this team's entries, then apply the query —
+        // no pre-query candidate cap, so older entries stay recallable.
+        const all = await store.list("team-memory");
+        const scoped = all.filter((m) => m.metadata?.teamName === args.team_name);
         const lower = args.query.toLowerCase();
-        const filtered = results
+        const filtered = scoped
           .filter(
             (m) => m.content.toLowerCase().includes(lower) || m.id.toLowerCase().includes(lower)
           )
+          .sort((a, b) => b.timestamp - a.timestamp)
           .slice(0, limit);
         if (filtered.length === 0) return `No team workspace entries found for ${args.team_name}.`;
         return [

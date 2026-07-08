@@ -68,6 +68,42 @@ describe("task-tools", () => {
     expect(String(res)).toContain("goal");
   });
 
+  it("rejects a task whose dependsOn references an unknown id", async () => {
+    const res = await tools.hera_enqueue_task.execute(
+      {
+        goal: "build",
+        acceptance: [{ type: "file_exists", path: "/tmp/z" }],
+        dependsOn: ["no-such-task"],
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("unknown task id");
+    expect(store.byStatus("pending")).toHaveLength(0);
+  });
+
+  it("accepts a task whose dependsOn references an existing task", async () => {
+    await store.save({
+      id: "dep",
+      goal: "g",
+      executor: "hera",
+      acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+      status: "pending",
+      attempts: 0,
+      maxAttempts: 3,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const res = await tools.hera_enqueue_task.execute(
+      {
+        goal: "build",
+        acceptance: [{ type: "file_exists", path: "/tmp/z" }],
+        dependsOn: ["dep"],
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("enqueued");
+  });
+
   it("enqueues a batch under one batchId", async () => {
     const res = await tools.hera_enqueue_batch.execute(
       {
@@ -81,6 +117,30 @@ describe("task-tools", () => {
     const batchId = String(res).match(/batch ([\w-]+)/)?.[1];
     expect(batchId).toBeTruthy();
     expect(store.byBatch(batchId!)).toHaveLength(2);
+  });
+
+  it("enqueue_batch is all-or-nothing: a bad dependency in a later task commits none", async () => {
+    const res = await tools.hera_enqueue_batch.execute(
+      {
+        tasks: [
+          { goal: "a", acceptance: [{ type: "file_exists", path: "/tmp/a" }] },
+          { goal: "b", acceptance: [{ type: "file_exists", path: "/tmp/b" }] },
+          {
+            goal: "c",
+            acceptance: [{ type: "file_exists", path: "/tmp/c" }],
+            dependsOn: ["no-such-task"],
+          },
+        ],
+      } as any,
+      {} as any
+    );
+    // The batch is rejected...
+    expect(String(res)).toContain("unknown task id");
+    expect(String(res)).toContain("#2");
+    // ...and the earlier valid siblings must NOT have been partially committed
+    // (they would otherwise execute despite the caller seeing an error).
+    expect(store.byStatus("pending")).toHaveLength(0);
+    expect(await store.all()).toHaveLength(0);
   });
 
   it("reports batch accounting without calling partial success complete", async () => {

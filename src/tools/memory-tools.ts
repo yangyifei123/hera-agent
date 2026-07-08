@@ -5,9 +5,16 @@ import { MAX_RECALL_RESULTS, MAX_RESULT_PREVIEW_LENGTH } from "../constants.js";
 
 const z = tool.schema;
 
-// Infrastructure memory types (agent/team definition backups + team internals)
-// that should not surface in a user's category-less hera_recall.
-const INFRA_RECALL_TYPES = ["agent", "team", "team-message", "team-session", "team-memory"];
+// Infrastructure memory types (agent/team/workflow definitions + team internals)
+// that should not surface as raw JSON in a user's category-less hera_recall.
+const INFRA_RECALL_TYPES = [
+  "agent",
+  "team",
+  "workflow",
+  "team-message",
+  "team-session",
+  "team-memory",
+];
 
 type MemoryCategory = Extract<
   HeraMemory["type"],

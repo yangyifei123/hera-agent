@@ -3,7 +3,7 @@ import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import type { AcceptanceCheck } from "../engine/task-types.js";
 import type { LoopMode } from "../engine/loop-types.js";
-import { validateAcceptanceChecks } from "./acceptance-schema.js";
+import { validateAcceptanceChecks, validateWatchCondition } from "./acceptance-schema.js";
 
 const z = tool.schema;
 
@@ -43,6 +43,17 @@ export function createLoopTools(ctx: PluginContext) {
         // check would otherwise spin every task to failure.
         const acceptanceErr = validateAcceptanceChecks(a.acceptance);
         if (acceptanceErr) return `Error: ${acceptanceErr}`;
+        // Validate the mode-specific trigger checks too — otherwise a watch loop
+        // with a malformed/unsatisfiable condition, or an iterate loop with a
+        // malformed goal, silently never fires / never completes.
+        if (a.mode === "watch") {
+          const conditionErr = validateWatchCondition(a.condition);
+          if (conditionErr) return `Error: ${conditionErr}`;
+        }
+        if (a.mode === "iterate" && a.iterateGoal != null) {
+          const goalErr = validateAcceptanceChecks(a.iterateGoal);
+          if (goalErr) return `Error: iterateGoal invalid — ${goalErr}`;
+        }
         const res = await loopManager.createLoop({
           mode: a.mode as LoopMode,
           taskTemplate: {

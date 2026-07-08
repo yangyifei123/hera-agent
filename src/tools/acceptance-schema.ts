@@ -53,3 +53,25 @@ export function validateAcceptanceChecks(checks: unknown): string | null {
   }
   return null;
 }
+
+/**
+ * Validate a WATCH-loop condition. Same base rules as acceptance, plus: a watch
+ * condition is evaluated against empty output (there is no prior task output to
+ * read), so checks that read `output` are permanently unsatisfiable and are
+ * rejected here rather than silently spinning the loop forever.
+ */
+export function validateWatchCondition(checks: unknown): string | null {
+  const base = validateAcceptanceChecks(checks);
+  if (base) return base;
+  const arr = checks as Array<{ type?: string; source?: string }>;
+  for (let i = 0; i < arr.length; i++) {
+    const c = arr[i];
+    if (c.type === "regex" && c.source === "output") {
+      return `watch condition #${i}: a regex check with source "output" can never match — a watch condition sees no task output. Use source "file" (with a path), or a shell/file_exists check.`;
+    }
+    if (c.type === "llm_judge") {
+      return `watch condition #${i}: llm_judge is not a valid watch condition (it would judge empty output). Use shell/file_exists, or a regex on a file.`;
+    }
+  }
+  return null;
+}

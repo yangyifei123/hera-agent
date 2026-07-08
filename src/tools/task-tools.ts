@@ -23,6 +23,26 @@ function validateEnqueue(input: EnqueueInput): string | null {
   return err ? `Error: ${err}` : null;
 }
 
+/**
+ * Ensure every dependency id resolves to a real task. Unknown ids (typos,
+ * hallucinated uuids) would otherwise leave the dependent task pending forever,
+ * since claimReady only runs a task once all its deps have succeeded.
+ */
+async function validateDependencies(
+  taskStore: PluginContext["taskStore"],
+  dependsOn: string[] | undefined
+): Promise<string | null> {
+  if (!dependsOn || dependsOn.length === 0) return null;
+  const missing: string[] = [];
+  for (const dep of dependsOn) {
+    if (!(await taskStore.get(dep))) missing.push(dep);
+  }
+  if (missing.length > 0) {
+    return `Error: dependsOn references unknown task id(s): ${missing.join(", ")}. Enqueue the dependency first (a dependent task never runs until its deps succeed).`;
+  }
+  return null;
+}
+
 function buildTask(input: EnqueueInput, batchId: string | undefined, now: number): TaskRecord {
   return {
     id: randomUUID(),
@@ -62,6 +82,10 @@ export function createTaskTools(ctx: PluginContext) {
         const input = args as unknown as EnqueueInput;
         const err = validateEnqueue(input);
         if (err) return err;
+        // Reject dependencies that don't exist: a typo'd/hallucinated id would
+        // leave the task 'pending' forever with no error and no path to failure.
+        const depErr = await validateDependencies(taskStore, input.dependsOn);
+        if (depErr) return depErr;
         const task = buildTask(input, undefined, Date.now());
         await taskStore.save(task);
         return `Task enqueued: ${task.id}`;
@@ -85,7 +109,19 @@ export function createTaskTools(ctx: PluginContext) {
         }
         const batchId = randomUUID();
         const now = Date.now();
-        for (const t of tasks) await taskStore.save(buildTask(t, batchId, now));
+        // Two-phase (mirrors the acceptance validation above): validate EVERY
+        // task's dependencies before persisting any, so a bad dependency id in a
+        // later task cannot leave earlier siblings partially committed (durable
+        // and executing) behind an error return. Batch siblings can't reference
+        // each other anyway — buildTask assigns a fresh id that is never surfaced
+        // to the caller before this handler returns.
+        for (let i = 0; i < tasks.length; i++) {
+          const depErr = await validateDependencies(taskStore, tasks[i].dependsOn);
+          if (depErr) return `Error in task #${i}: ${depErr}`;
+        }
+        for (let i = 0; i < tasks.length; i++) {
+          await taskStore.save(buildTask(tasks[i], batchId, now));
+        }
         return `Enqueued ${tasks.length} task(s) in batch ${batchId}`;
       },
     }),

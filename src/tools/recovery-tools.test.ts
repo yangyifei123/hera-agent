@@ -46,7 +46,12 @@ describe("recovery-tools", () => {
     const tools = createRecoveryTools(
       ctx(
         taskStore,
-        { stats: () => ({ active: 0, reclaimed: 0, concurrency: 8 }) },
+        {
+          // hera_recover now delegates to supervisor.recover() so the reclaim
+          // honors activeIds and cascades failed dependencies.
+          recover: async () => taskStore.recover(Date.now()),
+          stats: () => ({ active: 0, reclaimed: 0, concurrency: 8 }),
+        },
         { list: async () => [] },
         {}
       )

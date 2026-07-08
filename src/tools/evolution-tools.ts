@@ -2,6 +2,8 @@ import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
 import { proposeEvolution } from "../evolution/auto-evolve.js";
 import { fetchSessionMessages } from "../memory/session-messages.js";
+import { validateSkillName } from "../validation.js";
+import { errorMessage } from "../helpers.js";
 
 const z = tool.schema;
 
@@ -93,18 +95,32 @@ export function createEvolutionTools(ctx: PluginContext) {
       async execute(args) {
         const { distillation, client } = ctx;
 
-        // Fetch real session messages via the shared client helper; fall back to
-        // a placeholder when none are available so distillation still runs.
-        const messages = await fetchSessionMessages(client, args.session_id);
-        const sessionMessages =
-          messages.length > 0
-            ? messages
-            : [{ role: "system", content: "Session distillation requested by Hera" }];
-
-        const result = await distillation.distillSession(args.session_id, sessionMessages);
+        // Validate the skill name up front so we never distill+persist against an
+        // invalid name (previously the distilled skill was written before the
+        // name was checked, leaving a ghost entry).
         if (args.skill_name) {
-          const skill = await distillation.distillToSkill(args.skill_name, result);
-          await skillManager.createSkill(skill);
+          const nameCheck = validateSkillName(args.skill_name);
+          if (!nameCheck.valid) {
+            return `Error: invalid skill name "${args.skill_name}": ${nameCheck.error}`;
+          }
+        }
+
+        // Fetch real session messages. If none are available, do NOT fabricate a
+        // placeholder and report success — that persisted a garbage distillation
+        // (and skill). Surface the failure so the caller knows nothing was saved.
+        const messages = await fetchSessionMessages(client, args.session_id);
+        if (messages.length === 0) {
+          return `Error: no messages found for session "${args.session_id}". The session may not exist or the client is unavailable — nothing was distilled.`;
+        }
+
+        const result = await distillation.distillSession(args.session_id, messages);
+        if (args.skill_name) {
+          const skill = distillation.distillToSkill(args.skill_name, result);
+          try {
+            await skillManager.createSkill(skill);
+          } catch (err: unknown) {
+            return `Session distilled, but creating skill "${args.skill_name}" failed: ${errorMessage(err)}`;
+          }
           return `Session distilled. Created skill "${args.skill_name}". Patterns: ${result.patternsLearned.join(", ")}`;
         }
         return [

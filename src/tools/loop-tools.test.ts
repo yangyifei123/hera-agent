@@ -74,6 +74,64 @@ describe("loop-tools", () => {
     expect(await mgr.list("active")).toHaveLength(0);
   });
 
+  it("rejects a watch loop whose condition reads output (never satisfiable)", async () => {
+    const res = await tools.hera_create_loop.execute(
+      {
+        mode: "watch",
+        goal: "g",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        condition: [{ type: "regex", source: "output", pattern: "DONE" }],
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("Error");
+    expect(String(res)).toContain("never match");
+    expect(await mgr.list("active")).toHaveLength(0);
+  });
+
+  it("rejects a watch loop with a malformed condition", async () => {
+    const res = await tools.hera_create_loop.execute(
+      {
+        mode: "watch",
+        goal: "g",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        condition: [{ type: "bogus" }],
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("Error");
+    expect(await mgr.list("active")).toHaveLength(0);
+  });
+
+  it("rejects an iterate loop with a malformed iterateGoal", async () => {
+    const res = await tools.hera_create_loop.execute(
+      {
+        mode: "iterate",
+        goal: "g",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        iterateGoal: [{ type: "regex", source: "file" }],
+        maxIterations: 3,
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("iterateGoal");
+    expect(await mgr.list("active")).toHaveLength(0);
+  });
+
+  it("accepts a watch loop with a valid file_exists condition", async () => {
+    const res = await tools.hera_create_loop.execute(
+      {
+        mode: "watch",
+        goal: "g",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        condition: [{ type: "file_exists", path: "/tmp/trigger" }],
+      } as any,
+      {} as any
+    );
+    expect(String(res)).toContain("created");
+    expect(await mgr.list("active")).toHaveLength(1);
+  });
+
   it("rejects hera_list_loops with an invalid status", async () => {
     const res = await tools.hera_list_loops.execute({ status: "bogus" } as any, {} as any);
     expect(String(res)).toContain("invalid status");

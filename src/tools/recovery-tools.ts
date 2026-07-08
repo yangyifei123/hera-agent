@@ -11,7 +11,11 @@ export function createRecoveryTools(ctx: PluginContext) {
         "Reclaim orphaned tasks: reset expired-lease 'running' tasks back to 'pending' so they re-run.",
       args: {},
       async execute() {
-        const count = await taskStore.recover(Date.now());
+        // Route through the supervisor so the reclaim honors activeIds (tasks
+        // this process is still running) — a bare taskStore.recover() would
+        // reclaim and re-dispatch a task that is actively executing, double-
+        // running it. Supervisor.recover() also cascades failed dependencies.
+        const count = await supervisor.recover();
         return `Recovered ${count} orphaned task(s) (reset to pending).`;
       },
     }),
