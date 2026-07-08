@@ -10,6 +10,7 @@ import { buildActiveWorkContext } from "./engine/active-work.js";
 import type { Engine } from "./engine/index.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
 import { createAllTools } from "./tools/index.js";
+import { createProgramRunner } from "./program/index.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
 import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
 import { join } from "node:path";
@@ -17,7 +18,6 @@ import { heraLog } from "./logger.js";
 import { fetchSessionMessages, saveAutoMemories } from "./memory/session-messages.js";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
 import { DriveModeStore } from "./mode/store.js";
-import { StubProgramRunner } from "./mode/route.js";
 import { ModeDispatchGuard, applyCommandModeHook, applyChatModeFallback } from "./mode/hooks.js";
 import { writeModeCommandFile } from "./mode/install.js";
 import { driveModeSystemAddendum } from "./mode/prompt.js";
@@ -167,11 +167,16 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const { taskStore, loopManager, supervisor } = engine;
 
-  // Drive mode: per-session sticky mode (in-memory) + a stub program runner
-  // (Spec 2 replaces the stub with the real ProgramRunner) + a dispatch guard
-  // shared by the two /mode hooks.
+  // Drive mode: per-session sticky mode (in-memory) + the real ProgramRunner
+  // (spawns program-led skills in a child process) + a dispatch guard shared
+  // by the two /mode hooks.
   const driveModeStore = new DriveModeStore();
-  const programRunner = new StubProgramRunner();
+  const programRunner = createProgramRunner({
+    client,
+    skillManager,
+    skillsDir: paths.skillsDir,
+    directory,
+  });
   const modeGuard = new ModeDispatchGuard();
 
   // Ensure hera itself has a .md file for OpenCode native discovery

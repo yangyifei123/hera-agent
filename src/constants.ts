@@ -184,3 +184,8 @@ export const LOOP_MAX_CONSECUTIVE_FAILURES = 5;
  * task store without bound (and the per-tick circuit-breaker scan stays cheap).
  */
 export const LOOP_TASK_RETENTION = 50;
+
+// === Program Engine Configuration ===
+
+/** Total wall-clock budget for one program run before its child tree is killed. */
+export const PROGRAM_TOTAL_TIMEOUT_MS = 300000;

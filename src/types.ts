@@ -54,6 +54,8 @@ export interface SkillPackage {
   scripts?: SkillScript[];
   prompt: string;
   metadata?: SkillMetadata;
+  /** Relative path to a program entry (run.ts). Present => program-led skill. */
+  program?: string;
 }
 
 export interface SkillTrigger {
