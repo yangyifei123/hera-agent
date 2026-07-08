@@ -1,6 +1,6 @@
 // src/program/child-harness.test.ts
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHeraSdk, type HarnessChannel } from "./child-harness.js";
@@ -54,6 +54,18 @@ describe("createHeraSdk", () => {
     const { channel } = makeChannel();
     const hera = createHeraSdk({ args: null, sessionDir: dir, channel });
     await expect(hera.file.write("../escape.txt", "x")).rejects.toThrow(/escapes/);
+  });
+
+  it("path-guards file read outside the session dir (rejects, not throws)", async () => {
+    const { channel } = makeChannel();
+    const hera = createHeraSdk({ args: null, sessionDir: dir, channel });
+    await expect(hera.file.read("../escape.txt")).rejects.toThrow(/escapes/i);
+  });
+
+  it("path-guards file list outside the session dir (rejects, not throws)", async () => {
+    const { channel } = makeChannel();
+    const hera = createHeraSdk({ args: null, sessionDir: dir, channel });
+    await expect(hera.file.list("../escape")).rejects.toThrow(/escapes/i);
   });
 
   it("log() sends a log frame", () => {

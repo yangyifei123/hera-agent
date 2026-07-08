@@ -50,7 +50,7 @@ export function createHeraSdk(opts: {
       return { stdout: r.stdout, stderr: r.stderr, code: r.code };
     },
     file: {
-      read: (p) => readFile(resolveInDir(sessionDir, p), "utf-8"),
+      read: async (p) => readFile(resolveInDir(sessionDir, p), "utf-8"),
       write: async (p, content) => {
         const abs = resolveInDir(sessionDir, p);
         await mkdir(dirname(abs), { recursive: true });
@@ -64,7 +64,7 @@ export function createHeraSdk(opts: {
           return false;
         }
       },
-      list: (p) => readdir(resolveInDir(sessionDir, p)),
+      list: async (p) => readdir(resolveInDir(sessionDir, p)),
     },
     llm(prompt, o) {
       const id = nextId++;
