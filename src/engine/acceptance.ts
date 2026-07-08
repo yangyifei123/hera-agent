@@ -1,7 +1,7 @@
 // src/engine/acceptance.ts
-import { exec, execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { runShell } from "./shell-exec.js";
 import type { AcceptanceCheck, AcceptanceResult } from "./task-types.js";
 
 export interface AcceptanceContext {
@@ -21,13 +21,6 @@ const MAX_REGEX_PATTERN_LENGTH = 1000;
  * (a synchronous regex cannot be interrupted mid-`exec`).
  */
 const MAX_REGEX_SOURCE_LENGTH = 256_000;
-
-/**
- * Upper bound on how long a timed-out shell check waits for the process-tree
- * kill to complete before resolving anyway. Keeps a wedged taskkill from
- * stalling acceptance evaluation.
- */
-const KILL_TREE_WAIT_MS = 2000;
 
 /**
  * Static heuristic for catastrophic-backtracking shapes (e.g. `(a+)+`, `(.*)*`,
@@ -171,90 +164,9 @@ export class AcceptanceEvaluator {
     if (!this.shellEnabled) return this.result(check, false, now, "shell checks disabled");
     const expectExit = check.expectExit ?? 0;
     const timeout = check.timeoutMs ?? this.defaultTimeoutMs;
-    const code = await new Promise<number | "timeout">((resolve) => {
-      let settled = false;
-      let timedOut = false;
-      const handle: { timer?: ReturnType<typeof setTimeout> } = {};
-      const finish = (v: number | "timeout") => {
-        if (settled) return;
-        settled = true;
-        if (handle.timer) clearTimeout(handle.timer);
-        resolve(v);
-      };
-      // Manual timeout + process-tree kill. Node's built-in exec `timeout` only
-      // signals the top-level shell; on Windows `cmd.exe /c` does not propagate
-      // the kill to its children, leaking the child process (e.g. a blocking
-      // `ping`) which keeps holding `cwd` and breaks downstream cleanup.
-      const child = exec(
-        check.command,
-        {
-          cwd: check.cwd ?? ctx.cwd,
-          windowsHide: true,
-        },
-        (err) => {
-          if (timedOut) return finish("timeout");
-          const c = (err as { code?: number } | null)?.code;
-          if (err && typeof c === "number") return finish(c);
-          if (err) return finish(-1);
-          finish(0);
-        }
-      );
-      handle.timer = setTimeout(() => {
-        timedOut = true;
-        // Kill the child + its tree, then wait (bounded) for the tree-kill to
-        // complete before resolving. Resolving before taskkill finishes lets
-        // callers proceed to cleanup while a grandchild (e.g. a blocking
-        // `ping`) still holds `cwd`, which surfaces as EBUSY on Windows. We do
-        // NOT wait for exec's own callback — under Bun (and after a SIGKILL
-        // generally) it may never arrive.
-        const treeKilled = (child.pid ? this.killTree(child.pid) : Promise.resolve()).then(() => {
-          // Direct fallback kill only AFTER the tree kill completes: on
-          // Windows, killing cmd.exe before taskkill snapshots its children
-          // orphans them (a blocking `ping` keeps holding cwd → EBUSY on
-          // cleanup).
-          try {
-            child.kill("SIGKILL");
-          } catch {
-            // already gone
-          }
-        });
-        const cap = setTimeout(() => finish("timeout"), KILL_TREE_WAIT_MS);
-        void treeKilled.then(() => {
-          clearTimeout(cap);
-          finish("timeout");
-        });
-      }, timeout);
-      child.on("error", () => finish(-1));
-    });
-    if (code === "timeout") return this.result(check, false, now, "timeout");
-    return this.result(check, code === expectExit, now, `exit ${code}`);
-  }
-
-  /**
-   * Best-effort kill of a child process (and, on Windows, its tree). Resolves
-   * once the kill has been issued and — on Windows — taskkill has exited, i.e.
-   * the tree is actually gone and its file handles are released.
-   */
-  private killTree(pid: number): Promise<void> {
-    if (process.platform === "win32") {
-      // taskkill /T terminates the process tree (e.g. cmd.exe + its `ping`
-      // child); /F forces it.
-      return new Promise((resolve) => {
-        execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
-          // best effort: process may already be gone
-          resolve();
-        });
-      });
-    }
-    // Direct SIGKILL of the spawned `sh -c ...` child. We intentionally do NOT
-    // spawn detached / kill a negative process group: under Bun a detached
-    // child can keep the runtime from exiting cleanly.
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      /* already exited */
-    }
-    return Promise.resolve();
+    const res = await runShell(check.command, { cwd: check.cwd ?? ctx.cwd, timeoutMs: timeout });
+    if (res.timedOut) return this.result(check, false, now, "timeout");
+    return this.result(check, res.code === expectExit, now, `exit ${res.code}`);
   }
 
   private async llmJudge(
