@@ -155,6 +155,40 @@ describe("MemoryStore", () => {
     expect(await store.load("session", "old")).toBeNull();
   });
 
+  test("enforceLimit never evicts entries flagged metadata.protected", async () => {
+    store = new MemoryStore(TEST_DIR, { maxEntries: 2 });
+    await store.init();
+    // An unacknowledged directed team message (protected) plus chatter that
+    // would otherwise evict it under the global cap.
+    await store.save({
+      id: "unacked",
+      type: "team-message",
+      content: "please review",
+      timestamp: 1000,
+      metadata: { protected: true },
+    });
+    await store.save({ id: "c1", type: "team-message", content: "a", timestamp: 2000 });
+    await store.save({ id: "c2", type: "team-message", content: "b", timestamp: 3000 });
+    await store.save({ id: "c3", type: "team-message", content: "c", timestamp: 4000 });
+
+    // The protected entry survives even though it is the oldest and over cap.
+    expect(await store.load("team-message", "unacked")).not.toBeNull();
+    // The oldest non-protected entries were evicted instead.
+    expect(await store.load("team-message", "c1")).toBeNull();
+  });
+
+  test("protected entries do not auto-expire past their TTL", async () => {
+    await store.save({
+      id: "prot-expired",
+      type: "team-message",
+      content: "owed",
+      timestamp: 1000,
+      expiresAt: 1,
+      metadata: { protected: true },
+    });
+    expect(await store.load("team-message", "prot-expired")).not.toBeNull();
+  });
+
   test("cleans up expired memories during list and load", async () => {
     await store.save({
       id: "expired",

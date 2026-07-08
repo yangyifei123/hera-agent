@@ -173,6 +173,35 @@ describe("extractMemories", () => {
       }
     });
 
+    test("does not match a keyword embedded in a larger word", () => {
+      // "chosen" contains "chose"; "unresolved" contains "resolved". Neither
+      // should produce a memory (they used to yield garbage captures).
+      const messages = [
+        { role: "assistant", content: "The chosen framework remains unresolved for now here." },
+      ];
+      const result = extractMemories(messages);
+      expect(result).toHaveLength(0);
+    });
+
+    test("does not let decisions shadow fixes and patterns under the cap", () => {
+      const messages = [
+        {
+          role: "assistant",
+          content: [
+            "I decided to use aaaa. I decided to use bbbb. I decided to use cccc.",
+            "I decided to use dddd. I decided to use eeee. I decided to use ffff.",
+            "I fixed the login token expiry bug today.",
+            "Always use parameterized queries everywhere.",
+          ].join(" "),
+        },
+      ];
+      const result = extractMemories(messages);
+      // With six decisions plus a fix and a pattern, the round-robin cap still
+      // surfaces the fix and the pattern (they are not shadowed).
+      expect(result.some((m) => m.category === "fix")).toBe(true);
+      expect(result.some((m) => m.category === "pattern")).toBe(true);
+    });
+
     test("fix has highest confidence", () => {
       const messages = [
         {

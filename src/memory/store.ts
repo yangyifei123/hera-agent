@@ -148,14 +148,24 @@ export class MemoryStore {
     const store = await this.collection(subdirFor(type));
     const entries = await store.list();
     if (entries.length <= this.maxEntries) return;
-    const overflow = entries
+    // Only evict non-protected entries, oldest first. An entry flagged
+    // `metadata.protected` (e.g. an unacknowledged directed team message) is
+    // never evicted by the generic cap — its owner (TeamManager) controls its
+    // retention. If protected entries alone exceed the cap, the collection is
+    // allowed to stay above it rather than drop a message a recipient still owes.
+    const overflow = entries.length - this.maxEntries;
+    const toDelete = entries
+      .filter((m) => m.metadata?.protected !== true)
       .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(0, entries.length - this.maxEntries);
-    await Promise.all(overflow.map((m) => store.delete(m.id)));
+      .slice(0, overflow);
+    await Promise.all(toDelete.map((m) => store.delete(m.id)));
   }
 }
 
 function isExpired(memory: HeraMemory): boolean {
+  // A protected entry (unacknowledged directed team message) never auto-expires,
+  // even past its TTL — the same guarantee TeamManager's own pruning makes.
+  if (memory.metadata?.protected === true) return false;
   return memory.expiresAt != null && memory.expiresAt <= Date.now();
 }
 
