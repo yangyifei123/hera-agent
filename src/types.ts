@@ -379,6 +379,9 @@ export interface PluginContext {
   config: HeraConfig;
   paths: HeraPaths;
   autoEvolve: boolean;
+  driveModeStore: import("./mode/store.js").DriveModeStore;
+  /** Program-led engine seam (Spec 2). Spec 1 wires a StubProgramRunner. */
+  programRunner: ProgramRunner;
 }
 
 // --- Interface Segregation: Domain-specific context slices ---

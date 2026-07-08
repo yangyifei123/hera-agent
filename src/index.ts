@@ -16,6 +16,11 @@ import { join } from "node:path";
 import { heraLog } from "./logger.js";
 import { fetchSessionMessages, saveAutoMemories } from "./memory/session-messages.js";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
+import { DriveModeStore } from "./mode/store.js";
+import { StubProgramRunner } from "./mode/route.js";
+import { ModeDispatchGuard, applyCommandModeHook, applyChatModeFallback } from "./mode/hooks.js";
+import { writeModeCommandFile } from "./mode/install.js";
+import { driveModeSystemAddendum } from "./mode/prompt.js";
 
 // Module-level engine reference prevents garbage collection of the running supervisor/loopManager.
 let _engine: Engine | undefined;
@@ -162,8 +167,18 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
   const { taskStore, loopManager, supervisor } = engine;
 
+  // Drive mode: per-session sticky mode (in-memory) + a stub program runner
+  // (Spec 2 replaces the stub with the real ProgramRunner) + a dispatch guard
+  // shared by the two /mode hooks.
+  const driveModeStore = new DriveModeStore();
+  const programRunner = new StubProgramRunner();
+  const modeGuard = new ModeDispatchGuard();
+
   // Ensure hera itself has a .md file for OpenCode native discovery
   await agentRegistry.ensureHeraMd(config);
+
+  // Make /mode discoverable in OpenCode's native `/` autocomplete (best-effort).
+  await writeModeCommandFile(configRoot);
 
   // First-run onboarding: create default agents and team
   if (isFirstRun(paths)) {
@@ -207,6 +222,8 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     config,
     paths,
     autoEvolve: config.auto_evolve === true,
+    driveModeStore,
+    programRunner,
   };
 
   const tools = createAllTools(ctx);
@@ -273,6 +290,24 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
     tool: tools,
 
+    async "command.execute.before"(input, output) {
+      await applyCommandModeHook(input, output, {
+        store: driveModeStore,
+        runner: programRunner,
+        guard: modeGuard,
+        directory,
+      });
+    },
+
+    async "chat.message"(input, output) {
+      await applyChatModeFallback(input, output, {
+        store: driveModeStore,
+        runner: programRunner,
+        guard: modeGuard,
+        directory,
+      });
+    },
+
     async "experimental.chat.system.transform"(input, output) {
       // The full team/agent/skill roster is orchestrator context — only Hera
       // should receive it, not each child agent (it bloats every child's prompt
@@ -311,6 +346,16 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           .map((s) => `- **${s.name}** (${s.category}): ${s.description}`)
           .join("\n");
         output.system.push(`\n## Available Skills\n\n${skillList}`);
+
+        // Drive-mode addendum (Hera only). collab -> null (byte-identical to
+        // today); auto -> the autonomy directive; program -> null. A missing
+        // sessionID is treated as collab (safe default).
+        const driveMode = driveModeStore.get(input.sessionID ?? "");
+        const addendum = driveModeSystemAddendum(driveMode, {
+          sessionID: input.sessionID ?? "",
+          directory,
+        });
+        if (addendum) output.system.push(addendum);
       }
     },
 

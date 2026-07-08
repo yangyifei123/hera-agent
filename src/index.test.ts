@@ -15,6 +15,8 @@ import { LoopManager } from "./engine/loop-manager.js";
 import { AcceptanceEvaluator } from "./engine/acceptance.js";
 import { TaskExecutor } from "./engine/executor.js";
 import { Supervisor } from "./engine/supervisor.js";
+import { DriveModeStore } from "./mode/store.js";
+import { StubProgramRunner } from "./mode/route.js";
 import {
   LOOP_TICK_MS,
   LOOP_DEFAULT_MAX_ITERATIONS,
@@ -98,6 +100,8 @@ function makeTestCtx(autoEvolve: boolean): PluginContext {
       agentsDir: join(base, "agents", "hera"),
     },
     autoEvolve: autoEvolve,
+    driveModeStore: new DriveModeStore(),
+    programRunner: new StubProgramRunner(),
   };
 }
 
