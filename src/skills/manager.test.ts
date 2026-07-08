@@ -310,4 +310,27 @@ describe("SkillManager", () => {
       expect(def!.description).toBe("Pre-existing");
     });
   });
+
+  describe("program-led skills", () => {
+    test("persists and reloads the program entry field", async () => {
+      await manager.createSkill({
+        name: "release-notes",
+        description: "program skill",
+        trigger: "",
+        prompt: "",
+        program: "run.ts",
+        files: [{ path: "run.ts", content: "export default async () => ({ ok: true });" }],
+        config: {},
+      } as SkillPackage);
+
+      // SKILL.json on disk carries the program field.
+      const raw = readFileSync(join(SKILLS_DIR, "release-notes", "SKILL.json"), "utf-8");
+      expect(JSON.parse(raw).program).toBe("run.ts");
+
+      // A fresh manager over the same dir reloads it.
+      const reloaded = new SkillManager(store, SKILLS_DIR);
+      await reloaded.init();
+      expect(reloaded.getSkillPackage("release-notes")?.program).toBe("run.ts");
+    });
+  });
 });

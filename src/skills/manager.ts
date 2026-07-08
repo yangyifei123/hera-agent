@@ -331,6 +331,7 @@ export class SkillManager {
       trigger: pkg.trigger,
       category: pkg.category,
       intensity: pkg.intensity,
+      program: pkg.program,
       createdAt: pkg.createdAt ?? Date.now(),
     };
     await writeFile(join(skillDir, "SKILL.json"), JSON.stringify(metadata, null, 2), "utf-8");
@@ -404,6 +405,7 @@ export class SkillManager {
       prompt,
       category: (metadata.category as "builtin" | "user") ?? "user",
       intensity: metadata.intensity as SkillPackage["intensity"],
+      program: metadata.program as string | undefined,
       config: config ?? {},
       files: extraFiles,
       createdAt: metadata.createdAt as number | undefined,
