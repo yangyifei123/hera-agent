@@ -47,7 +47,7 @@ Installed users invoke the CLI as `hera <command>`, but inside this repo the rel
   - Registers OpenCode hooks (`config`, `tool`, `experimental.chat.system.transform`, `experimental.session.compacting`)
   - Injects Hera and child agents into the live OpenCode session
 - **Standalone CLI**: `bin/hera.js`
-  - Handles `install`, `doctor`, `quickstart`, `list*`, `update`, `uninstall`, etc.
+  - Handles `install`, `doctor`, `quickstart`, `create`, `init`, `status`, `list*`, `update`, `upgrade`, `uninstall`, etc.
   - Reads and writes disk state directly; it does **not** go through the plugin runtime
 
 If you change templates, default skills, config-root resolution, agent naming rules, or onboarding assumptions, check both `src/` and `bin/hera.js`.
@@ -65,10 +65,11 @@ On plugin startup, Hera:
    - `WorkflowManager`
    - `DistillationEngine`
    - `AgentRegistry`
-4. Rewrites `hera.md` so Hera itself is always natively discoverable by OpenCode
-5. Runs first-run onboarding via `src/onboarding.ts`
-6. Loads agents from disk first, then fills missing ones from memory-store backups
-7. Builds the merged tool map via `src/tools/index.ts`
+4. Creates the background engine via `createEngine()` from `src/engine/` (`init()` -> `recover()` -> `start()`), which exposes `taskStore`, `loopManager`, and `supervisor` to the plugin context
+5. Rewrites `hera.md` so Hera itself is always natively discoverable by OpenCode
+6. Runs first-run onboarding via `src/onboarding.ts`
+7. Loads agents from disk first, then fills missing ones from memory-store backups
+8. Builds the merged tool map via `src/tools/index.ts`
 
 Disk is authoritative for agents; the memory store is a fallback, not the primary source.
 
@@ -117,7 +118,7 @@ Teams also have two collaboration channels:
 - inbox-style messages (`hera_team_message`, `hera_get_team_messages`, `hera_ack_team_messages`)
 - shared blackboard memory (`hera_team_remember`, `hera_team_recall`)
 
-### 7. Tooling is split into 8 domains
+### 7. Tooling is split into 11 domains
 
 `createAllTools()` merges these tool groups:
 
@@ -129,10 +130,25 @@ Teams also have two collaboration channels:
 - `system-tools`
 - `package-tools`
 - `workflow-tools`
+- `task-tools`
+- `loop-tools`
+- `recovery-tools`
+
+Tools listed in `hera.json` `disabled_tools` are filtered out of the merged map.
 
 `src/types.ts` defines per-domain context-slice interfaces, but the current tool factories still accept the full `PluginContext` and destructure what they need. Treat the slice interfaces as the architectural seam, not as something already fully enforced.
 
-### 8. Memory, distillation, and auto-learning hooks
+### 8. Background engine: tasks, loops, recovery
+
+`src/engine/` is a self-contained subsystem behind `createEngine()` (`src/engine/index.ts`):
+
+- **Task supervisor** (`supervisor.ts`, `task-store.ts`, `executor.ts`): persisted background tasks executed in OpenCode sessions, with acceptance criteria validation (`acceptance.ts`)
+- **Loop manager** (`loop-manager.ts`, `loop-store.ts`): recurring/looping work
+- **Active work context** (`active-work.ts`): tracks in-flight work for crash recovery; `engine.recover()` runs on startup before `engine.start()`
+
+The engine's `taskStore`, `loopManager`, and `supervisor` land on `PluginContext` and back `task-tools`, `loop-tools`, and `recovery-tools`.
+
+### 9. Memory, distillation, and auto-learning hooks
 
 - `MemoryStore` persists one JSON file per entry under typed subdirectories in `hera-data/memory/`
 - `experimental.session.compacting` in `src/index.ts` is where Hera plugs in:
@@ -141,7 +157,7 @@ Teams also have two collaboration channels:
   - optional auto-evolution prompting
 - `auto_memory: true` causes extracted memories to be saved with `metadata.source = "auto-memory"`
 
-### 9. Export and packaging are separate surfaces too
+### 10. Export and packaging are separate surfaces too
 
 - `src/generators/plugin-generator.ts` and `src/generators/team-plugin-generator.ts` export agents/teams as standalone OpenCode plugins
 - `src/tools/package-tools.ts` packages and unpacks agents as `.tar.gz` archives, optionally with related memory

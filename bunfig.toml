@@ -5,9 +5,12 @@
 root = "src"
 
 # Coverage configuration
+# Floor set with headroom below the actual ~96% line / ~95% function coverage:
+# high enough that a meaningful regression fails CI, low enough not to be brittle
+# on small fluctuations. Raise as coverage climbs; never lower to make CI pass.
 coverage = true
 coverageReporter = ["text"]
-coverageThreshold = { lines = 0.25, functions = 0.1 }
+coverageThreshold = { lines = 0.9, functions = 0.85 }
 
 # Test timeout
 timeout = 30000

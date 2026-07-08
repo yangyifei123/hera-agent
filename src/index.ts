@@ -274,8 +274,21 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     tool: tools,
 
     async "experimental.chat.system.transform"(input, output) {
+      // The full team/agent/skill roster is orchestrator context — only Hera
+      // should receive it, not each child agent (it bloats every child's prompt
+      // and leaks the whole roster to focused workers). Current OpenCode does
+      // not pass `agent` on this hook (only sessionID + model), so we cannot
+      // always positively identify Hera; we CAN positively identify a child (its
+      // name is a registered agent) and skip those. When `agent` is absent we
+      // fall back to injecting (Hera's session), preserving live-roster
+      // awareness; when a future runtime passes `agent`, children are excluded.
       const agent = (input as ChatTransformInput).agent;
-      if (agent === "hera" || agent === undefined) {
+      // "hera" is itself present in registeredAgents (its hera.md is on disk), so
+      // exclude it from the child check — only OTHER registered agents are the
+      // focused children we must not inject the roster into.
+      const isRegisteredChild =
+        typeof agent === "string" && agent !== "hera" && registeredAgents.has(agent);
+      if (!isRegisteredChild && (agent === "hera" || agent === undefined)) {
         const teams = teamManager.getAllTeams();
         if (teams.length > 0) {
           const teamContext = teams.map((t) => teamManager.buildTeamContext(t.name)).join("\n\n");
@@ -320,10 +333,13 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           const messages = await fetchSessionMessages(client, sessionID);
           const saved = await saveAutoMemories(store, messages);
           if (saved > 0) {
-            heraLog("debug", `Auto-memory: extracted ${saved} memories from session compaction`);
+            heraLog("info", `Auto-memory: extracted ${saved} memories from session compaction`);
           }
         } catch (err) {
-          heraLog("debug", "Auto-memory extraction failed during compaction", err);
+          // A genuine failure (client/store error) is surfaced at warn — an
+          // earlier regression made auto-memory silently dead, so a real
+          // failure must not be invisible at the default log level.
+          heraLog("warn", "Auto-memory extraction failed during compaction", err);
         }
       }
 
