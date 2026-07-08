@@ -305,6 +305,90 @@ describe("TeamManager.spawnTeam coordination correctness", () => {
     await reloaded.init();
     expect(reloaded.getSpawnedSessions("respawn").map((s) => s.sessionId)).toContain(firstId);
   });
+
+  it("preserves the real session id when only prompt submission fails", async () => {
+    // create() succeeds, promptAsync() throws: the session exists on the server,
+    // so we must track its REAL id (not a synthetic error-id) for recovery.
+    const client = {
+      session: {
+        create: async () => ({ data: { id: "real-sess-99" } }),
+        promptAsync: async () => {
+          throw new Error("network blip after accept");
+        },
+      },
+    } as never;
+    const mgr = new TeamManager(store, client);
+    await mgr.createTeam({
+      name: "promptfail",
+      description: "d",
+      coordination: "parallel",
+      members: [{ agentName: "worker", role: "dev" }],
+    } as never);
+
+    const sessions = await mgr.spawnTeam("promptfail", "task", "parent", dir);
+    expect(sessions[0].sessionId).toBe("real-sess-99");
+    expect(sessions[0].status).toBe("unknown");
+    expect(sessions[0].sessionId.startsWith("error-")).toBe(false);
+  });
+
+  it("deleteTeam purges persisted messages and sessions so they do not resurrect", async () => {
+    const mgr = new TeamManager(store, undefined);
+    await mgr.createTeam({
+      name: "ephemeral",
+      description: "d",
+      coordination: "parallel",
+      members: [
+        { agentName: "a", role: "dev" },
+        { agentName: "b", role: "dev" },
+      ],
+    } as never);
+    await mgr.sendMessage("ephemeral", "a", "b", "unacked directed message", "task");
+    await mgr.spawnTeam("ephemeral", "task", "parent", dir);
+
+    // Sanity: the message and session records are on disk.
+    expect((await store.list("team-message")).length).toBeGreaterThan(0);
+    expect((await store.list("team-session")).length).toBeGreaterThan(0);
+
+    await mgr.deleteTeam("ephemeral");
+
+    // A fresh manager over the same store must NOT reload the deleted team's
+    // inbox/sessions (which a same-name team would otherwise inherit).
+    const reloaded = new TeamManager(store, undefined);
+    await reloaded.init();
+    expect(reloaded.getMessages("ephemeral", "b")).toHaveLength(0);
+    expect(reloaded.getSpawnedSessions("ephemeral")).toHaveLength(0);
+    expect(await store.list("team-message")).toHaveLength(0);
+    expect(await store.list("team-session")).toHaveLength(0);
+  });
+
+  it("deleteTeam purges the shared blackboard (team-memory) so a same-name team does not inherit it", async () => {
+    const mgr = new TeamManager(store, undefined);
+    await mgr.createTeam({
+      name: "board",
+      description: "d",
+      coordination: "parallel",
+      members: [{ agentName: "a", role: "dev" }],
+    } as never);
+    // A blackboard entry as hera_team_remember would write it (scoped by teamName).
+    await store.save({
+      id: "team-memory-board-decision-abc12345",
+      type: "team-memory",
+      content: "[team:board] [key:decision] ship v1",
+      timestamp: 1,
+      metadata: { teamName: "board", key: "decision", writtenBy: "user" },
+    });
+    expect(
+      (await store.list("team-memory")).filter((m) => m.metadata?.teamName === "board")
+    ).toHaveLength(1);
+
+    await mgr.deleteTeam("board");
+
+    // The blackboard entry must be gone — recall filters only by teamName, so a
+    // later same-name team would otherwise read this stale decision.
+    expect(
+      (await store.list("team-memory")).filter((m) => m.metadata?.teamName === "board")
+    ).toHaveLength(0);
+  });
 });
 
 describe("TeamManager.createTeam governance preservation", () => {

@@ -148,8 +148,24 @@ export class TeamManager {
 
   async deleteTeam(name: string): Promise<boolean> {
     this.teams.delete(name);
+    // Purge persisted inbox + session records too. Without this, deleted-team
+    // messages (protected/unacked ones never expire) and session records survive
+    // in the store, are reloaded at init() for a team that no longer exists, and
+    // are silently inherited by a later same-name team.
+    const queue = this.messageQueue.get(name) ?? [];
+    await this.deleteStoredMessages(queue);
     this.messageQueue.delete(name);
     this.spawnedSessions.delete(name);
+    await this.store.delete("team-session", teamSessionMemoryId(name));
+    // Purge the team's shared blackboard (team-memory) too. hera_team_recall
+    // scopes only by metadata.teamName with no team-identity/generation check,
+    // so leaving these behind lets a later same-name team silently inherit the
+    // deleted team's blackboard — the same resurrection this method prevents for
+    // messages and sessions.
+    const blackboard = (await this.store.list("team-memory")).filter(
+      (m) => m.metadata?.teamName === name
+    );
+    await Promise.all(blackboard.map((m) => this.store.delete("team-memory", m.id)));
     return this.store.delete("team", teamMemoryId(name));
   }
 
@@ -268,15 +284,20 @@ export class TeamManager {
     }
 
     const reconciled = this.reconcileSpawnedSessions(teamName, sessions);
-    this.spawnedSessions.set(teamName, reconciled);
+    await this.persistSessions(teamName, reconciled);
+    return sessions;
+  }
+
+  /** Persist a team's tracked sessions to memory and the in-memory map. */
+  private async persistSessions(teamName: string, sessions: SpawnedSession[]): Promise<void> {
+    this.spawnedSessions.set(teamName, sessions);
     await this.store.save({
       id: teamSessionMemoryId(teamName),
       type: "team-session",
-      content: JSON.stringify({ teamName, sessions: reconciled }),
+      content: JSON.stringify({ teamName, sessions }),
       timestamp: Date.now(),
-      metadata: { sessionCount: reconciled.length },
+      metadata: { sessionCount: sessions.length },
     });
-    return sessions;
   }
 
   /**
@@ -326,10 +347,23 @@ export class TeamManager {
         throw new Error(`Session creation failed for @${agentName}`);
       }
       const sessionId = createResult.data.id;
-      await this.client.session.promptAsync({
-        path: { id: sessionId },
-        body: { agent: agentName, parts: [{ type: "text" as const, text: prompt }] },
-      });
+      try {
+        await this.client.session.promptAsync({
+          path: { id: sessionId },
+          body: { agent: agentName, parts: [{ type: "text" as const, text: prompt }] },
+        });
+      } catch (promptErr: unknown) {
+        // The session EXISTS on the server (create succeeded); only the prompt
+        // failed. Return the REAL sessionId with an "unknown" status so recovery
+        // can reconcile/tear it down — a synthetic error-id would orphan a live
+        // session the server may still be running.
+        return {
+          agentName,
+          sessionId,
+          status: "unknown",
+          result: `prompt submission failed: ${errorMessage(promptErr)}`,
+        };
+      }
       return { agentName, sessionId, status: "running" };
     } catch (err: unknown) {
       return {
@@ -397,7 +431,10 @@ export class TeamManager {
       type: "team-message",
       content: JSON.stringify(msg),
       timestamp: msg.timestamp,
-      metadata: { teamName, from, to, kind },
+      // `protected` tells the MemoryStore's generic cap/TTL not to evict a
+      // directed message its recipient has not acknowledged yet — otherwise the
+      // global memory limit could silently drop it despite our own pruning.
+      metadata: { teamName, from, to, kind, protected: this.isMessageProtected(msg) },
     });
     await this.pushMessageToActiveSessions(msg);
     return msg;
@@ -466,6 +503,32 @@ export class TeamManager {
   private async pushMessageToActiveSessions(msg: TeamMessage): Promise<void> {
     if (!this.client || typeof this.client.session?.promptAsync !== "function") return;
     const sessions = this.spawnedSessions.get(msg.teamName) ?? [];
+
+    // Refresh from live status: parallel/adaptive members are fire-and-forget
+    // and would otherwise stay "running" forever, so every broadcast would
+    // re-prompt long-finished sessions. Promote idle sessions to completed (and
+    // persist) so they drop out of delivery and stop being reported as running.
+    let liveStatus: Record<string, { type?: string } | undefined> | undefined;
+    try {
+      if (typeof this.client.session?.status === "function") {
+        const res = await this.client.session.status();
+        liveStatus = res.data as Record<string, { type?: string } | undefined> | undefined;
+      }
+    } catch {
+      // fall back to tracked status
+    }
+    let mutated = false;
+    if (liveStatus) {
+      for (const session of sessions) {
+        const live = liveStatus[session.sessionId]?.type;
+        if (live === "idle" && (session.status === "running" || session.status === "unknown")) {
+          session.status = "completed";
+          mutated = true;
+        }
+      }
+      if (mutated) await this.persistSessions(msg.teamName, sessions);
+    }
+
     const targets = sessions.filter(
       (session) =>
         session.status === "running" && (msg.to === "broadcast" || msg.to === session.agentName)
@@ -514,12 +577,20 @@ export class TeamManager {
     const idFilter = messageIds && messageIds.length > 0 ? new Set(messageIds) : undefined;
     const timestamp = Date.now();
     let count = 0;
-    for (const msg of queue) {
+    // Iterate a snapshot: a concurrent sendMessage may prune/splice the live
+    // queue across the awaited store.save below. Re-check membership against the
+    // live queue before persisting so we never re-save a just-evicted message.
+    for (const msg of [...queue]) {
       const visible = msg.to === memberName || msg.to === "broadcast";
       if (!visible || (idFilter && !idFilter.has(msg.id))) continue;
       msg.acknowledgedBy = msg.acknowledgedBy ?? [];
       msg.acknowledgedAt = msg.acknowledgedAt ?? {};
       if (msg.acknowledgedBy.includes(memberName)) continue;
+      // Recheck membership BEFORE mutating/counting: a concurrent sendMessage
+      // may have evicted this message from the live queue across a prior
+      // iteration's awaited save. Skip it entirely so we neither count nor
+      // persist an ack for a message that no longer exists.
+      if (!(this.messageQueue.get(teamName) ?? []).includes(msg)) continue;
       msg.acknowledgedBy.push(memberName);
       msg.acknowledgedAt[memberName] = timestamp;
       count++;
@@ -528,7 +599,15 @@ export class TeamManager {
         type: "team-message",
         content: JSON.stringify(msg),
         timestamp: msg.timestamp,
-        metadata: { teamName, from: msg.from, to: msg.to, kind: msg.kind },
+        // Refresh protection: once the required recipient acks, the message is
+        // no longer protected and may be evicted normally.
+        metadata: {
+          teamName,
+          from: msg.from,
+          to: msg.to,
+          kind: msg.kind,
+          protected: this.isMessageProtected(msg),
+        },
       });
     }
     return count;
