@@ -94,7 +94,6 @@ export class ProgramRunner implements ProgramRunnerContract {
 
     return new Promise<ProgramResult>((resolve) => {
       let settled = false;
-      let result: RpcResult | undefined;
 
       const finish = (r: ProgramResult) => {
         if (settled) return;
@@ -125,7 +124,10 @@ export class ProgramRunner implements ProgramRunnerContract {
 
       let child: Bun.Subprocess;
       try {
-        child = Bun.spawn(["bun", "run", harness], {
+        // Use the running runtime's own binary rather than a bare "bun" lookup:
+        // on a standalone/compiled OpenCode install, `bun` may not be on PATH,
+        // but `process.execPath` under Bun resolves to the bun executable itself.
+        child = Bun.spawn([process.execPath, "run", harness], {
           cwd: ctx.directory,
           env: {
             ...process.env,
@@ -149,23 +151,26 @@ export class ProgramRunner implements ProgramRunnerContract {
               return;
             }
             if (isResult(frame)) {
-              result = frame;
               finish(toProgramResult(frame, logs));
             }
           },
           onExit: (_proc, code) => {
             if (settled) return;
-            if (result) {
-              finish(toProgramResult(result, logs));
-              return;
-            }
-            void stderr.then((se) =>
-              finish({
-                ok: false,
-                error: `program exited (code ${code}) without result${se.trim() ? `: ${se.trim()}` : ""}`,
-                logs,
-              })
-            );
+            void stderr
+              .then((se) =>
+                finish({
+                  ok: false,
+                  error: `program exited (code ${code}) without result${se.trim() ? `: ${se.trim()}` : ""}`,
+                  logs,
+                })
+              )
+              .catch((err) =>
+                finish({
+                  ok: false,
+                  error: `program exited (code ${code}) without result and stderr read failed: ${err instanceof Error ? err.message : String(err)}`,
+                  logs,
+                })
+              );
           },
         });
       } catch (err) {

@@ -18,7 +18,9 @@ describe("writeModeCommandFile", () => {
     const content = await readFile(join(dir, "command", "mode.md"), "utf-8");
     expect(content).toBe(MODE_COMMAND_MARKDOWN);
     expect(content).toContain("agent: hera");
-    expect(content).toContain("/mode program <skill>");
+    expect(content).toContain("ALREADY handled");
+    expect(content).toContain("Do not call any tool");
+    expect(content).toContain("do NOT call `hera_run_program`");
   });
 
   it("is idempotent (second write keeps identical content)", async () => {

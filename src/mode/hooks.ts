@@ -7,10 +7,24 @@ import { handleModeCommand } from "./route.js";
 /**
  * Best-effort de-dupe so a `/mode` handled by command.execute.before is not
  * re-applied by the chat.message fallback. command.execute.before marks the
- * session; the fallback consults (and clears) the mark. Ordering caveat: if the
- * runtime were to fire chat.message strictly before command.execute.before, the
- * mark is absent and the fallback handles it (still correct, just via the other
- * path — sticky sets are idempotent).
+ * session; the fallback consults (and clears) the mark.
+ *
+ * This guard exists as defense-in-depth, not as the primary correctness
+ * mechanism. Under the current OpenCode design, the command-file path and the
+ * raw-text fallback path are mutually exclusive per invocation: the command
+ * template body delivered to chat.message does not itself start with `/mode`
+ * (see MODE_COMMAND_MARKDOWN), so `extractModeToken` finds nothing and the
+ * fallback no-ops. Double-execution therefore does not occur in practice.
+ *
+ * Do NOT reason about this guard as "harmless either way because sticky sets
+ * are idempotent." That reasoning is false for `program`: `program <skill>` is
+ * a side-effecting action (it runs the skill), not a state transition, so
+ * running it a second time via the fallback would run the skill twice. If the
+ * ordering assumption above ever stops holding — e.g. a future OpenCode
+ * version fires chat.message strictly before command.execute.before, or
+ * routes the literal `/mode ...` text into chat.message — callers must not
+ * rely on idempotency to excuse a double-run; the guard (or a replacement)
+ * must actually prevent it.
  */
 export class ModeDispatchGuard {
   private handled = new Set<string>();

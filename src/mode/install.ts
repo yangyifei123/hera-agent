@@ -6,8 +6,12 @@ import { heraLog } from "../logger.js";
 /**
  * Markdown body for the native `/mode` command file. Front-matter routes the
  * command to the `hera` agent; `$ARGUMENTS` is OpenCode's command-template
- * placeholder. The real logic lives in Hera's command.execute.before hook —
- * this template is only the discoverability/fallback surface.
+ * placeholder. `command.execute.before` already performs the `/mode` action
+ * (setting the sticky mode, or running a program skill) and pushes its own
+ * reply part before the model ever sees this body, so the body itself must be
+ * a pure status echo: it must NOT instruct the model to (re-)invoke anything,
+ * because `program <skill>` is side-effecting and a model-initiated re-run
+ * would execute the skill a second time.
  */
 export const MODE_COMMAND_MARKDOWN = [
   "---",
@@ -15,13 +19,14 @@ export const MODE_COMMAND_MARKDOWN = [
   "agent: hera",
   "---",
   "",
-  "The user invoked `/mode $ARGUMENTS`.",
+  "Hera's `command.execute.before` hook has ALREADY handled `/mode $ARGUMENTS`",
+  "natively: it set the session drive mode (auto/collab), or ran the requested",
+  "program skill (program <skill>), and its status-line reply is already",
+  "attached to this response.",
   "",
-  "Hera handles this natively via its command.execute.before hook: it sets the",
-  "session drive mode (auto/collab) or runs a program skill (program <skill>) and",
-  "replies with a status line. If you are reading this as a fallback, restate the",
-  "current drive mode and the usage: `/mode auto`, `/mode collab`,",
-  "`/mode program <skill>`.",
+  "Do not call any tool. In particular, do NOT call `hera_run_program`, and do",
+  "NOT re-run the mode change or the program skill in any other way — the",
+  "action has already happened. Simply acknowledge the result shown above.",
   "",
 ].join("\n");
 
