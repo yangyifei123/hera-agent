@@ -155,6 +155,28 @@ describe("AcceptanceEvaluator", () => {
     expect(evalr.allPassed(r)).toBe(true);
   });
 
+  it("enforces a positive timeout even when the check explicitly requests timeoutMs: 0", async () => {
+    // check.timeoutMs: 0 is allowed by the schema (no positivity constraint) and
+    // `?? defaultTimeoutMs` does NOT catch an explicit 0. runShell treats
+    // timeoutMs <= 0 as "no timer" (required for hera.sh's no-cap mode), so the
+    // evaluator itself must clamp to a strictly positive timeout before calling
+    // it — otherwise a wedged shell check hangs the whole evaluation forever.
+    // Use a tiny defaultTimeoutMs so the assertion stays fast and deterministic.
+    const tiny = new AcceptanceEvaluator({ shellEnabled: true, defaultTimeoutMs: 50 });
+    const slow = process.platform === "win32" ? "ping -n 6 127.0.0.1 >NUL" : "sleep 5";
+    const start = Date.now();
+    const r = await tiny.evaluate(
+      [{ type: "shell", command: slow, timeoutMs: 0 }],
+      { output: "", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail?.toLowerCase()).toContain("timeout");
+    // Resolves promptly (bounded by the clamped-to-default timeout + tree-kill
+    // wait), not after the full 5s blocking command.
+    expect(Date.now() - start).toBeLessThan(4000);
+  });
+
   it("fails shell checks when shell is disabled", async () => {
     const disabled = new AcceptanceEvaluator({ shellEnabled: false });
     const r = await disabled.evaluate(

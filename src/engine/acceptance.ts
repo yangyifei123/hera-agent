@@ -1,6 +1,8 @@
 // src/engine/acceptance.ts
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
+import { heraLog } from "../logger.js";
+import { TASK_LEASE_MS } from "../constants.js";
 import { runShell } from "./shell-exec.js";
 import type { AcceptanceCheck, AcceptanceResult } from "./task-types.js";
 
@@ -163,10 +165,33 @@ export class AcceptanceEvaluator {
   ): Promise<AcceptanceResult> {
     if (!this.shellEnabled) return this.result(check, false, now, "shell checks disabled");
     const expectExit = check.expectExit ?? 0;
-    const timeout = check.timeoutMs ?? this.defaultTimeoutMs;
+    const timeout = this.resolveShellTimeoutMs(check.timeoutMs);
     const res = await runShell(check.command, { cwd: check.cwd ?? ctx.cwd, timeoutMs: timeout });
     if (res.timedOut) return this.result(check, false, now, "timeout");
     return this.result(check, res.code === expectExit, now, `exit ${res.code}`);
+  }
+
+  /**
+   * Resolve a shell acceptance check's timeout to a value that is always
+   * strictly positive. `runShell` intentionally treats `timeoutMs <= 0` as
+   * "no timer" (required so hera.sh program steps can omit it and rely solely
+   * on the outer ProgramRunner's total-timeout kill), but an acceptance check
+   * must never hand it a non-positive value: that would let a wedged shell
+   * check hang the whole evaluation forever. `check.timeoutMs` is optional and
+   * schema-unconstrained (an explicit 0 is valid input), and `?? this.defaultTimeoutMs`
+   * does not catch that explicit 0, so both sides of the fallback chain are
+   * clamped here.
+   */
+  private resolveShellTimeoutMs(checkTimeoutMs: number | undefined): number {
+    if (typeof checkTimeoutMs === "number" && checkTimeoutMs > 0) return checkTimeoutMs;
+    if (this.defaultTimeoutMs > 0) return this.defaultTimeoutMs;
+    heraLog(
+      "warn",
+      `Acceptance shell check has a non-positive timeout (check.timeoutMs=${checkTimeoutMs}, ` +
+        `defaultTimeoutMs=${this.defaultTimeoutMs}); falling back to ${TASK_LEASE_MS}ms so the ` +
+        "check cannot hang the evaluation."
+    );
+    return TASK_LEASE_MS;
   }
 
   private async llmJudge(

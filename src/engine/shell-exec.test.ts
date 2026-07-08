@@ -29,4 +29,16 @@ describe("runShell", () => {
   it("killTree tolerates a nonexistent pid", async () => {
     await expect(killTree(2 ** 30)).resolves.toBeUndefined();
   });
+
+  it("runs to completion with no timer when timeoutMs is 0 (no-cap contract)", async () => {
+    // Intentional: timeoutMs <= 0 means "no per-command cap" — hera.sh program
+    // steps rely on this so they aren't bounded twice (the outer ProgramRunner
+    // total timeout already kills the whole child tree). Acceptance-side
+    // callers must never pass a non-positive timeout through to runShell; see
+    // AcceptanceEvaluator.shell's clamping in acceptance.ts.
+    const r = await runShell("echo hera-no-cap", { timeoutMs: 0 });
+    expect(r.code).toBe(0);
+    expect(r.timedOut).toBe(false);
+    expect(r.stdout).toContain("hera-no-cap");
+  });
 });
