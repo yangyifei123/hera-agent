@@ -21,7 +21,7 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/engine/index.ts --outdir dist/engine --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --outDir dist && echo 'build done'",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && bun build src/index.ts --outdir dist --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/engine/index.ts --outdir dist/engine --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && bun build src/program/child-harness.ts --outdir dist/program --target bun --format esm --external @opencode-ai/plugin --external @opencode-ai/sdk && tsc -p tsconfig.build.json --emitDeclarationOnly --declaration --outDir dist && echo 'build done'",
     "prepublishOnly": "bun run typecheck && bun run lint && bun run build && bun test && npm pack --dry-run",
     "postinstall": "node postinstall.mjs",
     "dev": "bun run --watch src/index.ts",
@@ -63,6 +63,7 @@
   },
   "files": [
     "dist/index.js",
+    "dist/program/child-harness.js",
     "dist/**/*.d.ts",
     "bin",
     "postinstall.mjs",
