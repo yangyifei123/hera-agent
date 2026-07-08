@@ -119,4 +119,53 @@ describe("JsonCollectionStore", () => {
         .sort()
     ).toEqual(["x", "y"]);
   });
+
+  it("update() reads the latest value and persists the mutation", async () => {
+    await store.save({ id: "u", status: "pending", value: 1 });
+    const next = await store.update("u", (cur) =>
+      cur ? { ...cur, status: "running", value: cur.value + 1 } : null
+    );
+    expect(next).toEqual({ id: "u", status: "running", value: 2 });
+    expect(await store.load("u")).toEqual({ id: "u", status: "running", value: 2 });
+    expect(store.byIndex("status", "pending")).toHaveLength(0);
+    expect(store.byIndex("status", "running").map((r) => r.id)).toEqual(["u"]);
+  });
+
+  it("update() aborts the write when the mutator returns null", async () => {
+    await store.save({ id: "u", status: "pending", value: 1 });
+    const result = await store.update("u", () => null);
+    expect(result).toEqual({ id: "u", status: "pending", value: 1 });
+    expect(await store.load("u")).toEqual({ id: "u", status: "pending", value: 1 });
+  });
+
+  it("update() serializes against a concurrent save so it cannot resurrect stale state", async () => {
+    // The canonical bug: a long-running holder captured a stale snapshot and,
+    // after an intervening terminal write, blindly persists it. update() closes
+    // the read+write in one lock, so the terminal write is observed and honored.
+    await store.save({ id: "t", status: "running", value: 0 });
+
+    // A "cancel" lands first...
+    const cancel = store.save({ id: "t", status: "cancelled", value: 0 });
+    // ...then a stale executor tries to mark it succeeded, but guards on the
+    // freshly-read status.
+    const finish = store.update("t", (cur) =>
+      cur && cur.status === "cancelled" ? null : { id: "t", status: "succeeded", value: 1 }
+    );
+    await Promise.all([cancel, finish]);
+
+    expect(await store.load("t")).toEqual({ id: "t", status: "cancelled", value: 0 });
+    expect(store.byIndex("status", "succeeded")).toHaveLength(0);
+  });
+
+  it("update() reads a cold entry from disk when not cached", async () => {
+    // Simulate a record written by another process (present on disk, absent
+    // from this store's cache).
+    const fresh = new JsonCollectionStore<Row>(dir, "rows", {
+      secondaryIndexes: { status: (r) => r.status },
+    });
+    await fresh.init();
+    await store.save({ id: "cold", status: "pending", value: 5 });
+    const updated = await fresh.update("cold", (cur) => (cur ? { ...cur, status: "seen" } : null));
+    expect(updated).toEqual({ id: "cold", status: "seen", value: 5 });
+  });
 });
