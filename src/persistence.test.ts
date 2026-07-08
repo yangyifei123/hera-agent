@@ -181,6 +181,25 @@ describe("backup/list/restore integration", () => {
     expect(normalizePath(backups[0].filePath).startsWith(expectedDir)).toBe(true);
   });
 
+  it("does not cross-match a shorter agent name against a longer one's backups", async () => {
+    // "qa" is a prefix of "qa-engineer": a naive startsWith filter would treat
+    // qa-engineer's backups as qa's, letting a qa restore/prune clobber them.
+    const qa = makeAgentDef({ name: "qa" });
+    const qaEng = makeAgentDef({ name: "qa-engineer" });
+    await persistAgent(qa, new Map(), registeredAgents, registry, store);
+    await persistAgent(qaEng, new Map(), registeredAgents, registry, store);
+    await backupAgent("qa", registeredAgents, registry);
+    await backupAgent("qa-engineer", registeredAgents, registry);
+
+    const qaBackups = await listBackups("qa", registeredAgents, registry);
+    const qaEngBackups = await listBackups("qa-engineer", registeredAgents, registry);
+    expect(qaBackups).toHaveLength(1);
+    expect(qaEngBackups).toHaveLength(1);
+    expect(qaBackups[0].filePath).not.toEqual(qaEngBackups[0].filePath);
+    // qa's listing must not include the qa-engineer backup file.
+    expect(qaBackups[0].filePath).not.toContain("qa-engineer");
+  });
+
   it("restores markdown with custom skill prompts re-embedded", async () => {
     const customSkill: SkillDefinition = {
       name: "custom-skill",

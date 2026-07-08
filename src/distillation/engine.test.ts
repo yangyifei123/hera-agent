@@ -159,11 +159,26 @@ describe("DistillationEngine", () => {
         skillsExtracted: [],
         patternsLearned: ["React", "TypeScript"],
       };
-      const skill = await engine.distillToSkill("test-skill", distillResult);
+      const skill = engine.distillToSkill("test-skill", distillResult);
       expect(skill.name).toBe("test-skill");
       expect(skill.category).toBe("user");
       expect(skill.prompt).toContain("React");
       expect(skill.prompt).toContain("TypeScript");
+    });
+
+    it("does not persist a skill entry itself (SkillManager owns persistence)", () => {
+      const saveMock = (store as unknown as { save: ReturnType<typeof mock> }).save;
+      const before = saveMock.mock.calls.length;
+      engine.distillToSkill("unpersisted", {
+        summary: "s",
+        keyDecisions: [],
+        skillsExtracted: [],
+        patternsLearned: ["X"],
+      });
+      // distillToSkill must not write to the store — otherwise an invalid name
+      // would leave a ghost skill that resurrects on restart. Persistence +
+      // name validation belongs to SkillManager.createSkill.
+      expect(saveMock.mock.calls.length).toBe(before);
     });
   });
 });

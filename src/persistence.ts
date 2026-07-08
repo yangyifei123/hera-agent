@@ -30,6 +30,24 @@ export interface BackupEntry {
 /** Maximum backups per agent */
 const MAX_BACKUPS_PER_AGENT = 5;
 
+/**
+ * Match ONLY this agent's backup files: `<name>-<digits>.json`. A plain
+ * `startsWith("<name>-")` prefix test also matches longer-named agents — e.g.
+ * "qa" would match "qa-engineer-123.json" — so restoring/pruning "qa" could
+ * clobber "qa-engineer"'s backups. Anchoring the timestamp as all-digits keeps
+ * the two namespaces separate even when one name is a prefix of another.
+ */
+function agentBackupPattern(name: string): RegExp {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped}-\\d+\\.json$`);
+}
+
+/** Parse the trailing `-<digits>.json` timestamp from a backup filename. */
+function backupTimestamp(file: string): number {
+  const match = file.match(/-(\d+)\.json$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 function getAgentRegistryDir(agentRegistry: AgentRegistry): string | undefined {
   const maybeRegistry = agentRegistry as { getAgentsDir?: () => string };
   return maybeRegistry.getAgentsDir?.();
@@ -101,9 +119,10 @@ export async function backupAgent(
   // Prune old backups: keep only last MAX_BACKUPS_PER_AGENT
   try {
     const files = await readdir(backupsDir);
+    const pattern = agentBackupPattern(name);
     const agentBackups = files
-      .filter((f) => f.startsWith(`${name}-`) && f.endsWith(".json"))
-      .sort();
+      .filter((f) => pattern.test(f))
+      .sort((a, b) => backupTimestamp(a) - backupTimestamp(b));
 
     while (agentBackups.length > MAX_BACKUPS_PER_AGENT) {
       const oldest = agentBackups.shift();
@@ -129,15 +148,15 @@ export async function listBackups(
   const backupsDir = getBackupsDir(agentsDir);
   try {
     const files = await readdir(backupsDir);
+    const pattern = agentBackupPattern(name);
     const agentBackups = files
-      .filter((f) => f.startsWith(`${name}-`) && f.endsWith(".json"))
-      .sort();
+      .filter((f) => pattern.test(f))
+      .sort((a, b) => backupTimestamp(a) - backupTimestamp(b));
 
-    return agentBackups.map((f) => {
-      const match = f.match(/-(\d+)\.json$/);
-      const timestamp = match ? parseInt(match[1], 10) : 0;
-      return { timestamp, filePath: join(backupsDir, f) };
-    });
+    return agentBackups.map((f) => ({
+      timestamp: backupTimestamp(f),
+      filePath: join(backupsDir, f),
+    }));
   } catch {
     return [];
   }

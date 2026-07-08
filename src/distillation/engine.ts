@@ -48,26 +48,21 @@ export class DistillationEngine {
   }
 
   /**
-   * Convert distilled knowledge into a usable skill
+   * Build a skill definition from distilled knowledge. This does NOT persist —
+   * persistence + name validation is owned by SkillManager.createSkill, which
+   * the caller invokes. (Persisting here previously wrote an unvalidated
+   * `skill-<name>` entry BEFORE createSkill's validation ran, leaving an
+   * undeletable ghost skill that resurrected on every restart when the name was
+   * invalid, plus a redundant double-write.)
    */
-  async distillToSkill(name: string, distillation: DistillationResult): Promise<SkillDefinition> {
-    const skill: SkillDefinition = {
+  distillToSkill(name: string, distillation: DistillationResult): SkillDefinition {
+    return {
       name,
       description: `Auto-generated skill from session distillation: ${distillation.summary.slice(0, MAX_SKILL_DESC_LENGTH)}`,
       trigger: `When task involves: ${distillation.patternsLearned.join(", ")}`,
       prompt: this.buildSkillPrompt(distillation),
       category: "user",
     };
-
-    await this.store.save({
-      id: `skill-${name}`,
-      type: "skill",
-      content: JSON.stringify(skill),
-      timestamp: Date.now(),
-      metadata: { source: "distillation", patterns: distillation.patternsLearned },
-    });
-
-    return skill;
   }
 
   private generateSummary(text: string): string {
