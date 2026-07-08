@@ -342,6 +342,28 @@ export interface HeraPaths {
   agentsDir: string;
 }
 
+// --- Program engine seam (frozen contract shared with the program-led engine, Spec 2) ---
+
+/** Session identity passed to a program run. */
+export interface SessionCtx {
+  sessionID: string;
+  directory: string;
+}
+
+/** Result of a program-skill run. */
+export type ProgramResult =
+  | { ok: true; value: unknown; logs: string[] }
+  | { ok: false; error: string; logs: string[] };
+
+/**
+ * The ONLY dependency the drive-mode layer has on the program-led engine.
+ * Spec 2 provides a concrete implementation; Spec 1 ships a stub until then.
+ * Spec 2 must import these three types from here rather than redefining them.
+ */
+export interface ProgramRunner {
+  run(skillName: string, args: unknown, ctx: SessionCtx): Promise<ProgramResult>;
+}
+
 export interface PluginContext {
   store: import("./memory/store.js").MemoryStore;
   skillManager: import("./skills/manager.js").SkillManager;
