@@ -127,6 +127,13 @@ export function createEngine(opts: EngineOptions): Engine {
     ...createRecoveryTools(toolCtx),
   };
 
+  // Latch init/recover so they run exactly once per engine, even when several
+  // plugins (Hera + generated agent/team plugins) share the singleton and each
+  // calls init()/recover(). Re-running init() would clear and rebuild the live
+  // in-memory stores mid-tick, which can drop or resurrect in-flight tasks.
+  let initPromise: Promise<void> | undefined;
+  let recoverPromise: Promise<void> | undefined;
+
   const engine: Engine = {
     taskStore,
     loopStore,
@@ -135,13 +142,17 @@ export function createEngine(opts: EngineOptions): Engine {
     executor,
     evaluator,
     tools,
-    async init() {
-      await taskStore.init();
-      await loopStore.init();
+    init() {
+      return (initPromise ??= (async () => {
+        await taskStore.init();
+        await loopStore.init();
+      })());
     },
-    async recover() {
-      await supervisor.recover();
-      await loopManager.recover();
+    recover() {
+      return (recoverPromise ??= (async () => {
+        await supervisor.recover();
+        await loopManager.recover();
+      })());
     },
     start() {
       supervisor.start();

@@ -7,6 +7,7 @@ import { TaskStore } from "./task-store.js";
 import { AcceptanceEvaluator } from "./acceptance.js";
 import { LoopStore } from "./loop-store.js";
 import { LoopManager } from "./loop-manager.js";
+import { LOOP_TASK_RETENTION } from "../constants.js";
 
 const OPTS = {
   tickMs: 10,
@@ -25,6 +26,20 @@ const template = {
   executor: "hera",
   acceptance: [{ type: "file_exists" as const, path: "/tmp/x" }],
 };
+
+/**
+ * Mark every outstanding (pending/running) task in a loop's batch as succeeded,
+ * simulating the supervisor draining the queue between ticks. Recurring loops
+ * now skip a fire while their previous task is still in flight (overlap guard),
+ * so scheduling tests must terminalize the prior task before the next fire.
+ */
+async function drainBatch(taskStore: TaskStore, batchId: string, now: number): Promise<void> {
+  for (const t of taskStore.byBatch(batchId)) {
+    if (t.status === "pending" || t.status === "running") {
+      await taskStore.save({ ...t, status: "succeeded", completedAt: now, updatedAt: now });
+    }
+  }
+}
 
 describe("LoopManager core + drain", () => {
   let dir: string;
@@ -255,11 +270,36 @@ describe("LoopManager recurring", () => {
     await mgr.tick(2000); // fires once, nextRunAt -> 3000
     expect(taskStore.byBatch(id)).toHaveLength(1);
     expect((await mgr.get(id))?.recurring?.nextRunAt).toBe(3000);
+    await drainBatch(taskStore, id, 2000); // supervisor completes the fire
 
     await mgr.tick(2500); // before 3000 -> no new fire
     expect(taskStore.byBatch(id)).toHaveLength(1);
 
     await mgr.tick(3000); // fires again
+    expect(taskStore.byBatch(id)).toHaveLength(2);
+  });
+
+  it("skips a recurring fire while the previous run is still in flight (no overlap)", async () => {
+    const mgr = makeManager(dir, loopStore, taskStore, 1000);
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
+    const id = (res as { id: string }).id;
+
+    await mgr.tick(2000); // fires once — task now pending
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+
+    // Previous task still pending: the next due fire is skipped, but the
+    // schedule still advances so the loop does not busy-spin.
+    await mgr.tick(3000);
+    expect(taskStore.byBatch(id)).toHaveLength(1);
+    expect((await mgr.get(id))?.recurring?.nextRunAt).toBe(4000);
+
+    // Once the outstanding task completes, the next due fire proceeds.
+    await drainBatch(taskStore, id, 3500);
+    await mgr.tick(4000);
     expect(taskStore.byBatch(id)).toHaveLength(2);
   });
 
@@ -286,6 +326,7 @@ describe("LoopManager recurring", () => {
     });
     const id = (res as { id: string }).id;
     await mgr.tick(2000); // run 1
+    await drainBatch(taskStore, id, 2000); // supervisor completes run 1
     await mgr.tick(3000); // run 2 -> completed
     expect((await mgr.get(id))?.status).toBe("completed");
     expect(taskStore.byBatch(id)).toHaveLength(2);
@@ -363,6 +404,35 @@ describe("LoopManager watch", () => {
     await mgr.tick(1002); // edge again -> enqueue #2
     expect(taskStore.byBatch(id)).toHaveLength(2);
   });
+
+  it("does not resurrect a loop cancelled while its watch condition is evaluating", async () => {
+    // The canonical lost-update race: a slow condition is mid-evaluate when the
+    // user cancels the loop. The tick's stale save must be dropped, not flip the
+    // loop back to active.
+    const ref: { mgr?: LoopManager } = {};
+    let loopId = "";
+    const racingEvalr = {
+      evaluate: async () => {
+        if (loopId) await ref.mgr?.cancel(loopId); // cancel lands mid-evaluation
+        return [{ type: "shell", passed: true, detail: "ok", at: 1000 }];
+      },
+      allPassed: () => true,
+    } as unknown as AcceptanceEvaluator;
+    const mgr = new LoopManager(loopStore, taskStore, racingEvalr, dir, OPTS, () => 1000);
+    ref.mgr = mgr;
+    const res = await mgr.createLoop({
+      mode: "watch",
+      taskTemplate: template,
+      watch: { condition: [{ type: "shell", command: "true" }] },
+    });
+    loopId = (res as { id: string }).id;
+
+    await mgr.tick(1000);
+
+    expect((await mgr.get(loopId))?.status).toBe("cancelled");
+    // The task enqueued by the (now-dropped) tick must not linger under a dead loop.
+    expect(taskStore.byBatch(loopId).filter((t) => t.status !== "cancelled")).toHaveLength(0);
+  });
 });
 
 describe("LoopManager circuit-breaker", () => {
@@ -407,6 +477,56 @@ describe("LoopManager circuit-breaker", () => {
     await mgr.tick(5000);
     expect((await mgr.get(id))?.status).toBe("failed");
     expect((await mgr.get(id))?.lastError).toContain("circuit-breaker");
+  });
+
+  it("retention never prunes below the circuit-breaker window (breaker survives a high maxConsecutiveFailures)", async () => {
+    // A threshold ABOVE the retention floor: naive pruning to LOOP_TASK_RETENTION
+    // would permanently cap the trailing-failure count below this, so the breaker
+    // could never trip and a perpetually-failing loop would retry forever.
+    const HIGH = LOOP_TASK_RETENTION + 5;
+    const evalr = new AcceptanceEvaluator({ shellEnabled: true });
+    const mgr = new LoopManager(
+      loopStore,
+      taskStore,
+      evalr,
+      dir,
+      { ...OPTS, maxConsecutiveFailures: HIGH },
+      () => 1000
+    );
+    const res = await mgr.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
+    const id = (res as { id: string }).id;
+
+    // More terminal tasks than either the retention floor OR the threshold, with
+    // the most recent one SUCCEEDED so the breaker does not trip on this tick —
+    // forcing the retention prune to run.
+    const total = HIGH + 10;
+    for (let i = 0; i < total; i++) {
+      await taskStore.save({
+        id: `f${i}`,
+        batchId: id,
+        goal: "g",
+        executor: "hera",
+        acceptance: [{ type: "file_exists", path: "/tmp/x" }],
+        status: i === total - 1 ? "succeeded" : "failed",
+        attempts: 3,
+        maxAttempts: 3,
+        createdAt: i,
+        updatedAt: i,
+        completedAt: i,
+      });
+    }
+    await mgr.tick(1000);
+
+    // Retention must keep at least the breaker window (max(RETENTION, HIGH)=HIGH),
+    // not trim down to the RETENTION floor.
+    const terminalRemaining = taskStore
+      .byBatch(id)
+      .filter((t) => t.status === "failed" || t.status === "succeeded").length;
+    expect(terminalRemaining).toBe(HIGH);
   });
 
   it("a later success resets the trailing-failure run (no trip)", async () => {

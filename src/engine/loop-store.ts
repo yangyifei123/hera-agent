@@ -23,6 +23,18 @@ export class LoopStore {
     await this.store.save(loop);
   }
 
+  /**
+   * Atomic compare-and-set: the mutator sees the current stored loop and
+   * returns the next value, or null/undefined to abort. Used by the tick paths
+   * so a stale in-flight snapshot cannot resurrect a cancelled/paused loop.
+   */
+  async update(
+    id: string,
+    mutator: (current: LoopDefinition | null) => LoopDefinition | null | undefined
+  ): Promise<LoopDefinition | null> {
+    return this.store.update(id, mutator);
+  }
+
   async get(id: string): Promise<LoopDefinition | null> {
     return this.store.load(id);
   }

@@ -5,7 +5,11 @@ import type { TaskStore } from "./task-store.js";
 import type { AcceptanceEvaluator } from "./acceptance.js";
 import type { AcceptanceCheck, TaskRecord } from "./task-types.js";
 import type { LoopDefinition, LoopMode, LoopStatus, LoopTaskTemplate } from "./loop-types.js";
-import { TASK_DEFAULT_MAX_ATTEMPTS } from "../constants.js";
+import {
+  TASK_DEFAULT_MAX_ATTEMPTS,
+  TASK_DEFAULT_BACKOFF_MS,
+  LOOP_TASK_RETENTION,
+} from "../constants.js";
 import { heraLog } from "../logger.js";
 import { errorMessage } from "../helpers.js";
 
@@ -154,13 +158,44 @@ export class LoopManager {
         try {
           await this.advance(loop, now);
         } catch (err) {
-          await this.loopStore.save({ ...loop, lastError: errorMessage(err), updatedAt: now });
           heraLog("warn", `Loop tick error: ${loop.id}`, err);
+          // Record the error but never let a failing save abort the remaining
+          // loops this tick (or escape as an unhandled rejection).
+          try {
+            await this.saveActive(loop.id, { lastError: errorMessage(err), updatedAt: now });
+          } catch (saveErr) {
+            heraLog("warn", `Loop error-save failed: ${loop.id}`, saveErr);
+          }
         }
       }
     } finally {
       this.ticking = false;
     }
+  }
+
+  /**
+   * Persist a loop mutation via compare-and-set, but only while the stored loop
+   * is still "active". This is what stops a long in-flight tick (e.g. one
+   * awaiting a 30s shell condition) from resurrecting a loop that was cancelled
+   * or paused in the meantime — its stale save is simply dropped. Changes are
+   * merged onto the freshly-read record, not the stale snapshot.
+   */
+  private async saveActive(
+    id: string,
+    changes: Partial<LoopDefinition>
+  ): Promise<LoopDefinition | null> {
+    let wrote = false;
+    const res = await this.loopStore.update(id, (cur) => {
+      if (cur && cur.status === "active") {
+        wrote = true;
+        return { ...cur, ...changes };
+      }
+      return undefined;
+    });
+    // Return the persisted record only when the write actually happened; on a
+    // dropped write (loop no longer active) return null so callers can react
+    // (e.g. delete a task they optimistically enqueued).
+    return wrote ? res : null;
   }
 
   async recover(): Promise<number> {
@@ -172,7 +207,9 @@ export class LoopManager {
   start(): void {
     if (this.timer) return;
     this.timer = setInterval(() => {
-      void this.tick(this.clock());
+      // Never let a tick rejection escape the timer callback as an unhandled
+      // rejection (which terminates the process on some runtimes).
+      this.tick(this.clock()).catch((err) => heraLog("warn", "Loop tick failed", err));
     }, this.options.tickMs);
     if (typeof this.timer.unref === "function") this.timer.unref();
   }
@@ -195,13 +232,26 @@ export class LoopManager {
       else break;
     }
     if (trailing >= this.options.maxConsecutiveFailures) {
-      await this.loopStore.save({
-        ...loop,
+      await this.saveActive(loop.id, {
         status: "failed",
         lastError: `loop circuit-breaker: ${trailing} consecutive task failures`,
         updatedAt: now,
       });
       return;
+    }
+
+    // Retention: a long-lived recurring loop would otherwise accumulate one
+    // terminal task record per fire forever. Keep the most recent terminal tasks
+    // and prune the rest so the store — and this per-tick scan — stay bounded.
+    // Retain at least the circuit-breaker window: pruning below
+    // maxConsecutiveFailures would cap `trailing` (computed above) under the
+    // configured threshold, so a breaker with maxConsecutiveFailures larger than
+    // LOOP_TASK_RETENTION could never trip and a perpetually-failing loop would
+    // retry forever.
+    const retain = Math.max(LOOP_TASK_RETENTION, this.options.maxConsecutiveFailures);
+    if (terminal.length > retain) {
+      const prune = terminal.slice(0, terminal.length - retain);
+      await Promise.all(prune.map((t) => this.taskStore.delete(t.id)));
     }
 
     switch (loop.mode) {
@@ -232,6 +282,9 @@ export class LoopManager {
       status: "pending",
       attempts: 0,
       maxAttempts: t.maxAttempts ?? TASK_DEFAULT_MAX_ATTEMPTS,
+      // Honor exponential retry backoff for loop-spawned tasks too; without it a
+      // failing loop task retries at full supervisor tick rate.
+      backoffMs: TASK_DEFAULT_BACKOFF_MS,
       createdAt: now,
       updatedAt: now,
     };
@@ -245,7 +298,7 @@ export class LoopManager {
       : await this.taskStore.all();
     const busy = scope.some((t) => t.status === "pending" || t.status === "running");
     if (!busy) {
-      await this.loopStore.save({ ...loop, status: "completed", updatedAt: now });
+      await this.saveActive(loop.id, { status: "completed", updatedAt: now });
     }
   }
 
@@ -274,13 +327,12 @@ export class LoopManager {
     }
 
     if (goalMet) {
-      await this.loopStore.save({ ...loop, status: "completed", updatedAt: now });
+      await this.saveActive(loop.id, { status: "completed", updatedAt: now });
       return;
     }
 
     if (loop.iterations >= cfg.maxIterations) {
-      await this.loopStore.save({
-        ...loop,
+      await this.saveActive(loop.id, {
         status: "failed",
         lastError: "iterate: max iterations reached without meeting goal",
         updatedAt: now,
@@ -297,32 +349,52 @@ export class LoopManager {
       };
     }
     const taskId = await this.enqueueFromTemplate(loop, now, input);
-    await this.loopStore.save({
-      ...loop,
+    // Record the new iteration only if the loop is still active; if it was
+    // cancelled/paused during goal evaluation, drop the enqueued task so it
+    // does not run detached from a dead loop.
+    const saved = await this.saveActive(loop.id, {
       currentTaskId: taskId,
       iterations: loop.iterations + 1,
       updatedAt: now,
     });
+    if (!saved) await this.taskStore.delete(taskId);
   }
   private async tickRecurring(loop: LoopDefinition, now: number): Promise<void> {
     const cfg = loop.recurring;
     if (!cfg) return;
     if (now < cfg.nextRunAt) return;
 
-    const taskId = await this.enqueueFromTemplate(loop, now);
-    const runs = cfg.runs + 1;
     // Fixed cadence; if a full interval still lands in the past, skip missed runs.
     const advanced = cfg.nextRunAt + cfg.intervalMs;
     const nextRunAt = advanced <= now ? now + cfg.intervalMs : advanced;
+
+    // Overlap guard: if the previous fire is still pending/running, skip THIS
+    // fire (just advance the schedule) instead of piling a second concurrent
+    // copy onto the queue. Without this, a recurring loop whose task outlives
+    // its interval fans out unbounded duplicate work.
+    const outstanding = this.taskStore
+      .byBatch(loop.id)
+      .some((t) => t.status === "pending" || t.status === "running");
+    if (outstanding) {
+      heraLog(
+        "debug",
+        `Recurring loop ${loop.id}: previous run still in flight, skipping this fire`
+      );
+      await this.saveActive(loop.id, { recurring: { ...cfg, nextRunAt }, updatedAt: now });
+      return;
+    }
+
+    const taskId = await this.enqueueFromTemplate(loop, now);
+    const runs = cfg.runs + 1;
     const completed = cfg.maxRuns != null && runs >= cfg.maxRuns;
-    await this.loopStore.save({
-      ...loop,
+    const saved = await this.saveActive(loop.id, {
       recurring: { ...cfg, runs, nextRunAt },
       currentTaskId: taskId,
       iterations: loop.iterations + 1,
-      status: completed ? "completed" : loop.status,
+      ...(completed ? { status: "completed" as const } : {}),
       updatedAt: now,
     });
+    if (!saved) await this.taskStore.delete(taskId);
   }
   private async tickWatch(loop: LoopDefinition, now: number): Promise<void> {
     const cfg = loop.watch;
@@ -330,18 +402,18 @@ export class LoopManager {
     const proof = await this.evaluator.evaluate(cfg.condition, { output: "", cwd: this.cwd }, now);
     const met = this.evaluator.allPassed(proof);
 
-    let iterations = loop.iterations;
-    let currentTaskId = loop.currentTaskId;
-    if (met && !cfg.lastConditionMet) {
-      currentTaskId = await this.enqueueFromTemplate(loop, now);
-      iterations += 1;
-    }
-    await this.loopStore.save({
-      ...loop,
+    const fired = met && !cfg.lastConditionMet;
+    const currentTaskId = fired ? await this.enqueueFromTemplate(loop, now) : loop.currentTaskId;
+    const iterations = fired ? loop.iterations + 1 : loop.iterations;
+    const saved = await this.saveActive(loop.id, {
       watch: { ...cfg, lastConditionMet: met },
       currentTaskId,
       iterations,
       updatedAt: now,
     });
+    // If the loop was cancelled/paused while the (possibly slow) condition was
+    // evaluating, the CAS above dropped the write — discard any task we just
+    // enqueued so it doesn't run under a dead loop.
+    if (!saved && fired && currentTaskId) await this.taskStore.delete(currentTaskId);
   }
 }

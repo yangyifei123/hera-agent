@@ -65,6 +65,23 @@ describe("TaskStore", () => {
     expect(store.byStatus("pending")).toHaveLength(1);
   });
 
+  it("a second process cannot re-claim a task already leased on disk", async () => {
+    // Two TaskStores over the SAME dir model two OpenCode processes. Process A
+    // leases the task; process B's cache is stale (still sees pending), but the
+    // disk-authoritative claim must refuse because the on-disk lease is live.
+    await store.save(makeTask({ id: "shared" }));
+    const other = new TaskStore(dir);
+    await other.init(); // B snapshots "shared" as pending into its cache
+
+    const claimedByA = await store.claimReady(1, 5000, "A", 1000);
+    expect(claimedByA.map((t) => t.id)).toEqual(["shared"]);
+
+    // B still believes it's pending in memory, but claim re-reads disk.
+    expect(other.byStatus("pending").map((t) => t.id)).toEqual(["shared"]);
+    const claimedByB = await other.claimReady(1, 5000, "B", 1200);
+    expect(claimedByB).toHaveLength(0);
+  });
+
   it("claimReady skips tasks with unsatisfied dependencies", async () => {
     await store.save(makeTask({ id: "dep", status: "pending" }));
     await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["dep"] }));
@@ -143,6 +160,23 @@ describe("TaskStore", () => {
     await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["dep"] }));
     await store.failBlockedTasks(2000);
     expect((await store.get("child"))?.status).toBe("failed");
+  });
+
+  it("failBlockedTasks fails a pending task whose dependency does not exist", async () => {
+    // A typo'd / hallucinated dependency id: the task can never become ready.
+    await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["ghost-id"] }));
+    const count = await store.failBlockedTasks(2000);
+    expect(count).toBe(1);
+    const child = await store.get("child");
+    expect(child?.status).toBe("failed");
+    expect(child?.lastError).toContain("does not exist");
+  });
+
+  it("failBlockedTasks leaves a task whose dependency is still pending", async () => {
+    await store.save(makeTask({ id: "dep", status: "pending" }));
+    await store.save(makeTask({ id: "child", status: "pending", dependsOn: ["dep"] }));
+    await store.failBlockedTasks(2000);
+    expect((await store.get("child"))?.status).toBe("pending");
   });
 
   it("claimReady skips a pending task until its backoff nextEligibleAt passes", async () => {

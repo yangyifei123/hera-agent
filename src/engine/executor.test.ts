@@ -167,6 +167,71 @@ describe("TaskExecutor", () => {
     expect(updated.lastError).toContain("timed out");
   });
 
+  it("does not resurrect a task cancelled while the attempt was in flight", async () => {
+    // The runner cancels the task mid-flight (simulating hera_cancel_task landing
+    // during a long attempt), then returns success. The terminal write must NOT
+    // flip the cancelled task back to succeeded.
+    const target = join(dir, "out.txt");
+    const runner: AgentRunner = {
+      run: async () => {
+        const t = await store.get("t1");
+        if (t) await store.save({ ...t, status: "cancelled", updatedAt: 2 });
+        await writeFile(target, "ok");
+        return "done";
+      },
+    };
+    const exec = new TaskExecutor(store, evalr, runner, dir);
+    const task = makeTask({ acceptance: [{ type: "file_exists", path: target }] });
+    await store.save(task);
+    const result = await exec.runAttempt(task, 1000);
+    expect(result.status).toBe("cancelled");
+    expect((await store.get("t1"))?.status).toBe("cancelled");
+  });
+
+  it("does not resurrect a cancelled task on a failed attempt either", async () => {
+    const runner: AgentRunner = {
+      run: async () => {
+        const t = await store.get("t1");
+        if (t) await store.save({ ...t, status: "cancelled", updatedAt: 2 });
+        return "did nothing";
+      },
+    };
+    const exec = new TaskExecutor(store, evalr, runner, dir);
+    const task = makeTask({
+      acceptance: [{ type: "file_exists", path: join(dir, "missing") }],
+      attempts: 0,
+      maxAttempts: 3,
+    });
+    await store.save(task);
+    const result = await exec.runAttempt(task, 1000);
+    // cancelled — NOT flipped back to pending (which would let it re-run)
+    expect((await store.get("t1"))?.status).toBe("cancelled");
+    expect(result.status).toBe("cancelled");
+  });
+
+  it("drops the terminal write when another owner reclaimed the lease", async () => {
+    const target = join(dir, "out.txt");
+    const runner: AgentRunner = {
+      run: async () => {
+        // Another supervisor reclaimed the lease and re-leased under a new owner.
+        const t = await store.get("t1");
+        if (t) await store.save({ ...t, leaseOwner: "owner-B", updatedAt: 2 });
+        await writeFile(target, "ok");
+        return "done";
+      },
+    };
+    const exec = new TaskExecutor(store, evalr, runner, dir);
+    const task = makeTask({
+      leaseOwner: "owner-A",
+      acceptance: [{ type: "file_exists", path: target }],
+    });
+    await store.save(task);
+    await exec.runAttempt(task, 1000);
+    const stored = await store.get("t1");
+    expect(stored?.leaseOwner).toBe("owner-B");
+    expect(stored?.status).toBe("running");
+  });
+
   it("does not time out a fast runner under the limit", async () => {
     const target = join(dir, "fast.txt");
     const runner: AgentRunner = {

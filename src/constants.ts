@@ -177,3 +177,10 @@ export const LOOP_MIN_INTERVAL_MS = 1000;
 
 /** Trip a loop to failed after this many consecutive failed spawned tasks. */
 export const LOOP_MAX_CONSECUTIVE_FAILURES = 5;
+
+/**
+ * Max terminal (succeeded/failed) tasks retained per loop batch. Older terminal
+ * tasks are pruned each tick so a long-lived recurring loop cannot grow its
+ * task store without bound (and the per-tick circuit-breaker scan stays cheap).
+ */
+export const LOOP_TASK_RETENTION = 50;

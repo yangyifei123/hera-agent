@@ -23,6 +23,13 @@ const MAX_REGEX_PATTERN_LENGTH = 1000;
 const MAX_REGEX_SOURCE_LENGTH = 256_000;
 
 /**
+ * Upper bound on how long a timed-out shell check waits for the process-tree
+ * kill to complete before resolving anyway. Keeps a wedged taskkill from
+ * stalling acceptance evaluation.
+ */
+const KILL_TREE_WAIT_MS = 2000;
+
+/**
  * Static heuristic for catastrophic-backtracking shapes (e.g. `(a+)+`, `(.*)*`,
  * `([a-z]+)*`): a quantifier immediately inside a group that is itself quantified
  * with an unbounded repeat. Synchronous JS regex cannot be interrupted once it
@@ -194,18 +201,28 @@ export class AcceptanceEvaluator {
       );
       handle.timer = setTimeout(() => {
         timedOut = true;
-        // Best-effort kill of the child + its tree. We then resolve the promise
-        // immediately rather than waiting for exec's callback to fire after the
-        // kill — under Bun (and after a SIGKILL generally) that callback may
-        // never arrive, which would otherwise hang the evaluation until the
-        // command finished on its own.
-        if (child.pid) this.killTree(child.pid);
-        try {
-          child.kill("SIGKILL");
-        } catch {
-          // already gone
-        }
-        finish("timeout");
+        // Kill the child + its tree, then wait (bounded) for the tree-kill to
+        // complete before resolving. Resolving before taskkill finishes lets
+        // callers proceed to cleanup while a grandchild (e.g. a blocking
+        // `ping`) still holds `cwd`, which surfaces as EBUSY on Windows. We do
+        // NOT wait for exec's own callback — under Bun (and after a SIGKILL
+        // generally) it may never arrive.
+        const treeKilled = (child.pid ? this.killTree(child.pid) : Promise.resolve()).then(() => {
+          // Direct fallback kill only AFTER the tree kill completes: on
+          // Windows, killing cmd.exe before taskkill snapshots its children
+          // orphans them (a blocking `ping` keeps holding cwd → EBUSY on
+          // cleanup).
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            // already gone
+          }
+        });
+        const cap = setTimeout(() => finish("timeout"), KILL_TREE_WAIT_MS);
+        void treeKilled.then(() => {
+          clearTimeout(cap);
+          finish("timeout");
+        });
       }, timeout);
       child.on("error", () => finish(-1));
     });
@@ -213,24 +230,31 @@ export class AcceptanceEvaluator {
     return this.result(check, code === expectExit, now, `exit ${code}`);
   }
 
-  /** Best-effort kill of a child process (and, on Windows, its tree). */
-  private killTree(pid: number): void {
+  /**
+   * Best-effort kill of a child process (and, on Windows, its tree). Resolves
+   * once the kill has been issued and — on Windows — taskkill has exited, i.e.
+   * the tree is actually gone and its file handles are released.
+   */
+  private killTree(pid: number): Promise<void> {
     if (process.platform === "win32") {
       // taskkill /T terminates the process tree (e.g. cmd.exe + its `ping`
       // child); /F forces it.
-      execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
-        /* best effort: process may already be gone */
+      return new Promise((resolve) => {
+        execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => {
+          // best effort: process may already be gone
+          resolve();
+        });
       });
-    } else {
-      // Direct SIGKILL of the spawned `sh -c ...` child. We intentionally do NOT
-      // spawn detached / kill a negative process group: under Bun a detached
-      // child can keep the runtime from exiting cleanly.
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {
-        /* already exited */
-      }
     }
+    // Direct SIGKILL of the spawned `sh -c ...` child. We intentionally do NOT
+    // spawn detached / kill a negative process group: under Bun a detached
+    // child can keep the runtime from exiting cleanly.
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already exited */
+    }
+    return Promise.resolve();
   }
 
   private async llmJudge(
