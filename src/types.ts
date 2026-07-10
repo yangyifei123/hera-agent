@@ -203,8 +203,14 @@ export interface WorkflowDefinition {
 export interface WorkflowExecution {
   id: string;
   workflowId: string;
-  status: "pending" | "running" | "paused" | "completed" | "failed";
+  status: "pending" | "running" | "paused" | "awaiting_approval" | "completed" | "failed";
   currentStep?: string;
+  /**
+   * When status is "awaiting_approval", the id of the approval step that is
+   * blocking the workflow. Callers must approve THIS step (via
+   * WorkflowManager.resumeWorkflow) before downstream steps run.
+   */
+  pendingApproval?: string;
   stepResults: Record<string, unknown>;
   context: WorkflowContext;
   startedAt: number;

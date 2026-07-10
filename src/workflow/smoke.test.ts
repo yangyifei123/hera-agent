@@ -1,14 +1,46 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { WorkflowManager } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { TeamManager } from "../team/manager.js";
-import type { WorkflowDefinition } from "../types.js";
+import type { WorkflowDefinition, WorkflowExecution } from "../types.js";
+import type { OpenCodeClient } from "../types/client.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-function isApprovalResult(value: unknown): value is { type: "approval_required" } {
-  return typeof value === "object" && value !== null && "type" in value;
+/**
+ * Execute a workflow and repeatedly approve any in-workflow approval gate,
+ * driving it to a terminal state. Approval steps are a REAL gate now: the
+ * execution pauses awaiting approval of a specific step, so honest end-to-end
+ * tests must approve each gate to reach completion.
+ */
+async function driveToCompletion(
+  manager: WorkflowManager,
+  workflowId: string,
+  context: Record<string, unknown> = {}
+): Promise<WorkflowExecution> {
+  let exec = await manager.executeWorkflow(workflowId, context);
+  while (exec.status === "awaiting_approval") {
+    exec = await manager.resumeWorkflow(exec.id, exec.pendingApproval);
+  }
+  return exec;
+}
+
+/**
+ * Minimal OpenCode client whose agent step behavior (delay/throw) is fully
+ * controllable via `promptAsync`, so timeout/retry are genuinely injected.
+ */
+function makeAgentClient(promptAsync: () => Promise<unknown>): OpenCodeClient {
+  return {
+    session: {
+      create: mock(async () => ({ data: { id: "smoke-session" } })),
+      promptAsync: mock(promptAsync),
+      status: mock(async () => ({ data: { "smoke-session": { type: "idle" } } })),
+      messages: mock(async () => ({
+        data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "ok" }] }],
+      })),
+    },
+  } as unknown as OpenCodeClient;
 }
 
 describe("Workflow Smoke Tests", () => {
@@ -49,10 +81,12 @@ describe("Workflow Smoke Tests", () => {
       };
 
       await workflowManager.createWorkflow(workflow);
-      const result = await workflowManager.executeWorkflow("dev-workflow", {
+      const result = await driveToCompletion(workflowManager, "dev-workflow", {
         feature: "user-authentication",
       });
 
+      // The approval "review" gate is crossed via resume; deploy only runs
+      // after approval.
       expect(result.status).toBe("completed");
       expect(Object.keys(result.stepResults)).toHaveLength(5);
       expect(result.stepResults.plan).toBeDefined();
@@ -208,21 +242,30 @@ describe("Workflow Smoke Tests", () => {
       };
 
       await workflowManager.createWorkflow(workflow);
-      const result = await workflowManager.executeWorkflow("critical-workflow", {
+
+      // Reaching the first approval step pauses the workflow: only "prepare"
+      // has run and nothing downstream of the gate.
+      const paused1 = await workflowManager.executeWorkflow("critical-workflow", {
         operation: "database-migration",
       });
+      expect(paused1.status).toBe("awaiting_approval");
+      expect(paused1.pendingApproval).toBe("review1");
+      expect(paused1.stepResults.prepare).toBeDefined();
+      expect(paused1.stepResults.execute).toBeUndefined();
+      expect(paused1.stepResults.finalize).toBeUndefined();
 
-      expect(result.status).toBe("completed");
-      expect(Object.keys(result.stepResults)).toHaveLength(5);
+      // Approving the first gate advances to "execute" and stops at the second.
+      const paused2 = await workflowManager.resumeWorkflow(paused1.id, "review1");
+      expect(paused2.status).toBe("awaiting_approval");
+      expect(paused2.pendingApproval).toBe("review2");
+      expect(paused2.stepResults.execute).toBeDefined();
+      expect(paused2.stepResults.finalize).toBeUndefined();
 
-      // Verify approval steps were executed
-      const review1 = result.stepResults.review1;
-      const review2 = result.stepResults.review2;
-      if (!isApprovalResult(review1) || !isApprovalResult(review2)) {
-        throw new Error("Expected approval step results");
-      }
-      expect(review1.type).toBe("approval_required");
-      expect(review2.type).toBe("approval_required");
+      // Approving the second gate runs the workflow to completion.
+      const done = await workflowManager.resumeWorkflow(paused2.id, "review2");
+      expect(done.status).toBe("completed");
+      expect(Object.keys(done.stepResults)).toHaveLength(5);
+      expect(done.stepResults.finalize).toBeDefined();
     });
 
     test("workflow persistence and recovery", async () => {
@@ -258,7 +301,17 @@ describe("Workflow Smoke Tests", () => {
     });
 
     test("workflow with timeout handling", async () => {
-      // Workflow with step timeouts
+      // A slow AGENT step genuinely exceeds its timeout (tool steps are a
+      // no-op placeholder and can never time out). The agent's promptAsync
+      // hangs for 5s while the step timeout is 100ms, so the workflow fails
+      // with a real "Step timeout".
+      const slowClient = makeAgentClient(
+        () => new Promise((resolve) => setTimeout(() => resolve({ data: undefined }), 5000))
+      );
+      const teamManager = new TeamManager(store, undefined);
+      const timeoutManager = new WorkflowManager(store, teamManager, slowClient);
+      await timeoutManager.init();
+
       const workflow: WorkflowDefinition = {
         id: "timeout-workflow",
         name: "Timeout Test",
@@ -266,20 +319,22 @@ describe("Workflow Smoke Tests", () => {
         mode: "serial",
         steps: [
           { id: "fast", name: "Fast Step", type: "tool", executor: "fast", timeout: 5000 },
-          { id: "slow", name: "Slow Step", type: "tool", executor: "slow", timeout: 100 },
+          { id: "slow", name: "Slow Step", type: "agent", executor: "slow-agent", timeout: 100 },
           { id: "final", name: "Final Step", type: "tool", executor: "final" },
         ],
         createdAt: Date.now(),
       };
 
-      await workflowManager.createWorkflow(workflow);
-      const result = await workflowManager.executeWorkflow("timeout-workflow", {});
+      await timeoutManager.createWorkflow(workflow);
 
-      // First step should complete
-      expect(result.stepResults.fast).toBeDefined();
+      // The slow agent step's timeout genuinely fires and aborts the workflow,
+      // rather than the old tool-step placeholder that could never time out.
+      await expect(timeoutManager.executeWorkflow("timeout-workflow", {})).rejects.toThrow(
+        "Step timeout"
+      );
 
-      // Workflow should handle timeout gracefully
-      expect(result.status).toBeDefined();
+      // The agent step was actually invoked (the timeout is real, not vacuous).
+      expect(slowClient.session.promptAsync).toHaveBeenCalled();
     });
 
     test("workflow execution with context propagation", async () => {
@@ -431,13 +486,20 @@ describe("Workflow Smoke Tests", () => {
       };
 
       await workflowManager.createWorkflow(workflow);
-      const result = await workflowManager.executeWorkflow("cicd-pipeline", {
+
+      // The DAG gates at "approve" before "deploy" runs.
+      const paused = await workflowManager.executeWorkflow("cicd-pipeline", {
         branch: "main",
         commit: "abc123",
       });
+      expect(paused.status).toBe("awaiting_approval");
+      expect(paused.pendingApproval).toBe("approve");
+      expect(paused.stepResults.deploy).toBeUndefined();
 
+      const result = await workflowManager.resumeWorkflow(paused.id, "approve");
       expect(result.status).toBe("completed");
       expect(Object.keys(result.stepResults)).toHaveLength(8);
+      expect(result.stepResults.deploy).toBeDefined();
     });
 
     test("data processing pipeline", async () => {
@@ -485,13 +547,20 @@ describe("Workflow Smoke Tests", () => {
       };
 
       await workflowManager.createWorkflow(workflow);
-      const result = await workflowManager.executeWorkflow("incident-response", {
+
+      // Gates at "approve-fix" before "apply-fix" runs.
+      const paused = await workflowManager.executeWorkflow("incident-response", {
         severity: "high",
         service: "api-gateway",
       });
+      expect(paused.status).toBe("awaiting_approval");
+      expect(paused.pendingApproval).toBe("approve-fix");
+      expect(paused.stepResults["apply-fix"]).toBeUndefined();
 
+      const result = await workflowManager.resumeWorkflow(paused.id, "approve-fix");
       expect(result.status).toBe("completed");
       expect(Object.keys(result.stepResults)).toHaveLength(7);
+      expect(result.stepResults["apply-fix"]).toBeDefined();
     });
   });
 });

@@ -112,18 +112,17 @@ export class WorkflowManager {
     heraLog("info", `Starting workflow execution: ${workflowId} (${workflow.mode} mode)`);
 
     try {
-      switch (workflow.mode) {
-        case "serial":
-          await this.executeSerialWorkflow(workflow, context, execution, callbacks);
-          break;
-        case "parallel":
-          await this.executeParallelWorkflow(workflow, context, execution, callbacks);
-          break;
-        case "dag":
-          await this.executeDAGWorkflow(workflow, context, execution, callbacks);
-          break;
-        default:
-          throw new Error(`Unknown workflow mode: ${workflow.mode}`);
+      await this.runWorkflowMode(workflow, context, execution, callbacks);
+
+      // An approval step turns the execution into a real gate: it is paused
+      // awaiting approval and must NOT be marked completed here. Downstream
+      // steps only run after resumeWorkflow() is called.
+      if (execution.status === "awaiting_approval") {
+        heraLog(
+          "info",
+          `Workflow paused awaiting approval: ${workflowId} (step ${execution.pendingApproval})`
+        );
+        return execution;
       }
 
       execution.status = "completed";
@@ -163,15 +162,116 @@ export class WorkflowManager {
     execution.status = "paused";
   }
 
-  async resumeWorkflow(executionId: string): Promise<void> {
+  /**
+   * Resume a paused or approval-gated execution.
+   *
+   * - "paused" executions (via pauseWorkflow) simply flip back to "running" so
+   *   the in-flight loop's waitForResume() proceeds.
+   * - "awaiting_approval" executions are approval-gated: the caller must be
+   *   approving the step recorded in `pendingApproval`. Once approved, the
+   *   approval step is recorded as completed and the workflow re-enters its
+   *   serial/DAG loop, skipping already-completed steps, and runs the
+   *   downstream steps to completion.
+   *
+   * @param approvedStepId when resuming an approval gate, the step id the
+   *   caller is approving; must match the execution's pending approval step.
+   */
+  async resumeWorkflow(executionId: string, approvedStepId?: string): Promise<WorkflowExecution> {
     const execution = this.executions.get(executionId);
     if (!execution) {
       throw new Error(`Execution not found: ${executionId}`);
     }
-    if (execution.status !== "paused") {
-      throw new Error(`Execution is not paused: ${executionId}`);
+
+    if (execution.status === "paused") {
+      execution.status = "running";
+      return execution;
     }
+
+    if (execution.status !== "awaiting_approval") {
+      throw new Error(
+        `Execution is not awaiting approval or paused: ${executionId} (status ${execution.status})`
+      );
+    }
+
+    const pending = execution.pendingApproval;
+    if (!pending) {
+      throw new Error(`Execution ${executionId} has no pending approval step`);
+    }
+    if (approvedStepId !== undefined && approvedStepId !== pending) {
+      throw new Error(
+        `Cannot approve step '${approvedStepId}': execution ${executionId} is awaiting approval of '${pending}'`
+      );
+    }
+
+    const workflow = this.workflows.get(execution.workflowId);
+    if (!workflow) {
+      throw new WorkflowNotFoundError(execution.workflowId);
+    }
+
+    // Record the approval as the step's result so the loop treats it as done,
+    // then clear the gate and continue the workflow from after that step.
+    execution.stepResults[pending] = {
+      type: "approved",
+      step: pending,
+      approvedAt: Date.now(),
+    };
+    execution.pendingApproval = undefined;
     execution.status = "running";
+    this.activeExecutions++;
+
+    try {
+      await this.runWorkflowMode(workflow, execution.context, execution, undefined);
+
+      // runWorkflowMode may re-pause the execution at a later gate via the shared
+      // reference; read the status widened so TS doesn't treat it as still "running".
+      if ((execution.status as string) === "awaiting_approval") {
+        heraLog(
+          "info",
+          `Workflow paused awaiting approval: ${workflow.id} (step ${execution.pendingApproval})`
+        );
+        return execution;
+      }
+
+      execution.status = "completed";
+      execution.completedAt = Date.now();
+      heraLog("info", `Workflow resumed and completed: ${workflow.id}`);
+      return execution;
+    } catch (error) {
+      const workflowError = error instanceof Error ? error : new Error(String(error));
+      execution.status = "failed";
+      execution.error = workflowError.message;
+      execution.completedAt = Date.now();
+      heraLog("warn", `Workflow failed on resume: ${workflow.id}`, workflowError.message);
+      throw new WorkflowExecutionError(
+        workflow.id,
+        execution.currentStep || "unknown",
+        workflowError
+      );
+    } finally {
+      this.activeExecutions--;
+      await this.cleanupOldExecutions();
+    }
+  }
+
+  private async runWorkflowMode(
+    workflow: WorkflowDefinition,
+    context: WorkflowContext,
+    execution: WorkflowExecution,
+    callbacks?: WorkflowProgressCallback
+  ): Promise<void> {
+    switch (workflow.mode) {
+      case "serial":
+        await this.executeSerialWorkflow(workflow, context, execution, callbacks);
+        break;
+      case "parallel":
+        await this.executeParallelWorkflow(workflow, context, execution, callbacks);
+        break;
+      case "dag":
+        await this.executeDAGWorkflow(workflow, context, execution, callbacks);
+        break;
+      default:
+        throw new Error(`Unknown workflow mode: ${workflow.mode}`);
+    }
   }
 
   getExecutionStatus(executionId: string): WorkflowExecution | undefined {
@@ -184,11 +284,19 @@ export class WorkflowManager {
     execution: WorkflowExecution,
     callbacks?: WorkflowProgressCallback
   ): Promise<Record<string, unknown>> {
-    let currentContext = { ...context };
-    let completedSteps = 0;
+    // Seed context with any already-completed step results so a resumed
+    // execution passes prior outputs to downstream steps.
+    let currentContext = { ...context, ...execution.stepResults };
+    let completedSteps = Object.keys(execution.stepResults).length;
     const totalSteps = workflow.steps.length;
 
     for (const step of workflow.steps) {
+      // Resume support: steps already recorded (including approved gates) are
+      // skipped so the loop only runs remaining work.
+      if (step.id in execution.stepResults) {
+        continue;
+      }
+
       if (execution.status === "paused") {
         await this.waitForResume(execution.id);
       }
@@ -199,6 +307,14 @@ export class WorkflowManager {
       if (step.condition && !this.evaluateCondition(step.condition, currentContext)) {
         heraLog("debug", `Skipping step ${step.id} due to condition: ${step.condition}`);
         continue;
+      }
+
+      // Approval gate: pause the whole workflow and stop advancing to
+      // downstream steps until resumeWorkflow() approves this step.
+      if (step.type === "approval") {
+        execution.status = "awaiting_approval";
+        execution.pendingApproval = step.id;
+        return execution.stepResults;
       }
 
       const stepStart = Date.now();
@@ -292,13 +408,14 @@ export class WorkflowManager {
     const dag = this.buildDAG(workflow.steps);
     const sorted = this.topologicalSort(dag);
     const stepMap = new Map(workflow.steps.map((s) => [s.id, s]));
-    const currentContext = { ...context };
+    // Seed context with already-completed step results for resume support.
+    const currentContext = { ...context, ...execution.stepResults };
 
     // Group steps by wave (steps with same depth can run in parallel)
     const waves = this.groupByWaves(sorted, dag);
     const limiter = new ConcurrencyLimiter(this.MAX_PARALLEL_STEPS);
 
-    let completedSteps = 0;
+    let completedSteps = Object.keys(execution.stepResults).length;
     const totalSteps = workflow.steps.length;
 
     for (const wave of waves) {
@@ -306,8 +423,27 @@ export class WorkflowManager {
         await this.waitForResume(execution.id);
       }
 
+      // Approval gate: if this wave contains an approval step that has not yet
+      // been approved (and whose condition passes), pause the whole workflow
+      // before running the wave so no dependents advance until approval.
+      for (const stepId of wave) {
+        if (stepId in execution.stepResults) continue;
+        const gateStep = stepMap.get(stepId);
+        if (!gateStep || gateStep.type !== "approval") continue;
+        if (gateStep.condition && !this.evaluateCondition(gateStep.condition, currentContext)) {
+          continue;
+        }
+        execution.currentStep = stepId;
+        execution.status = "awaiting_approval";
+        execution.pendingApproval = stepId;
+        return execution.stepResults;
+      }
+
       const promises = wave.map(async (stepId) => {
         return limiter.run(async () => {
+          // Resume support: skip steps already recorded (incl. approved gates).
+          if (stepId in execution.stepResults) return null;
+
           const step = stepMap.get(stepId);
           if (!step) return null;
 
@@ -507,8 +643,11 @@ export class WorkflowManager {
   }
 
   private async executeToolStep(step: WorkflowStep, context: WorkflowContext): Promise<unknown> {
-    // Tool execution would require access to tool registry
-    // For now, return a placeholder
+    // NOT YET WIRED: type:"tool" steps are not dispatched to the live tool
+    // registry (that requires cross-file wiring into createAllTools). This
+    // placeholder never fails or delays, so it must not be used to exercise
+    // retry/backoff/timeout behavior in tests — use type:"agent" steps with a
+    // controllable mock client for that. It simply echoes the executor/input.
     return { tool: step.executor, input: step.input || context };
   }
 

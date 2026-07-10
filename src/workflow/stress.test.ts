@@ -1,11 +1,33 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { WorkflowManager } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { TeamManager } from "../team/manager.js";
 import type { WorkflowDefinition, WorkflowStep } from "../types.js";
+import type { OpenCodeClient } from "../types/client.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+/**
+ * Build an OpenCode client whose agent `promptAsync` behavior is controlled by
+ * `behavior(callIndex)`: return a value to succeed, throw to fail that attempt.
+ * `type:"tool"` steps are a no-op placeholder that can never fail or delay, so
+ * genuine error/retry injection requires `type:"agent"` steps driven by a
+ * controllable client like this one.
+ */
+function makeAgentClient(behavior: (callIndex: number) => Promise<unknown>): OpenCodeClient {
+  let call = 0;
+  return {
+    session: {
+      create: mock(async () => ({ data: { id: "stress-session" } })),
+      promptAsync: mock(async () => behavior(call++)),
+      status: mock(async () => ({ data: { "stress-session": { type: "idle" } } })),
+      messages: mock(async () => ({
+        data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "ok" }] }],
+      })),
+    },
+  } as unknown as OpenCodeClient;
+}
 
 describe("Workflow Stress Tests", () => {
   let manager: WorkflowManager;
@@ -378,33 +400,89 @@ describe("Workflow Stress Tests", () => {
   });
 
   describe("Error Resilience", () => {
-    test("handles partial failures in large parallel workflow", async () => {
-      const steps: WorkflowStep[] = [];
+    test("recovers a serial workflow via retry when every agent step fails once", async () => {
+      // Each agent step fails its FIRST attempt then succeeds. Steps run
+      // sequentially so promptAsync call order is deterministic: even-indexed
+      // calls (the first attempt of each step) throw, odd-indexed succeed.
+      // With retryPolicy.maxAttempts=2 the workflow must recover and complete,
+      // genuinely exercising retry/backoff rather than the vacuous tool-step
+      // placeholder that can never fail.
+      const stepCount = 10;
+      const client = makeAgentClient(async (callIndex) => {
+        if (callIndex % 2 === 0) {
+          throw new Error(`transient failure on call ${callIndex}`);
+        }
+        return { data: undefined };
+      });
+      const retryManager = new WorkflowManager(store, new TeamManager(store, undefined), client);
+      await retryManager.init();
 
-      for (let i = 0; i < 30; i++) {
+      const steps: WorkflowStep[] = [];
+      for (let i = 0; i < stepCount; i++) {
         steps.push({
           id: `step${i}`,
           name: `Step ${i}`,
-          type: "tool",
-          executor: i % 5 === 0 ? "failing-tool" : `tool${i}`,
+          type: "agent",
+          executor: `agent${i}`,
+          retryPolicy: { maxAttempts: 2, backoffMs: 1 },
         });
       }
 
       const workflow: WorkflowDefinition = {
-        id: "partial-fail",
-        name: "Partial Fail",
-        description: "Workflow with some failing steps",
-        mode: "parallel",
+        id: "retry-recover",
+        name: "Retry Recover",
+        description: "Serial agent workflow that recovers via retry",
+        mode: "serial",
         steps,
         createdAt: Date.now(),
       };
 
-      await manager.createWorkflow(workflow);
-      const execution = await manager.executeWorkflow("partial-fail", {});
+      await retryManager.createWorkflow(workflow);
+      const execution = await retryManager.executeWorkflow("retry-recover", {});
 
-      // Should complete even with some failures
+      // Every step recovered on its second attempt → workflow completes with
+      // all results, and promptAsync was called twice per step (retry observed).
       expect(execution.status).toBe("completed");
-      expect(Object.keys(execution.stepResults).length).toBeGreaterThan(0);
+      expect(Object.keys(execution.stepResults)).toHaveLength(stepCount);
+      expect(client.session.promptAsync).toHaveBeenCalledTimes(stepCount * 2);
+    }, 30000);
+
+    test("surfaces a genuine failure when an agent step exhausts its retries", async () => {
+      // A permanently failing agent step must not be silently swallowed: the
+      // workflow rejects. (Only possible with a controllable agent client; tool
+      // steps never fail.)
+      const client = makeAgentClient(async () => {
+        throw new Error("permanent failure");
+      });
+      const failManager = new WorkflowManager(store, new TeamManager(store, undefined), client);
+      await failManager.init();
+
+      const workflow: WorkflowDefinition = {
+        id: "permanent-fail",
+        name: "Permanent Fail",
+        description: "Serial agent workflow with an unrecoverable step",
+        mode: "serial",
+        steps: [
+          { id: "ok", name: "OK", type: "agent", executor: "agent-ok" },
+          {
+            id: "boom",
+            name: "Boom",
+            type: "agent",
+            executor: "agent-boom",
+            retryPolicy: { maxAttempts: 2, backoffMs: 1 },
+          },
+          { id: "never", name: "Never", type: "agent", executor: "agent-never" },
+        ],
+        createdAt: Date.now(),
+      };
+
+      await failManager.createWorkflow(workflow);
+
+      // "ok" also uses the always-throwing client, so the very first step fails;
+      // regardless, the workflow rejects rather than reporting completion.
+      await expect(failManager.executeWorkflow("permanent-fail", {})).rejects.toThrow(
+        "permanent failure"
+      );
     }, 30000);
   });
 });

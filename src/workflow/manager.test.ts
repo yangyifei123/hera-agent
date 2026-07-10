@@ -653,7 +653,7 @@ describe("WorkflowManager", () => {
       expect(execution.stepResults.step1).toBe(true);
     });
 
-    test("executes approval steps", async () => {
+    test("approval steps pause the workflow as a real gate", async () => {
       const workflow: WorkflowDefinition = {
         id: "approval-test",
         name: "Approval",
@@ -666,12 +666,101 @@ describe("WorkflowManager", () => {
       await manager.createWorkflow(workflow);
       const execution = await manager.executeWorkflow("approval-test", {});
 
-      expect(execution.stepResults.step1).toEqual({
-        type: "approval_required",
-        step: "step1",
-        context: {},
-        message: "Approval required for step: Step 1",
-      });
+      // The approval step is NOT recorded as a completed step result; instead
+      // the execution is paused awaiting approval of that specific step.
+      expect(execution.status).toBe("awaiting_approval");
+      expect(execution.pendingApproval).toBe("step1");
+      expect(execution.stepResults.step1).toBeUndefined();
+      expect(execution.completedAt).toBeUndefined();
+    });
+  });
+
+  describe("Approval Gating", () => {
+    test("stops before downstream steps and resumes to completion after approval", async () => {
+      const workflow: WorkflowDefinition = {
+        id: "gate-serial",
+        name: "Gate Serial",
+        description: "Test",
+        mode: "serial",
+        steps: [
+          { id: "prep", name: "Prep", type: "tool", executor: "prep" },
+          { id: "gate", name: "Gate", type: "approval" },
+          { id: "after", name: "After", type: "tool", executor: "after" },
+        ],
+        createdAt: Date.now(),
+      };
+
+      await manager.createWorkflow(workflow);
+      const execution = await manager.executeWorkflow("gate-serial", {});
+
+      // Paused at the gate: prep ran, downstream "after" did NOT.
+      expect(execution.status).toBe("awaiting_approval");
+      expect(execution.pendingApproval).toBe("gate");
+      expect(execution.stepResults.prep).toBeDefined();
+      expect(execution.stepResults.after).toBeUndefined();
+
+      // Approving the correct pending step continues to completion.
+      const resumed = await manager.resumeWorkflow(execution.id, "gate");
+      expect(resumed.status).toBe("completed");
+      expect(resumed.stepResults.after).toBeDefined();
+      expect(resumed.completedAt).toBeDefined();
+    });
+
+    test("rejects approval of a step that is not the pending one", async () => {
+      const workflow: WorkflowDefinition = {
+        id: "gate-wrong",
+        name: "Gate Wrong",
+        description: "Test",
+        mode: "serial",
+        steps: [
+          { id: "gate", name: "Gate", type: "approval" },
+          { id: "after", name: "After", type: "tool", executor: "after" },
+        ],
+        createdAt: Date.now(),
+      };
+
+      await manager.createWorkflow(workflow);
+      const execution = await manager.executeWorkflow("gate-wrong", {});
+      expect(execution.status).toBe("awaiting_approval");
+
+      await expect(manager.resumeWorkflow(execution.id, "not-the-gate")).rejects.toThrow();
+      // Still paused, not advanced.
+      const still = manager.getExecutionStatus(execution.id);
+      expect(still!.status).toBe("awaiting_approval");
+      expect(still!.stepResults.after).toBeUndefined();
+    });
+
+    test("DAG approval gate stops dependents until approved", async () => {
+      const workflow: WorkflowDefinition = {
+        id: "gate-dag",
+        name: "Gate DAG",
+        description: "Test",
+        mode: "dag",
+        steps: [
+          { id: "build", name: "Build", type: "tool", executor: "build" },
+          { id: "gate", name: "Gate", type: "approval", dependencies: ["build"] },
+          {
+            id: "deploy",
+            name: "Deploy",
+            type: "tool",
+            executor: "deploy",
+            dependencies: ["gate"],
+          },
+        ],
+        createdAt: Date.now(),
+      };
+
+      await manager.createWorkflow(workflow);
+      const execution = await manager.executeWorkflow("gate-dag", {});
+
+      expect(execution.status).toBe("awaiting_approval");
+      expect(execution.pendingApproval).toBe("gate");
+      expect(execution.stepResults.build).toBeDefined();
+      expect(execution.stepResults.deploy).toBeUndefined();
+
+      const resumed = await manager.resumeWorkflow(execution.id, "gate");
+      expect(resumed.status).toBe("completed");
+      expect(resumed.stepResults.deploy).toBeDefined();
     });
   });
 

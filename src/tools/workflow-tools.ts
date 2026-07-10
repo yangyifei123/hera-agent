@@ -209,6 +209,23 @@ export function createWorkflowTools(ctx: PluginContext) {
             args.context || {}
           );
 
+          // The workflow may hit an in-workflow approval step, which is a real
+          // gate: execution pauses awaiting approval of a specific step rather
+          // than completing. Surface that so the caller approves the pending
+          // step via hera_approve_workflow.
+          if (result.status === "awaiting_approval") {
+            return toolResult({
+              success: true,
+              awaitingApproval: true,
+              executionId: result.id,
+              pendingStep: result.pendingApproval,
+              message:
+                `Workflow '${workflow.name}' is paused awaiting approval of step ` +
+                `'${result.pendingApproval}'. Call hera_approve_workflow with executionId: ` +
+                `${result.id} and stepId: ${result.pendingApproval} to continue.`,
+            });
+          }
+
           return toolResult({
             success: true,
             result,
@@ -224,15 +241,81 @@ export function createWorkflowTools(ctx: PluginContext) {
     }),
 
     hera_approve_workflow: tool({
-      description: "Approve and execute a workflow that requires user approval",
+      description:
+        "Approve a workflow that requires user approval. If executionId is provided, approves the " +
+        "pending in-workflow approval gate and resumes that execution to completion; otherwise " +
+        "starts a fresh execution of the given workflow.",
       args: {
-        workflowId: z.string().describe("Workflow ID to approve and execute"),
+        workflowId: z
+          .string()
+          .optional()
+          .describe("Workflow ID to approve and start (when no executionId is given)"),
+        executionId: z
+          .string()
+          .optional()
+          .describe("Execution ID that is paused awaiting approval (resumes it)"),
+        stepId: z
+          .string()
+          .optional()
+          .describe("Id of the pending approval step being approved (must match the gate)"),
         context: z
           .record(z.string(), z.any())
           .optional()
-          .describe("Initial context data for workflow execution"),
+          .describe("Initial context data for a fresh workflow execution"),
       },
       async execute(args) {
+        // Resume path: approve the pending gate of an in-flight execution.
+        if (args.executionId) {
+          const execution = ctx.workflowManager.getExecutionStatus(args.executionId);
+          if (!execution) {
+            return toolResult({
+              success: false,
+              error: `Execution not found: ${args.executionId}`,
+            });
+          }
+          if (execution.status !== "awaiting_approval") {
+            return toolResult({
+              success: false,
+              error: `Execution ${args.executionId} is not awaiting approval (status ${execution.status})`,
+            });
+          }
+          try {
+            const result = await ctx.workflowManager.resumeWorkflow(
+              args.executionId,
+              args.stepId ?? execution.pendingApproval
+            );
+            const workflow = ctx.workflowManager.getWorkflow(result.workflowId);
+            if (result.status === "awaiting_approval") {
+              return toolResult({
+                success: true,
+                awaitingApproval: true,
+                executionId: result.id,
+                pendingStep: result.pendingApproval,
+                message:
+                  `Step approved. Workflow '${workflow?.name ?? result.workflowId}' now awaits ` +
+                  `approval of step '${result.pendingApproval}'.`,
+              });
+            }
+            return toolResult({
+              success: true,
+              result,
+              message: `Workflow '${workflow?.name ?? result.workflowId}' approved and resumed to completion`,
+            });
+          } catch (error) {
+            return toolResult({
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // Fresh-start path: begin a new execution of an approved plan.
+        if (!args.workflowId) {
+          return toolResult({
+            success: false,
+            error: "Either workflowId (to start) or executionId (to resume) is required",
+          });
+        }
         const workflow = ctx.workflowManager.getWorkflow(args.workflowId);
         if (!workflow) {
           return toolResult({
@@ -246,6 +329,18 @@ export function createWorkflowTools(ctx: PluginContext) {
             args.workflowId,
             args.context || {}
           );
+
+          if (result.status === "awaiting_approval") {
+            return toolResult({
+              success: true,
+              awaitingApproval: true,
+              executionId: result.id,
+              pendingStep: result.pendingApproval,
+              message:
+                `Workflow '${workflow.name}' started and is paused awaiting approval of step ` +
+                `'${result.pendingApproval}'. Call hera_approve_workflow with executionId: ${result.id}.`,
+            });
+          }
 
           return toolResult({
             success: true,
