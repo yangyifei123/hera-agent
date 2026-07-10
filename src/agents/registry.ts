@@ -144,7 +144,18 @@ export class AgentRegistry {
     const def = await this.readDefinition(name);
     if (!def) return false;
     if (!def.evolutionLog) def.evolutionLog = [];
-    def.evolutionLog.push(entry);
+    // Update-or-append by identity: a rollback re-persists an EXISTING entry
+    // (same timestamp + directive) with rolledBack flipped, so replace it in
+    // place rather than pushing a duplicate that would resurface as active.
+    // A fresh directive (new timestamp) still appends.
+    const existingIdx = def.evolutionLog.findIndex(
+      (e) => e.timestamp === entry.timestamp && e.directive === entry.directive
+    );
+    if (existingIdx !== -1) {
+      def.evolutionLog[existingIdx] = entry;
+    } else {
+      def.evolutionLog.push(entry);
+    }
     def.evolvedAt = Date.now();
     // Re-write the full file
     const filePath = join(this.agentsDir, `${name}.md`);
@@ -194,6 +205,10 @@ export class AgentRegistry {
   }
 
   private parseMarkdownAgent(content: string): AgentDefinition {
+    // Normalize CRLF so the frontmatter regex (anchored on \n) matches agent
+    // .md files saved with Windows line endings; otherwise the match fails and
+    // the whole agent silently degrades to unknown/subagent/default-skills.
+    content = content.replace(/\r\n/g, "\n");
     const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (!fmMatch) {
       return {
@@ -323,6 +338,10 @@ function isEvolutionEntryArray(value: unknown): value is EvolutionEntry[] {
       (entry) =>
         isObjectLike(entry) &&
         typeof entry.timestamp === "number" &&
+        // Reject NaN/Infinity and timestamps outside the valid Date range so a
+        // later new Date(e.timestamp).toISOString() cannot throw RangeError.
+        Number.isFinite(entry.timestamp) &&
+        Math.abs(entry.timestamp) <= 8.64e15 &&
         typeof entry.trigger === "string" &&
         typeof entry.observation === "string" &&
         typeof entry.directive === "string" &&

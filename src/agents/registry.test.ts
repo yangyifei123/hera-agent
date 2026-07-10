@@ -179,6 +179,99 @@ describe("AgentRegistry metadata round-trip", () => {
     expect(read!.prompt).toBe("You evolve over time.");
   });
 
+  it("recovers a CRLF-saved agent .md instead of degrading to unknown defaults", async () => {
+    const promptB64 = Buffer.from("CRLF prompt body\nsecond line", "utf-8").toString("base64");
+    const md = [
+      "---",
+      "name: crlf-agent",
+      'description: "CRLF agent"',
+      "mode: all",
+      `promptB64: ${promptB64}`,
+      'skillsJson: ["caveman","custom-skill"]',
+      "---",
+      "",
+      "Rendered body",
+    ].join("\r\n");
+
+    await Bun.write(join(tmp, "crlf-agent.md"), md);
+    const read = await registry.readDefinition("crlf-agent");
+
+    expect(read).toBeDefined();
+    // Without CRLF normalization the frontmatter regex fails and everything
+    // degrades to name:"unknown", mode:"subagent", default skills, raw prompt.
+    expect(read!.name).toBe("crlf-agent");
+    expect(read!.mode).toBe("all");
+    expect(read!.skills).toEqual(["caveman", "custom-skill"]);
+    expect(read!.prompt).toBe("CRLF prompt body\nsecond line");
+  });
+
+  it("rolls back an evolution entry in place without duplicating it", async () => {
+    const def: AgentDefinition = {
+      name: "rollback-agent",
+      description: "Rollback agent",
+      mode: "subagent",
+      prompt: "You evolve.",
+      skills: ["caveman"],
+    };
+    await registry.register(def, new Map<string, SkillDefinition>());
+
+    // Evolve: append a brand-new directive.
+    const entry = {
+      timestamp: 1717000000000,
+      trigger: "reflection",
+      observation: "needed a fix",
+      directive: "be more careful",
+      rolledBack: false,
+    };
+    await registry.appendEvolution("rollback-agent", entry);
+
+    // Rollback (as hera_rollback_evolution does): mutate the EXISTING entry in
+    // place — same timestamp + directive, rolledBack flipped — and re-persist.
+    const cur = await registry.readDefinition("rollback-agent");
+    const target = cur!.evolutionLog!.find(
+      (e) => e.timestamp === entry.timestamp && e.directive === entry.directive
+    )!;
+    target.rolledBack = true;
+    await registry.appendEvolution("rollback-agent", target);
+
+    // Fresh registry simulates a restart.
+    const reloaded = new AgentRegistry(tmp);
+    const read = await reloaded.readDefinition("rollback-agent");
+    expect(read).toBeDefined();
+    // Exactly ONE entry — the rolled-back one — not a resurrected duplicate.
+    expect(read!.evolutionLog).toHaveLength(1);
+    expect(read!.evolutionLog![0].rolledBack).toBe(true);
+    expect(read!.evolutionLog![0].directive).toBe("be more careful");
+  });
+
+  it("rejects evolution entries with an out-of-Date-range timestamp", async () => {
+    const md = [
+      "---",
+      "name: bad-ts-agent",
+      'description: "Bad timestamp"',
+      "mode: subagent",
+      `evolutionLogJson: ${JSON.stringify([
+        {
+          timestamp: 1e21,
+          trigger: "t",
+          observation: "o",
+          directive: "d",
+          rolledBack: false,
+        },
+      ])}`,
+      "---",
+      "body",
+    ].join("\n");
+
+    await Bun.write(join(tmp, "bad-ts-agent.md"), md);
+    const read = await registry.readDefinition("bad-ts-agent");
+
+    expect(read).toBeDefined();
+    // A timestamp beyond the valid Date range would later throw RangeError in
+    // new Date(e.timestamp).toISOString(); the guard must reject it.
+    expect(read!.evolutionLog).toEqual([]);
+  });
+
   it("ignores malformed permission metadata", async () => {
     const malformed = [
       "---",
