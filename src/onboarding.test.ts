@@ -88,4 +88,46 @@ describe("runOnboarding", () => {
     const files = await readdir(paths.agentsDir);
     expect(files).toContain("quick-fixer.md");
   });
+
+  it("should not overwrite a pre-existing user agent that shares a default agent's name", async () => {
+    const distinctivePrompt = "You are MY custom architect. Do not touch. USER_MARKER_12345.";
+    const skills = skillManager.getSkillMap();
+    await registry.register(
+      {
+        name: "architect",
+        description: "user's own architect",
+        prompt: distinctivePrompt,
+        mode: "subagent",
+        skills: [],
+      },
+      skills
+    );
+
+    await runOnboarding(paths, registry, teamManager, store, skillManager);
+
+    const content = await readFile(join(paths.agentsDir, "architect.md"), "utf-8");
+    expect(content).toContain(distinctivePrompt);
+
+    // Other default agents should still have been created.
+    const files = await readdir(paths.agentsDir);
+    expect(files).toContain("quick-fixer.md");
+    expect(files).toContain("senior-dev.md");
+    expect(files).toContain("qa-engineer.md");
+  });
+
+  it("should not overwrite a pre-existing user team that shares a default team's name", async () => {
+    await teamManager.createTeam({
+      name: "dev-team",
+      description: "user's own team",
+      coordination: "parallel",
+      members: [],
+      createdAt: 123,
+    });
+
+    await runOnboarding(paths, registry, teamManager, store, skillManager);
+
+    const team = teamManager.getTeam("dev-team");
+    expect(team?.description).toBe("user's own team");
+    expect(team?.coordination).toBe("parallel");
+  });
 });

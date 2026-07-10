@@ -36,9 +36,14 @@ export async function runOnboarding(
   // Create default agent: quick-fixer (mode: subagent, template: debugger)
   const skills = skillManager.getSkillMap();
   try {
-    const quickFixerDef = createAgentFromTemplate("debugger", "quick-fixer");
-    await agentRegistry.register(quickFixerDef, skills);
-    heraLog("info", "Onboarding: Created default agent 'quick-fixer' (debugger template)");
+    const existingQuickFixer = await agentRegistry.readDefinition("quick-fixer");
+    if (existingQuickFixer) {
+      heraLog("info", "Onboarding: keeping existing quick-fixer agent (user-created)");
+    } else {
+      const quickFixerDef = createAgentFromTemplate("debugger", "quick-fixer");
+      await agentRegistry.register(quickFixerDef, skills);
+      heraLog("info", "Onboarding: Created default agent 'quick-fixer' (debugger template)");
+    }
   } catch (err) {
     failures.push("quick-fixer");
     heraLog("warn", "Onboarding: Could not create quick-fixer agent", err);
@@ -53,6 +58,11 @@ export async function runOnboarding(
   ];
   for (const m of teamMembers) {
     try {
+      const existing = await agentRegistry.readDefinition(m.name);
+      if (existing) {
+        heraLog("info", `Onboarding: keeping existing '${m.name}' agent (user-created)`);
+        continue;
+      }
       const def = createAgentFromTemplate(m.template, m.name);
       await agentRegistry.register(def, skills);
       heraLog("info", `Onboarding: Created team member '${m.name}' (${m.template} template)`);
@@ -92,8 +102,12 @@ export async function runOnboarding(
   };
 
   try {
-    await teamManager.createTeam(devTeam);
-    heraLog("info", "Onboarding: Created default team 'dev-team' (sequential)");
+    if (teamManager.getTeam(devTeam.name)) {
+      heraLog("info", "Onboarding: keeping existing 'dev-team' team (user-created)");
+    } else {
+      await teamManager.createTeam(devTeam);
+      heraLog("info", "Onboarding: Created default team 'dev-team' (sequential)");
+    }
   } catch (err) {
     failures.push("dev-team");
     heraLog("warn", "Onboarding: Could not create dev-team", err);
