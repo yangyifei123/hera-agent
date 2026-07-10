@@ -3,7 +3,7 @@ import { MemoryStore } from "./store.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 
 const TEST_DIR = join(tmpdir(), "hera-store-test");
 
@@ -134,6 +134,22 @@ describe("MemoryStore", () => {
     expect(results.map((r) => r.id)).not.toContain("nope");
     // Full-coverage match ranks above the single-term match.
     expect(results[0].id).toBe("best");
+  });
+
+  test("search surfaces a memo written directly to disk without re-init", async () => {
+    await store.save({ id: "m1", type: "session", content: "hello world", timestamp: 1000 });
+    // Simulate a generated plugin's inlined hera_remember writing a memo file
+    // straight to the collection dir, bypassing the store API. Hera's own recall
+    // (search) must see it without a process restart / re-init.
+    const memo = {
+      id: "ext1",
+      type: "session",
+      content: "external note about tokens",
+      timestamp: 2000,
+    };
+    await writeFile(join(TEST_DIR, "sessions", `${memo.id}.json`), JSON.stringify(memo));
+    const results = await store.search("external");
+    expect(results.map((r) => r.id)).toContain("ext1");
   });
 
   test("rejects unsafe memory ids", async () => {

@@ -87,6 +87,11 @@ export class MemoryStore {
     const results: HeraMemory[] = [];
     for (const subdir of subdirs) {
       const store = await this.collection(subdir);
+      // Pick up memos an external writer (e.g. a generated plugin's inlined
+      // hera_remember) dropped straight into the collection dir since the last
+      // scan, so recall/list see them without a process restart. Cheap: only
+      // newly-appeared files are read.
+      await store.refreshFromDisk();
       for (const memory of await store.list()) {
         if (isExpired(memory)) {
           await store.delete(memory.id);

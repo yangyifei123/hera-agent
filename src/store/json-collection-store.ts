@@ -219,6 +219,47 @@ export class JsonCollectionStore<T extends CollectionEntry> {
     return Array.from(this.primary.values());
   }
 
+  /**
+   * Reconcile the in-memory cache with the current directory listing without a
+   * full re-scan: load any `*.json` whose id is not already cached, and drop any
+   * cached entry whose backing file has disappeared. Only NEW ids are read from
+   * disk — unchanged, already-cached files are never re-read — so this stays
+   * cheap enough to call on the read path (e.g. before a recall) to surface
+   * memos an external writer dropped straight into the collection dir (a
+   * generated plugin's inlined hera_remember). Init's lease-transition helpers
+   * (update/updateFromDisk by id) are untouched.
+   */
+  async refreshFromDisk(): Promise<void> {
+    let files: string[];
+    try {
+      files = await readdir(this.dir);
+    } catch {
+      return;
+    }
+    const onDisk = new Set<string>();
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      onDisk.add(file.slice(0, -".json".length));
+    }
+    // Load ids that appeared on disk but aren't cached yet (read only the new ones).
+    for (const id of onDisk) {
+      if (this.primary.has(id)) continue;
+      await this.withIdLock(id, async () => {
+        if (this.primary.has(id)) return;
+        const entry = await this.readFromDisk(id);
+        if (entry) this.indexInsert(entry);
+      });
+    }
+    // Drop cached entries whose backing file has disappeared.
+    for (const id of Array.from(this.primary.keys())) {
+      if (onDisk.has(id)) continue;
+      await this.withIdLock(id, async () => {
+        const existing = this.primary.get(id);
+        if (existing) this.indexRemove(existing);
+      });
+    }
+  }
+
   byIndex(indexName: string, key: string): T[] {
     const idx = this.secondary.get(indexName);
     if (!idx) return [];

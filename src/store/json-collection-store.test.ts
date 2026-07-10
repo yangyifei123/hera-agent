@@ -157,6 +157,48 @@ describe("JsonCollectionStore", () => {
     expect(store.byIndex("status", "succeeded")).toHaveLength(0);
   });
 
+  it("refreshFromDisk surfaces externally written files without re-init", async () => {
+    await store.save({ id: "a", status: "pending", value: 1 });
+    // Another writer (e.g. a generated plugin's inlined hera_remember) drops a
+    // memo file straight into the collection dir, bypassing the store API.
+    await writeFile(
+      join(dir, "rows", "ext.json"),
+      JSON.stringify({ id: "ext", status: "pending", value: 7 })
+    );
+    // Not visible to the cached list yet.
+    expect((await store.list()).map((r) => r.id).sort()).toEqual(["a"]);
+    await store.refreshFromDisk();
+    expect((await store.list()).map((r) => r.id).sort()).toEqual(["a", "ext"]);
+    // Secondary index picks it up too.
+    expect(
+      store
+        .byIndex("status", "pending")
+        .map((r) => r.id)
+        .sort()
+    ).toEqual(["a", "ext"]);
+  });
+
+  it("refreshFromDisk does not re-read files already cached", async () => {
+    await store.save({ id: "a", status: "pending", value: 1 });
+    // Mutate the backing file directly. A cheap refresh must only readFile NEW
+    // ids, so this unchanged-id's file is never re-read and the cache is kept.
+    await writeFile(
+      join(dir, "rows", "a.json"),
+      JSON.stringify({ id: "a", status: "changed", value: 99 })
+    );
+    await store.refreshFromDisk();
+    expect(await store.load("a")).toEqual({ id: "a", status: "pending", value: 1 });
+  });
+
+  it("refreshFromDisk drops entries whose file disappeared", async () => {
+    await store.save({ id: "a", status: "pending", value: 1 });
+    await rm(join(dir, "rows", "a.json"));
+    await store.refreshFromDisk();
+    expect(await store.load("a")).toBeNull();
+    expect(store.byIndex("status", "pending")).toHaveLength(0);
+    expect(store.size()).toBe(0);
+  });
+
   it("update() reads a cold entry from disk when not cached", async () => {
     // Simulate a record written by another process (present on disk, absent
     // from this store's cache).
