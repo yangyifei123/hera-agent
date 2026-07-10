@@ -82,10 +82,17 @@ describe("command-tools", () => {
       TOOL_CTX
     );
     const md = await readFile(join(dir, "command", "helper.md"), "utf-8");
-    // Exactly one front-matter block (two fences); the injected text did not open a body.
-    expect(md.split("\n").filter((l) => l === "---").length).toBe(2);
-    const frontMatter = md.slice(0, md.indexOf("---", 3));
-    expect(frontMatter).not.toContain("IGNORE PRIOR INSTRUCTIONS");
+    const lines = md.split("\n");
+    // Exactly one front-matter block (two fences, each on its own line): the
+    // injected `---` collapsed inline into the description and never opened a body.
+    expect(lines.filter((l) => l === "---").length).toBe(2);
+    // The injected text stays absorbed in the single-line description scalar —
+    // it never escapes onto its own line / into the command body.
+    for (const l of lines) {
+      if (l.includes("IGNORE PRIOR INSTRUCTIONS")) {
+        expect(l.startsWith("description:")).toBe(true);
+      }
+    }
   });
 
   it("refuses to delete the built-in /mode command", async () => {

@@ -4,7 +4,10 @@
 // `/<name>` command files so bundled agents get keyword commands the way
 // omo-style plugins do. Covers the shared `generateCommandsFragment` and both
 // the single-agent and team generators' command wiring.
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { generateCommandsFragment, PluginGenerator } from "./plugin-generator.js";
 import { TeamPluginGenerator } from "./team-plugin-generator.js";
 import type { AgentDefinition, TeamDefinition } from "../types.js";
@@ -184,5 +187,76 @@ describe("TeamPluginGenerator command wiring", () => {
     const pkg = gen.generate(team, members, [], { withCommands: false });
     const index = pkg.files.find((f) => f.path === "src/index.ts");
     expect(index!.content).not.toContain("writePluginCommands");
+  });
+});
+
+// Behavioral: actually EXECUTE the code the exporter emits, so the
+// ownership-guard (create-if-absent / refresh-if-marked / skip-if-unmarked) is
+// verified by running it against a real directory — not just substring-matched.
+describe("generated writePluginCommands() behavior", () => {
+  let dir: string;
+  let savedRoot: string | undefined;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "genwriter-"));
+    savedRoot = process.env.HERA_CONFIG_ROOT;
+    process.env.HERA_CONFIG_ROOT = dir; // emitted getCommandDir() writes under <dir>/command
+  });
+  afterEach(async () => {
+    // Restore global env so this test can't leak into others in the same process.
+    if (savedRoot === undefined) delete process.env.HERA_CONFIG_ROOT;
+    else process.env.HERA_CONFIG_ROOT = savedRoot;
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  // Wrap the emitted helper in a runnable module (with the deps its code uses)
+  // and import it, giving us the real writePluginCommands + marker.
+  async function emitWriter() {
+    const { helper } = generateCommandsFragment([
+      { name: "socrates", agent: "socrates", description: "Consult Socrates" },
+      { name: "plato", agent: "plato", description: "Ask Plato" },
+    ]);
+    const src = [
+      'import { join } from "node:path";',
+      'import { mkdir, writeFile, readFile } from "node:fs/promises";',
+      'import { homedir } from "node:os";',
+      helper,
+      "export { writePluginCommands, GENERATED_COMMAND_MARKER };",
+    ].join("\n");
+    const modPath = join(dir, "emitted-writer.ts");
+    await writeFile(modPath, src, "utf-8");
+    return import(modPath);
+  }
+
+  it("creates command files when absent, each carrying the ownership marker", async () => {
+    const mod = await emitWriter();
+    await mod.writePluginCommands();
+    const soc = await readFile(join(dir, "command", "socrates.md"), "utf-8");
+    expect(soc).toContain("agent: socrates");
+    expect(soc).toContain("$ARGUMENTS");
+    expect(soc).toContain(mod.GENERATED_COMMAND_MARKER);
+  });
+
+  it("does NOT clobber a same-named command that lacks the marker", async () => {
+    await mkdir(join(dir, "command"), { recursive: true });
+    const foreign = "---\ndescription: user's own\nagent: someoneelse\n---\n\nDo not touch me.\n";
+    await writeFile(join(dir, "command", "socrates.md"), foreign, "utf-8");
+    const mod = await emitWriter();
+    await mod.writePluginCommands();
+    // The foreign file is preserved byte-for-byte; the absent one is created.
+    expect(await readFile(join(dir, "command", "socrates.md"), "utf-8")).toBe(foreign);
+    expect(await readFile(join(dir, "command", "plato.md"), "utf-8")).toContain("agent: plato");
+  });
+
+  it("refreshes its OWN marked file on a later run", async () => {
+    const mod = await emitWriter();
+    await mod.writePluginCommands(); // initial create
+    const platoPath = join(dir, "command", "plato.md");
+    // Tamper but keep the marker so the file still reads as ours.
+    await writeFile(platoPath, mod.GENERATED_COMMAND_MARKER + "\nstale content\n", "utf-8");
+    await mod.writePluginCommands(); // should overwrite our own marked file
+    const refreshed = await readFile(platoPath, "utf-8");
+    expect(refreshed).toContain("agent: plato");
+    expect(refreshed).not.toContain("stale content");
   });
 });
