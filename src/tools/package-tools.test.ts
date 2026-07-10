@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createPackageTools, validateManifest, isEntryInsideDir } from "./package-tools.js";
-import type { PluginContext } from "../types.js";
+import type { AgentDefinition, PluginContext } from "../types.js";
 import type { ToolContext } from "@opencode-ai/plugin";
 import { makeTestHarness, type TestHarness } from "./test-harness.js";
+import { listBackups } from "../persistence.js";
 import { join } from "node:path";
-import { mkdir, writeFile, rm, readFile, stat, access } from "node:fs/promises";
+import { mkdir, writeFile, rm, readFile, readdir, stat, access } from "node:fs/promises";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { createGzip } from "node:zlib";
@@ -130,6 +131,37 @@ describe("Package Tools", () => {
     expect(packageStat.isFile()).toBe(true);
   });
 
+  test("hera_package_agent rejects a path-traversal name even with a safe explicit outputName", async () => {
+    // Simulate a traversal name that resolves (via the unchecked join in
+    // getAgentPluginDir) to a real, existing directory outside node_modules/,
+    // so the call doesn't just short-circuit on "agent not found" — it must
+    // reach the staging/mkdir logic where the unchecked agentName would
+    // otherwise escape the packages directory.
+    await mkdir(join(testDir, "evil"), { recursive: true });
+
+    const tools = createPackageTools(ctx);
+    const result = await tools.hera_package_agent.execute(
+      {
+        name: "x/../../evil",
+        outputName: "safe-output",
+      },
+      toolCtx
+    );
+
+    expect(result).toContain("Error");
+    expect(result).not.toContain("not found");
+
+    // Nothing should have been written anywhere, including outside the
+    // packages directory via the traversal-corrupted staging dir name
+    // (`.staging-x/../../evil-<ts>` collapses to hera-data/evil-<ts>).
+    const packageDir = join(testDir, "hera-data", "packages");
+    await expect(stat(join(packageDir, "safe-output.tar.gz"))).rejects.toThrow();
+
+    const heraDataDir = join(testDir, "hera-data");
+    const entries = await readdir(heraDataDir).catch(() => [] as string[]);
+    expect(entries.filter((e) => e.includes("evil"))).toEqual([]);
+  });
+
   test("hera_unpack_agent fails for non-existent package", async () => {
     const tools = createPackageTools(ctx);
     const result = await tools.hera_unpack_agent.execute(
@@ -203,6 +235,46 @@ describe("Package Tools", () => {
     // Verify the .md file was restored
     const restoredContent = await readFile(mdPath, "utf-8");
     expect(restoredContent).toBe(originalContent);
+  });
+
+  test("hera_unpack_agent backs up an existing agent instead of silently overwriting it", async () => {
+    const agentsDir = join(testDir, "agents", "hera");
+    await mkdir(agentsDir, { recursive: true });
+    const mdPath = join(agentsDir, "test-agent.md");
+    const existingContent = "# Test Agent\n\nCustomized existing content that must be backed up.";
+    await writeFile(mdPath, existingContent);
+
+    // The agent must also be registered in-memory for backupAgent to find it.
+    const existingDef: AgentDefinition = {
+      name: "test-agent",
+      description: "existing",
+      mode: "subagent",
+      prompt: existingContent,
+      skills: [],
+    };
+    ctx.registeredAgents.set("test-agent", existingDef);
+
+    const tools = createPackageTools(ctx);
+
+    // Package the current (existing) agent, then unpack it again over itself
+    // to simulate importing a package for a name that already exists.
+    const packageResult = await tools.hera_package_agent.execute(
+      { name: "test-agent", includeMemory: false },
+      toolCtx
+    );
+    expect(packageResult).toContain("packaged successfully");
+
+    const packagePath = join(testDir, "hera-data", "packages", "test-agent-package.tar.gz");
+    const unpackResult = await tools.hera_unpack_agent.execute(
+      { packagePath, installPlugin: false },
+      toolCtx
+    );
+
+    expect(unpackResult).toContain("unpacked successfully");
+    expect(String(unpackResult).toLowerCase()).toContain("backup");
+
+    const backups = await listBackups("test-agent", ctx.registeredAgents, ctx.agentRegistry);
+    expect(backups.length).toBeGreaterThan(0);
   });
 
   test("hera_package_agent includes memory when requested", async () => {

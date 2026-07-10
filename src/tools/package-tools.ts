@@ -9,6 +9,8 @@ import { pipeline } from "node:stream/promises";
 import { createGzip, createGunzip } from "node:zlib";
 import { pack, extract } from "tar-fs";
 import { getConfigRoot } from "../constants.js";
+import { atomicWriteText } from "../helpers.js";
+import { backupAgent } from "../persistence.js";
 
 const z = tool.schema;
 
@@ -183,7 +185,7 @@ async function extractTarGz(
   return { unsafeEntries };
 }
 
-export function createPackageTools(_ctx: PluginContext) {
+export function createPackageTools(ctx: PluginContext) {
   return {
     hera_package_agent: tool({
       description:
@@ -201,6 +203,14 @@ export function createPackageTools(_ctx: PluginContext) {
       },
       async execute(args) {
         const agentName = args.name;
+        // Validate BEFORE any join/stat/mkdir touches agentName: it feeds
+        // getAgentPluginDir/getAgentMdPath and the staging dir name below, so
+        // an unchecked traversal name (e.g. "x/../../evil") can escape the
+        // packages directory even when outputName itself is clean.
+        const nameCheck = validateAgentName(agentName);
+        if (!nameCheck.valid) {
+          return `Error: Invalid agent name "${agentName}": ${nameCheck.error}`;
+        }
         const includeMemory = args.includeMemory ?? false;
         const outputName = args.outputName || `${agentName}-package`;
         // Prevent path traversal: outputName is joined with the packages dir to
@@ -407,9 +417,26 @@ export function createPackageTools(_ctx: PluginContext) {
             const mdDest = join(configRoot, "agents", "hera", `${agentName}.md`);
 
             await mkdir(join(configRoot, "agents", "hera"), { recursive: true });
+
+            // Don't silently clobber a user's customized agent: back it up
+            // first if a file with this name already exists on disk.
+            let overwrote = false;
+            try {
+              await stat(mdDest);
+              overwrote = true;
+              await backupAgent(agentName, ctx.registeredAgents, ctx.agentRegistry);
+            } catch {
+              // No existing file, nothing to back up.
+            }
+
             const content = await readFile(mdSrc, "utf-8");
-            await writeFile(mdDest, content);
+            await atomicWriteText(mdDest, content);
             results.push(`✓ Agent .md file restored to ${mdDest}`);
+            if (overwrote) {
+              results.push(
+                `⚠ An existing agent named "${agentName}" was overwritten; a backup was saved.`
+              );
+            }
           }
 
           // Restore memory files if included
