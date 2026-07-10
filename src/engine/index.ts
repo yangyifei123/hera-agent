@@ -143,16 +143,25 @@ export function createEngine(opts: EngineOptions): Engine {
     evaluator,
     tools,
     init() {
+      // On rejection, clear the latch so a later call retries. `??=` alone would
+      // cache a rejected promise forever, permanently bricking the shared engine
+      // after a single transient failure (e.g. a disk hiccup during startup).
       return (initPromise ??= (async () => {
         await taskStore.init();
         await loopStore.init();
-      })());
+      })().catch((e) => {
+        initPromise = undefined;
+        throw e;
+      }));
     },
     recover() {
       return (recoverPromise ??= (async () => {
         await supervisor.recover();
         await loopManager.recover();
-      })());
+      })().catch((e) => {
+        recoverPromise = undefined;
+        throw e;
+      }));
     },
     start() {
       supervisor.start();

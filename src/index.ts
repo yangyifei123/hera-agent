@@ -126,17 +126,34 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     agentsDir: join(configRoot, "agents", "hera"),
   };
 
+  // Each subsystem init is isolated: a single fs hiccup (mkdir EACCES,
+  // disk-full, corrupt dir) must not throw out of the plugin factory and leave
+  // OpenCode with zero Hera hooks/tools/agents for the whole session. Mirror the
+  // defensive pattern above — warn and continue so the other subsystems (and the
+  // tool map) still come up.
   const store = new MemoryStore(paths.memoryDir, {
     maxEntries: config.memory_limit ?? DEFAULT_MEMORY_LIMIT,
     ttlMs: config.memory_ttl_ms,
   });
-  await store.init();
+  try {
+    await store.init();
+  } catch (err) {
+    heraLog("warn", "Memory store init failed on startup", err);
+  }
 
   const skillManager = new SkillManager(store, paths.skillsDir);
-  await skillManager.init();
+  try {
+    await skillManager.init();
+  } catch (err) {
+    heraLog("warn", "Skill manager init failed on startup", err);
+  }
 
   const teamManager = new TeamManager(store, client);
-  await teamManager.init();
+  try {
+    await teamManager.init();
+  } catch (err) {
+    heraLog("warn", "Team manager init failed on startup", err);
+  }
 
   try {
     const reconciled = await teamManager.recoverSessions();
@@ -146,11 +163,19 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
   }
 
   const workflowManager = new WorkflowManager(store, teamManager, client);
-  await workflowManager.init();
+  try {
+    await workflowManager.init();
+  } catch (err) {
+    heraLog("warn", "Workflow manager init failed on startup", err);
+  }
 
   const distillation = new DistillationEngine(store);
   const agentRegistry = new AgentRegistry(paths.agentsDir);
-  await agentRegistry.init();
+  try {
+    await agentRegistry.init();
+  } catch (err) {
+    heraLog("warn", "Agent registry init failed on startup", err);
+  }
 
   const engine = createEngine({
     dataDir: paths.dataDir,
@@ -160,9 +185,13 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     teamManager,
     singleton: true,
   });
-  await engine.init();
-  await engine.recover();
-  engine.start();
+  try {
+    await engine.init();
+    await engine.recover();
+    engine.start();
+  } catch (err) {
+    heraLog("warn", "Background engine init/recover failed on startup", err);
+  }
   _engine = engine;
 
   const { taskStore, loopManager, supervisor } = engine;
@@ -247,49 +276,75 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
       for (const [name, def] of registeredAgents) {
         if (config.disabled_agents?.includes(name)) continue;
 
-        // Progressive disclosure: embed a compact skill manifest (name +
-        // one-line description) instead of full skill bodies. The agent pulls a
-        // skill's full guidance on demand via hera_load_skill, shrinking the
-        // live per-agent context and letting an agent carry many skills.
-        const skillManifest = skillManager.describeSkills(def.skills);
-        const skillPrompts =
-          skillManifest.trim().length > 0
-            ? [
-                "## Skills (load on demand with hera_load_skill)",
-                "",
-                skillManifest,
-                "",
-                SKILL_DISCLOSURE_INSTRUCTION,
-              ].join("\n")
-            : "";
+        // Per-agent isolation: one corrupt definition (e.g. a bad evolution-log
+        // timestamp that makes new Date(...).toISOString() throw RangeError) must
+        // not abort injection for the whole roster. Fall back to def.prompt for
+        // just that agent and keep going.
+        try {
+          // Progressive disclosure: embed a compact skill manifest (name +
+          // one-line description) instead of full skill bodies. The agent pulls a
+          // skill's full guidance on demand via hera_load_skill, shrinking the
+          // live per-agent context and letting an agent carry many skills.
+          const skillManifest = skillManager.describeSkills(def.skills);
+          const skillPrompts =
+            skillManifest.trim().length > 0
+              ? [
+                  "## Skills (load on demand with hera_load_skill)",
+                  "",
+                  skillManifest,
+                  "",
+                  SKILL_DISCLOSURE_INSTRUCTION,
+                ].join("\n")
+              : "";
 
-        // Include evolution log if present
-        let evolutionBlock = "";
-        if (def.evolutionLog && def.evolutionLog.length > 0) {
-          const active = def.evolutionLog.filter((e) => !e.rolledBack);
-          if (active.length > 0) {
-            evolutionBlock =
-              "\n\n## Evolved Directives\n\n" +
-              active
-                .map((e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`)
-                .join("\n");
+          // Include evolution log if present
+          let evolutionBlock = "";
+          if (def.evolutionLog && def.evolutionLog.length > 0) {
+            const active = def.evolutionLog.filter((e) => !e.rolledBack);
+            if (active.length > 0) {
+              evolutionBlock =
+                "\n\n## Evolved Directives\n\n" +
+                active
+                  .map(
+                    (e, i) => `${i + 1}. [${new Date(e.timestamp).toISOString()}] ${e.directive}`
+                  )
+                  .join("\n");
+            }
+          }
+
+          const teamBlock = teamManager.getAgentTeamContext(name);
+          const fullPrompt = [def.prompt, skillPrompts, teamBlock, evolutionBlock]
+            .filter((part) => part.trim().length > 0)
+            .join("\n\n");
+
+          const childConfig = createChildAgentConfig(
+            name,
+            def.description,
+            fullPrompt,
+            def.model ?? model,
+            def.mode as import("./types.js").AgentMode,
+            { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
+          );
+          configInput.agent[name] = childConfig;
+        } catch (err) {
+          heraLog(
+            "warn",
+            `Failed to build injected config for agent "${name}"; falling back to base prompt`,
+            err
+          );
+          try {
+            configInput.agent[name] = createChildAgentConfig(
+              name,
+              def.description,
+              def.prompt,
+              def.model ?? model,
+              def.mode as import("./types.js").AgentMode,
+              { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
+            );
+          } catch (fallbackErr) {
+            heraLog("warn", `Could not inject agent "${name}" at all; skipping`, fallbackErr);
           }
         }
-
-        const teamBlock = teamManager.getAgentTeamContext(name);
-        const fullPrompt = [def.prompt, skillPrompts, teamBlock, evolutionBlock]
-          .filter((part) => part.trim().length > 0)
-          .join("\n\n");
-
-        const childConfig = createChildAgentConfig(
-          name,
-          def.description,
-          fullPrompt,
-          def.model ?? model,
-          def.mode as import("./types.js").AgentMode,
-          { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
-        );
-        configInput.agent[name] = childConfig;
       }
     },
 
