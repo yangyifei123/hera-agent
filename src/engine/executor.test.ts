@@ -232,6 +232,47 @@ describe("TaskExecutor", () => {
     expect(stored?.status).toBe("running");
   });
 
+  it("drops the terminal write when a SECOND process reclaimed the lease on disk", async () => {
+    // Cross-process double-completion race: process A holds a STALE cache showing
+    // it still owns the task, while a second process (store B, over the SAME dir)
+    // legitimately reclaimed the expired lease and re-leased it under owner B on
+    // disk. A's terminal commit must CAS against the current on-disk owner and
+    // drop its write, not clobber B's record from its own stale cache.
+    const target = join(dir, "out.txt");
+    const runner: AgentRunner = {
+      run: async () => {
+        await writeFile(target, "ok");
+        return "done";
+      },
+    };
+    const task = makeTask({
+      leaseOwner: "A",
+      leaseExpiresAt: 6000,
+      acceptance: [{ type: "file_exists", path: target }],
+    });
+    await store.save(task); // store A's cache now shows owner A
+
+    // A second OpenCode process reclaims + re-leases the task on disk. Store A's
+    // in-memory cache is NOT refreshed, so it still believes it owns the lease.
+    const other = new TaskStore(dir);
+    await other.init();
+    await other.updateFromDisk("t1", (cur) =>
+      cur ? { ...cur, leaseOwner: "B", leaseExpiresAt: 99999, updatedAt: 2 } : undefined
+    );
+
+    const exec = new TaskExecutor(store, evalr, runner, dir);
+    const result = await exec.runAttempt(task, 1000);
+    expect(result.status).toBe("cancelled");
+
+    // Read the authoritative disk state via a fresh store — A's succeeded write
+    // must have been dropped, leaving B's ownership/state intact.
+    const fresh = new TaskStore(dir);
+    await fresh.init();
+    const stored = await fresh.get("t1");
+    expect(stored?.leaseOwner).toBe("B");
+    expect(stored?.status).toBe("running");
+  });
+
   it("does not time out a fast runner under the limit", async () => {
     const target = join(dir, "fast.txt");
     const runner: AgentRunner = {

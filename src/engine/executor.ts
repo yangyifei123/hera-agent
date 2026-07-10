@@ -153,7 +153,11 @@ export class TaskExecutor {
     build: (current: TaskRecord) => TaskRecord
   ): Promise<TaskRecord | null> {
     let wrote = false;
-    const res = await this.store.update(task.id, (current) => {
+    // Read the authoritative on-disk record (not our possibly-stale cache) so the
+    // CAS below checks the CURRENT lease owner. Mirrors claimReady/recover/heartbeat:
+    // a second process may have reclaimed this task's expired lease, and a
+    // cache-first read here would let our stale attempt clobber their record.
+    const res = await this.store.updateFromDisk(task.id, (current) => {
       if (!current) return undefined;
       if (current.status === "cancelled") return undefined;
       // Another owner reclaimed this task's lease (crash recovery) and may be
