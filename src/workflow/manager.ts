@@ -12,7 +12,7 @@ import { WorkflowNotFoundError, WorkflowExecutionError } from "../errors.js";
 import { WorkflowValidator } from "./validator.js";
 import { WorkflowProgressCallback, ConcurrencyLimiter } from "./progress.js";
 import { heraLog } from "../logger.js";
-import { MAX_CONCURRENT_WORKFLOWS } from "../constants.js";
+import { MAX_CONCURRENT_WORKFLOWS, TEAM_POLL_INTERVAL_MS } from "../constants.js";
 
 export class WorkflowManager {
   private store: MemoryStore;
@@ -21,6 +21,10 @@ export class WorkflowManager {
   private workflows: Map<string, WorkflowDefinition> = new Map();
   private executions: Map<string, WorkflowExecution> = new Map();
   private activeExecutions = 0;
+  // Agent-step sessions created but not yet completed. Retained on
+  // timeout/error so they can be reconciled or aborted later, cleared on
+  // successful completion.
+  private pendingSessions: Set<string> = new Set();
 
   // Resource management
   private readonly MAX_EXECUTION_HISTORY = 1000;
@@ -424,14 +428,82 @@ export class WorkflowManager {
       throw new Error("OpenCode session creation failed");
     }
 
-    const response = await this.client.session.promptAsync({
+    this.pendingSessions.add(sessionId);
+
+    // promptAsync only acknowledges acceptance (it resolves 202/204 void); it
+    // does NOT wait for the agent nor carry the assistant's output. Poll the
+    // session until it goes idle and return the real assistant text so
+    // downstream steps reading context[stepId] see actual output.
+    await this.client.session.promptAsync({
       path: { id: sessionId },
       body: {
         agent: agentName,
         parts: [{ type: "text" as const, text: prompt }],
       },
     });
-    return response;
+
+    const timeoutMs = step.timeout || 300000; // bound by step.timeout
+    const result = await this.pollAgentSession(sessionId, timeoutMs);
+    this.pendingSessions.delete(sessionId);
+    return result;
+  }
+
+  /**
+   * Poll an agent session until it becomes idle, then return the last
+   * assistant message's text. Mirrors TeamManager.pollSessionCompletion.
+   * Bounded by `timeoutMs` so the step retry/timeout machinery still applies.
+   * Throws (rather than returning a misleading ack) on timeout, on a missing
+   * poll API, or when an idle session produced no assistant output. The session
+   * id remains tracked in `pendingSessions` on failure for later reconciliation.
+   */
+  private async pollAgentSession(sessionId: string, timeoutMs: number): Promise<string> {
+    if (!this.client) {
+      throw new Error("OpenCode client not available for agent execution");
+    }
+    const sessionApi = this.client.session;
+    if (typeof sessionApi.status !== "function" || typeof sessionApi.messages !== "function") {
+      throw new Error(
+        "OpenCode client lacks session.status/messages; cannot await agent step completion"
+      );
+    }
+
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      let statusType: string | undefined;
+      try {
+        const statusResult = await sessionApi.status();
+        statusType = statusResult.data?.[sessionId]?.type;
+      } catch {
+        statusType = undefined; // transient error — keep polling until deadline
+      }
+
+      if (statusType === "idle") {
+        const messagesResult = await sessionApi.messages({ path: { id: sessionId } });
+        const messages = messagesResult.data ?? [];
+        for (let j = messages.length - 1; j >= 0; j--) {
+          const message = messages[j];
+          if (message?.info.role === "assistant") {
+            return message.parts?.map((p) => ("text" in p ? p.text : "")).join("") ?? "";
+          }
+        }
+        // Idle but no assistant message: not a genuine completion.
+        throw new Error(
+          `Agent session ${sessionId} became idle without producing assistant output`
+        );
+      }
+
+      await new Promise((r) => setTimeout(r, TEAM_POLL_INTERVAL_MS));
+    }
+
+    throw new Error(`Agent step timed out waiting for session ${sessionId}`);
+  }
+
+  /**
+   * Agent-step session ids that were created but have not completed, exposed
+   * for crash recovery / reconciliation and abort of orphaned sessions.
+   */
+  getPendingAgentSessions(): string[] {
+    return Array.from(this.pendingSessions);
   }
 
   private async executeToolStep(step: WorkflowStep, context: WorkflowContext): Promise<unknown> {

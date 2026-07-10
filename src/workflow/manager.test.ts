@@ -17,12 +17,22 @@ describe("WorkflowManager", () => {
   let mockClient: OpenCodeClient;
 
   function makeAgentClient(
-    promptAsync: () => Promise<unknown> = async () => ({ data: undefined })
+    promptAsync: () => Promise<unknown> = async () => ({ data: undefined }),
+    opts: {
+      status?: () => Promise<unknown>;
+      messages?: () => Promise<unknown>;
+    } = {}
   ) {
+    const defaultStatus = async () => ({ data: { "test-session": { type: "idle" } } });
+    const defaultMessages = async () => ({
+      data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "agent-result" }] }],
+    });
     return {
       session: {
         create: mock(async () => ({ data: { id: "test-session" } })),
         promptAsync: mock(promptAsync),
+        status: mock(opts.status ?? defaultStatus),
+        messages: mock(opts.messages ?? defaultMessages),
       },
     } as unknown as OpenCodeClient;
   }
@@ -662,6 +672,89 @@ describe("WorkflowManager", () => {
         context: {},
         message: "Approval required for step: Step 1",
       });
+    });
+  });
+
+  describe("Agent Step Output", () => {
+    test("returns the agent's assistant text and passes it to a downstream step", async () => {
+      const agentClient = makeAgentClient(async () => ({ data: undefined }), {
+        messages: async () => ({
+          data: [{ info: { role: "assistant" }, parts: [{ type: "text", text: "AGENT_OUTPUT" }] }],
+        }),
+      });
+      const agentManager = new WorkflowManager(store, teamManager, agentClient);
+      await agentManager.init();
+
+      const workflow: WorkflowDefinition = {
+        id: "agent-output",
+        name: "Agent Output",
+        description: "Test",
+        mode: "serial",
+        steps: [
+          { id: "agent1", name: "Agent", type: "agent", executor: "worker" },
+          { id: "tool1", name: "Tool", type: "tool", executor: "consumer" },
+        ],
+        createdAt: Date.now(),
+      };
+
+      await agentManager.createWorkflow(workflow);
+      const execution = await agentManager.executeWorkflow("agent-output", {});
+
+      // The agent's real output is returned, not a fire-and-forget ack.
+      expect(execution.stepResults.agent1).toBe("AGENT_OUTPUT");
+      // The downstream step can read it from its context.
+      expect((execution.stepResults.tool1 as { input: Record<string, unknown> }).input.agent1).toBe(
+        "AGENT_OUTPUT"
+      );
+    });
+
+    test("times out (and throws) when the agent session never becomes idle", async () => {
+      const stuckClient = makeAgentClient(async () => ({ data: undefined }), {
+        status: async () => ({ data: { "test-session": { type: "running" } } }),
+      });
+      const stuckManager = new WorkflowManager(store, teamManager, stuckClient);
+      await stuckManager.init();
+
+      const workflow: WorkflowDefinition = {
+        id: "agent-never-idle",
+        name: "Never Idle",
+        description: "Test",
+        mode: "serial",
+        steps: [{ id: "agent1", name: "Agent", type: "agent", executor: "worker", timeout: 200 }],
+        createdAt: Date.now(),
+      };
+
+      await stuckManager.createWorkflow(workflow);
+
+      await expect(stuckManager.executeWorkflow("agent-never-idle", {})).rejects.toThrow(
+        "Step timeout"
+      );
+    });
+
+    test("fails with a clear error when the client lacks session.status/messages", async () => {
+      const bareClient = {
+        session: {
+          create: mock(async () => ({ data: { id: "bare-session" } })),
+          promptAsync: mock(async () => ({ data: undefined })),
+        },
+      } as unknown as OpenCodeClient;
+      const bareManager = new WorkflowManager(store, teamManager, bareClient);
+      await bareManager.init();
+
+      const workflow: WorkflowDefinition = {
+        id: "agent-no-poll",
+        name: "No Poll API",
+        description: "Test",
+        mode: "serial",
+        steps: [{ id: "agent1", name: "Agent", type: "agent", executor: "worker" }],
+        createdAt: Date.now(),
+      };
+
+      await bareManager.createWorkflow(workflow);
+
+      await expect(bareManager.executeWorkflow("agent-no-poll", {})).rejects.toThrow(
+        "lacks session.status/messages"
+      );
     });
   });
 
