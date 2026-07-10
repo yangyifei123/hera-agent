@@ -356,7 +356,7 @@ Windows PowerShell:
 node "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
 ```
 
-See [Tool Reference](#tool-reference) for all 43 management tools.
+See [Tool Reference](#tool-reference) for all 75 management tools across 14 domains.
 
 ---
 
@@ -421,7 +421,79 @@ See [Tool Reference](#tool-reference) for all 43 management tools.
 <summary><strong>System Management</strong></summary>
 
 - `hera_status` - Show system status (agents, skills, teams, memory)
-- `hera_onboard` - Re-run onboarding manually
+
+If onboarding needs to be re-run manually, delete `hera-data/.onboarded` under the OpenCode config root and restart OpenCode; there is no `hera_onboard` tool.
+
+</details>
+
+<details>
+<summary><strong>Task Engine</strong></summary>
+
+- `hera_enqueue_task` - Enqueue a background task for the engine to execute
+- `hera_task_status` - Get the status/result of a queued or running task
+- `hera_list_tasks` - List background tasks
+- `hera_cancel_task` - Cancel a queued or running task
+- `hera_enqueue_batch` - Enqueue a batch of related tasks
+- `hera_batch_report` - Get a combined status report for a batch
+
+</details>
+
+<details>
+<summary><strong>Loop Engine</strong></summary>
+
+- `hera_create_loop` - Create a recurring/looping background task
+- `hera_list_loops` - List all loops
+- `hera_loop_status` - Get the status of a loop
+- `hera_pause_loop` - Pause a running loop
+- `hera_resume_loop` - Resume a paused loop
+- `hera_cancel_loop` - Cancel a loop
+
+</details>
+
+<details>
+<summary><strong>Recovery</strong></summary>
+
+- `hera_recover` - Recover in-flight background work after a crash/restart
+- `hera_recover_sessions` - Recover orphaned OpenCode sessions
+- `hera_engine_health` - Report background engine health
+
+</details>
+
+<details>
+<summary><strong>Package Management</strong></summary>
+
+- `hera_package_agent` - Package an agent (optionally with memory) as a `.tar.gz` archive
+- `hera_unpack_agent` - Unpack and install an agent package
+- `hera_list_packages` - List packaged agent archives
+
+</details>
+
+<details>
+<summary><strong>Workflow</strong></summary>
+
+- `hera_create_workflow` - Create a generic serial/parallel/DAG workflow definition
+- `hera_execute_workflow` - Execute a workflow definition
+- `hera_get_workflow_status` - Get the status of a workflow execution
+- `hera_list_workflows` - List workflow definitions
+- `hera_approve_workflow` - Approve a workflow awaiting an approval step
+- `hera_delete_workflow` - Remove a workflow definition
+
+</details>
+
+<details>
+<summary><strong>Program Skills</strong></summary>
+
+- `hera_run_program` - Run a program-led skill (ships a `run.ts`) in a sandboxed child process
+- `hera_create_program_skill` - Scaffold a new program-led skill (`SKILL.json` + `run.ts` + typings)
+
+</details>
+
+<details>
+<summary><strong>Native Commands</strong></summary>
+
+- `hera_create_command` - Create a native OpenCode slash command
+- `hera_list_commands` - List native commands
+- `hera_delete_command` - Delete a native command
 
 </details>
 

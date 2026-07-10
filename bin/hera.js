@@ -428,6 +428,85 @@ function removePluginRegistration(configRoot) {
   }
 }
 
+function listAgents() {
+  const configRoot = getConfigRoot();
+  const agentsDir = path.join(configRoot, "agents", "hera");
+  if (!fs.existsSync(agentsDir)) {
+    console.log("No agents directory yet. Run Hera at least once to initialize.");
+    return;
+  }
+  const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md"));
+  if (files.length === 0) {
+    console.log("No agents created yet.");
+    return;
+  }
+  console.log("Agents:");
+  for (const f of files) {
+    const name = f.replace(/\.md$/, "");
+    const content = fs.readFileSync(path.join(agentsDir, f), "utf8");
+    const modeMatch = content.match(/^mode:\s*(\w+)/m);
+    const descMatch = content.match(/^description:\s*"([^"]+)"/m);
+    const mode = modeMatch ? modeMatch[1] : "?";
+    const desc = descMatch ? descMatch[1] : "";
+    console.log(`  ${name.padEnd(24)} ${mode.padEnd(10)} ${desc}`);
+  }
+}
+
+function listSkills() {
+  const builtins = [
+    ["caveman", "Ultra-compressed communication"],
+    ["init", "Environment awareness"],
+    ["memory", "Autonomous memory management"],
+    ["evolution", "Self-improvement through reflection"],
+    ["skill-combo", "Dynamic skill composition"],
+    ["subagent", "Delegate to specialized agents"],
+    ["communicate", "Team coordination via messaging"],
+    ["auto-compact", "Context window discipline"],
+    ["workflow-orchestration", "Multi-step workflow planning"],
+    ["brainstorming", "Requirement exploration before implementation"],
+    ["skill-creator", "Create and refine reusable skills"],
+  ];
+  console.log("Built-in skills (always available):");
+  for (const [name, desc] of builtins) {
+    console.log(`  ${name.padEnd(14)} ${desc}`);
+  }
+  const userSkillsDir = path.join(getConfigRoot(), "hera-data", "skills");
+  if (fs.existsSync(userSkillsDir)) {
+    const entries = fs.readdirSync(userSkillsDir);
+    if (entries.length > 0) {
+      console.log("\nUser skills:");
+      for (const e of entries) {
+        console.log(`  ${e}`);
+      }
+    }
+  }
+}
+
+function listTeams() {
+  const configRoot = getConfigRoot();
+  const memDir = path.join(configRoot, "hera-data", "memory", "teams");
+  if (!fs.existsSync(memDir)) {
+    console.log("No teams yet.");
+    return;
+  }
+  const files = fs.readdirSync(memDir).filter((f) => f.endsWith(".json"));
+  if (files.length === 0) {
+    console.log("No teams yet.");
+    return;
+  }
+  console.log("Teams:");
+  for (const f of files) {
+    try {
+      const memo = JSON.parse(fs.readFileSync(path.join(memDir, f), "utf8"));
+      const team = JSON.parse(memo.content);
+      const members = team.members.map((m) => m.agentName).join(", ");
+      console.log(`  ${team.name.padEnd(24)} ${team.coordination.padEnd(12)} ${members}`);
+    } catch {
+      // skip malformed
+    }
+  }
+}
+
 switch (cmd) {
   case "version":
   case "-v":
@@ -781,60 +860,27 @@ If you installed with Bun, replace npm uninstall with:
     break;
   }
 
-  case "list":
-  case "list-agents": {
-    const configRoot = getConfigRoot();
-    const agentsDir = path.join(configRoot, "agents", "hera");
-    if (!fs.existsSync(agentsDir)) {
-      console.log("No agents directory yet. Run Hera at least once to initialize.");
-      break;
-    }
-    const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith(".md"));
-    if (files.length === 0) {
-      console.log("No agents created yet.");
-      break;
-    }
-    console.log("Agents:");
-    for (const f of files) {
-      const name = f.replace(/\.md$/, "");
-      const content = fs.readFileSync(path.join(agentsDir, f), "utf8");
-      const modeMatch = content.match(/^mode:\s*(\w+)/m);
-      const descMatch = content.match(/^description:\s*"([^"]+)"/m);
-      const mode = modeMatch ? modeMatch[1] : "?";
-      const desc = descMatch ? descMatch[1] : "";
-      console.log(`  ${name.padEnd(24)} ${mode.padEnd(10)} ${desc}`);
+  case "list": {
+    const sub = args[1];
+    if (sub === "skills") {
+      listSkills();
+    } else if (sub === "teams") {
+      listTeams();
+    } else if (sub === "agents" || !sub) {
+      listAgents();
+    } else {
+      console.log(`Unknown list target "${sub}". Use: hera list [agents|skills|teams]`);
     }
     break;
   }
 
+  case "list-agents": {
+    listAgents();
+    break;
+  }
+
   case "list-skills": {
-    const builtins = [
-      ["caveman", "Ultra-compressed communication"],
-      ["init", "Environment awareness"],
-      ["memory", "Autonomous memory management"],
-      ["evolution", "Self-improvement through reflection"],
-      ["skill-combo", "Dynamic skill composition"],
-      ["subagent", "Delegate to specialized agents"],
-      ["communicate", "Team coordination via messaging"],
-      ["auto-compact", "Context window discipline"],
-      ["workflow-orchestration", "Multi-step workflow planning"],
-      ["brainstorming", "Requirement exploration before implementation"],
-      ["skill-creator", "Create and refine reusable skills"],
-    ];
-    console.log("Built-in skills (always available):");
-    for (const [name, desc] of builtins) {
-      console.log(`  ${name.padEnd(14)} ${desc}`);
-    }
-    const userSkillsDir = path.join(getConfigRoot(), "hera-data", "skills");
-    if (fs.existsSync(userSkillsDir)) {
-      const entries = fs.readdirSync(userSkillsDir);
-      if (entries.length > 0) {
-        console.log("\nUser skills:");
-        for (const e of entries) {
-          console.log(`  ${e}`);
-        }
-      }
-    }
+    listSkills();
     break;
   }
 
@@ -859,28 +905,7 @@ If you installed with Bun, replace npm uninstall with:
   }
 
   case "list-teams": {
-    const configRoot = getConfigRoot();
-    const memDir = path.join(configRoot, "hera-data", "memory", "teams");
-    if (!fs.existsSync(memDir)) {
-      console.log("No teams yet.");
-      break;
-    }
-    const files = fs.readdirSync(memDir).filter((f) => f.endsWith(".json"));
-    if (files.length === 0) {
-      console.log("No teams yet.");
-      break;
-    }
-    console.log("Teams:");
-    for (const f of files) {
-      try {
-        const memo = JSON.parse(fs.readFileSync(path.join(memDir, f), "utf8"));
-        const team = JSON.parse(memo.content);
-        const members = team.members.map((m) => m.agentName).join(", ");
-        console.log(`  ${team.name.padEnd(24)} ${team.coordination.padEnd(12)} ${members}`);
-      } catch {
-        // skip malformed
-      }
-    }
+    listTeams();
     break;
   }
 
