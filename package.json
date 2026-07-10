@@ -64,6 +64,7 @@
   "files": [
     "dist/index.js",
     "dist/program/child-harness.js",
+    "dist/engine/index.js",
     "dist/**/*.d.ts",
     "bin",
     "postinstall.mjs",
