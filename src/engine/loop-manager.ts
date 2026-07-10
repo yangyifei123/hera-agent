@@ -33,6 +33,10 @@ export interface LoopManagerOptions {
 export class LoopManager {
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking = false;
+  // Stable per-process identity for the cross-process firing lease. Two OpenCode
+  // processes sharing a data dir get distinct owners, so only one can hold a
+  // live lease on a given loop at a time.
+  private readonly owner = randomUUID();
 
   constructor(
     private loopStore: LoopStore,
@@ -221,7 +225,49 @@ export class LoopManager {
     }
   }
 
+  /**
+   * Claim (or refresh) this loop's short-lived firing lease via a
+   * disk-authoritative compare-and-set. Returns the fresh on-disk loop (with our
+   * lease stamped) when we own the firing this tick, or null when another process
+   * holds a live lease — in which case the caller skips the loop entirely so it
+   * is never ticked, and so never double-fires, from two processes at once.
+   *
+   * The lease is deliberately NOT released at the end of a tick: a healthy owner
+   * re-stamps it every tick (heartbeat), so a second process keeps backing off;
+   * if the owner crashes, the lease simply expires and the standby process takes
+   * over on the next tick. Same-owner re-claims always succeed (refresh).
+   */
+  private async claimFiring(id: string, now: number): Promise<LoopDefinition | null> {
+    const leaseMs = Math.max(this.options.tickMs * 5, 1000);
+    let claimed = false;
+    const res = await this.loopStore.updateFromDisk(id, (cur) => {
+      if (!cur || cur.status !== "active") return undefined;
+      // A live lease held by ANOTHER process owns the firing; back off.
+      if (
+        cur.leaseOwner != null &&
+        cur.leaseOwner !== this.owner &&
+        cur.leaseExpiresAt != null &&
+        cur.leaseExpiresAt > now
+      ) {
+        return undefined;
+      }
+      claimed = true;
+      return { ...cur, leaseOwner: this.owner, leaseExpiresAt: now + leaseMs };
+    });
+    return claimed ? res : null;
+  }
+
   private async advance(loop: LoopDefinition, now: number): Promise<void> {
+    // Cross-process firing fence: claim/refresh a short-lived lease from the
+    // authoritative on-disk record before doing any enqueue/schedule mutation. If
+    // a second OpenCode process on the shared data dir already owns a live lease,
+    // it owns the firing — skip so we don't double-enqueue. On success we operate
+    // on the fresh on-disk snapshot (e.g. an already-advanced nextRunAt is
+    // honored) rather than this process's possibly-stale in-memory copy.
+    const owned = await this.claimFiring(loop.id, now);
+    if (!owned) return;
+    loop = owned;
+
     const terminal = this.taskStore
       .byBatch(loop.id)
       .filter((t) => t.status === "failed" || t.status === "succeeded")

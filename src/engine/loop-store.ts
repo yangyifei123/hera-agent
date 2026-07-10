@@ -35,6 +35,20 @@ export class LoopStore {
     return this.store.update(id, mutator);
   }
 
+  /**
+   * Like {@link update}, but reads the authoritative on-disk loop before mutating
+   * (bypassing the possibly-stale in-memory cache). Used by the firing-lease
+   * claim so a second OpenCode process on the same data dir — whose cache still
+   * shows the loop unclaimed/due — sees the fresh lease (and advanced schedule)
+   * and skips, rather than double-firing. Mirrors TaskStore.updateFromDisk.
+   */
+  async updateFromDisk(
+    id: string,
+    mutator: (current: LoopDefinition | null) => LoopDefinition | null | undefined
+  ): Promise<LoopDefinition | null> {
+    return this.store.updateFromDisk(id, mutator);
+  }
+
   async get(id: string): Promise<LoopDefinition | null> {
     return this.store.load(id);
   }

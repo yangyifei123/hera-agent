@@ -64,4 +64,26 @@ describe("LoopStore", () => {
     expect(store.byStatus("active")).toHaveLength(0);
     expect(store.byStatus("completed").map((l) => l.id)).toEqual(["a"]);
   });
+
+  it("updateFromDisk reads the authoritative on-disk record, not a stale cache", async () => {
+    // Two LoopStores over the SAME dir model two OpenCode processes. Process A
+    // stamps a firing lease on disk; process B's cache is stale (no lease), but
+    // its disk-authoritative CAS must observe the lease A just wrote.
+    await store.save(makeLoop({ id: "shared", status: "active" }));
+    const other = new LoopStore(dir);
+    await other.init(); // B snapshots "shared" (unleased) into its cache
+
+    const leased = await store.updateFromDisk("shared", (cur) =>
+      cur ? { ...cur, leaseOwner: "A", leaseExpiresAt: 9999 } : undefined
+    );
+    expect(leased?.leaseOwner).toBe("A");
+
+    // B's cache still shows no lease, but updateFromDisk must re-read disk.
+    let seenOwner: string | undefined = "unset";
+    await other.updateFromDisk("shared", (cur) => {
+      seenOwner = cur?.leaseOwner;
+      return undefined; // abort — we only assert what the CAS observed
+    });
+    expect(seenOwner).toBe("A");
+  });
 });

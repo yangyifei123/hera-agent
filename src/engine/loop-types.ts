@@ -25,6 +25,12 @@ export interface LoopDefinition {
   iterations: number;
   currentTaskId?: string;
   lastError?: string;
+  // Cross-process firing lease (mirrors TaskRecord.leaseOwner/leaseExpiresAt).
+  // The process that owns a live lease owns this loop's firing; a second
+  // OpenCode process sharing the same data dir sees the lease on disk and backs
+  // off so the loop is never ticked (and so double-enqueued) from two processes.
+  leaseOwner?: string;
+  leaseExpiresAt?: number;
   createdAt: number;
   updatedAt: number;
 }

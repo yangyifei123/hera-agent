@@ -580,3 +580,54 @@ describe("LoopManager circuit-breaker", () => {
     expect((await mgr.get(id))?.status).toBe("active");
   });
 });
+
+describe("LoopManager cross-process fencing", () => {
+  let dir: string;
+  let loopA: LoopStore;
+  let taskA: TaskStore;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "loopfence-"));
+    loopA = new LoopStore(dir);
+    await loopA.init();
+    taskA = new TaskStore(dir);
+    await taskA.init();
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("only ONE of two processes fires a recurring loop due in both (lease fence)", async () => {
+    // Process A creates the loop; the recurring schedule makes it due at 2000.
+    const mgrA = makeManager(dir, loopA, taskA, 1000);
+    const res = await mgrA.createLoop({
+      mode: "recurring",
+      taskTemplate: template,
+      recurring: { intervalMs: 1000 },
+    });
+    const id = (res as { id: string }).id;
+
+    // Process B attaches to the SAME data dir with its own stores + manager (its
+    // own distinct lease owner). B snapshots the loop as active-and-due into its
+    // stale cache, exactly like a second OpenCode process would.
+    const loopB = new LoopStore(dir);
+    await loopB.init();
+    const taskB = new TaskStore(dir);
+    await taskB.init();
+    const mgrB = makeManager(dir, loopB, taskB, 1000);
+
+    // Both processes tick the same due loop at the same instant. A claims the
+    // firing lease on disk; B re-reads disk, sees A's live lease, and skips.
+    await mgrA.tick(2000);
+    await mgrB.tick(2000);
+
+    // Disk truth: exactly one task was enqueued, not two.
+    const verify = new TaskStore(dir);
+    await verify.init();
+    expect(verify.byBatch(id)).toHaveLength(1);
+
+    // The loser (B) left no lease of its own; A owns the firing.
+    const loopVerify = new LoopStore(dir);
+    await loopVerify.init();
+    expect((await loopVerify.get(id))?.leaseOwner).toBeDefined();
+  });
+});
