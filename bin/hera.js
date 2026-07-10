@@ -154,6 +154,10 @@ function buildAgentMarkdown(def) {
     def.template ? `template: ${def.template}` : "",
     `createdAt: ${def.createdAt}`,
     `skillsJson: ${jsonFrontmatter(def.skills)}`,
+    // Persist the RAW author prompt (base64) so it round-trips on reload instead
+    // of falling back to the fully-rendered body; matches
+    // src/agents/registry.ts buildFrontmatter/parseMarkdownAgent exactly.
+    def.prompt ? `promptB64: ${Buffer.from(def.prompt, "utf-8").toString("base64")}` : "",
     "---",
     "",
     `# Agent: ${def.name}`,
@@ -387,12 +391,26 @@ function quotePath(p) {
 }
 
 function shellPaths(configRoot = getConfigRoot()) {
-  const npmRoot = process.platform === "win32" ? quotePath(configRoot) : "~/.config/opencode";
-  const cdRoot = process.platform === "win32" ? `cd ${quotePath(configRoot)}` : "cd ~/.config/opencode";
+  // Only take the "~/.config/opencode" shorthand on unix when configRoot is
+  // actually that default location. If HERA_CONFIG_ROOT/OPENCODE_CONFIG_ROOT
+  // point somewhere else, printed instructions must reflect the real path —
+  // otherwise users following the message look in the wrong directory.
+  const isDefaultUnixRoot =
+    process.platform !== "win32" && configRoot === path.join(process.env.HOME ?? homedir(), ".config", "opencode");
+  const useShorthand = isDefaultUnixRoot;
+  const npmRoot = process.platform === "win32" ? quotePath(configRoot) : useShorthand ? "~/.config/opencode" : quotePath(configRoot);
+  const cdRoot =
+    process.platform === "win32"
+      ? `cd ${quotePath(configRoot)}`
+      : useShorthand
+        ? "cd ~/.config/opencode"
+        : `cd ${quotePath(configRoot)}`;
   const cliPath =
     process.platform === "win32"
       ? `node ${quotePath(path.join(configRoot, "node_modules", "hera-agent", "bin", "hera.js"))}`
-      : "node ~/.config/opencode/node_modules/hera-agent/bin/hera.js";
+      : useShorthand
+        ? "node ~/.config/opencode/node_modules/hera-agent/bin/hera.js"
+        : `node ${quotePath(path.join(configRoot, "node_modules", "hera-agent", "bin", "hera.js"))}`;
   const removeData =
     process.platform === "win32"
       ? [
@@ -400,11 +418,17 @@ function shellPaths(configRoot = getConfigRoot()) {
           `Remove-Item -Recurse -Force ${quotePath(path.join(configRoot, "agents", "hera"))}`,
           `Remove-Item -Force ${quotePath(path.join(configRoot, "hera.json"))}`,
         ]
-      : [
-          "rm -rf ~/.config/opencode/hera-data/",
-          "rm -rf ~/.config/opencode/agents/hera/",
-          "rm -f ~/.config/opencode/hera.json",
-        ];
+      : useShorthand
+        ? [
+            "rm -rf ~/.config/opencode/hera-data/",
+            "rm -rf ~/.config/opencode/agents/hera/",
+            "rm -f ~/.config/opencode/hera.json",
+          ]
+        : [
+            `rm -rf ${quotePath(path.join(configRoot, "hera-data"))}/`,
+            `rm -rf ${quotePath(path.join(configRoot, "agents", "hera"))}/`,
+            `rm -f ${quotePath(path.join(configRoot, "hera.json"))}`,
+          ];
   return { npmRoot, cdRoot, removeData, cliPath };
 }
 
