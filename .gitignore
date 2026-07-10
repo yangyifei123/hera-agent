@@ -7,3 +7,6 @@ bun.lock
 test-workflows-stress/
 -p/
 .superpowers/
+
+# Local experiment sandbox (greek plugin dogfood) — not part of the package
+.greek-sandbox/

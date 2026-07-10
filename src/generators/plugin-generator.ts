@@ -10,6 +10,18 @@ import { buildAgentPrompt } from "../agents/hera.js";
 import { heraLog } from "../logger.js";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import {
+  sanitizeCommandDescription,
+  sanitizeAgentRef,
+  validateCommandName,
+} from "../commands/command-file.js";
+
+/**
+ * Marker embedded in every command file a generated plugin writes. On reload the
+ * plugin refreshes its own marked files but never clobbers a same-named command
+ * authored by the user or another plugin (which will not carry this marker).
+ */
+export const GENERATED_COMMAND_MARKER = "<!-- generated-by: hera-plugin -->";
 
 // === Types ===
 
@@ -55,35 +67,46 @@ export interface CommandFragmentSpec {
   description: string;
 }
 
-/** Collapse to one YAML-front-matter-safe line (no newlines/quotes/colons). */
-function sanitizeCommandDescription(s: string): string {
-  const clean = (s || "").replace(/\s+/g, " ").replace(/["':]/g, "").trim().slice(0, 120);
-  return clean || "OpenCode agent";
-}
-
 /**
  * Build the inlined command-writing fragment for a generated plugin's
  * `src/index.ts`. On load the plugin writes `<configRoot>/command/<name>.md` for
  * each spec, so the bundled agents get native `/<name>` keyword commands in
  * OpenCode's autocomplete — the mechanism omo-style plugins use. Returns
  * `helper` (module-scope code) and `call` (an `await` inside the plugin body).
+ *
+ * Specs are hardened before embedding: names failing {@link validateCommandName}
+ * are skipped, duplicates are dropped (last-writer collisions would be silent),
+ * and `agent`/`description` are sanitized so neither can inject YAML front-matter
+ * into the generated file. Each written file carries {@link GENERATED_COMMAND_MARKER}
+ * so a reload refreshes the plugin's own commands without clobbering a same-named
+ * command the user or another plugin authored.
+ *
  * Runtime writes are best-effort: agent injection still works if they fail. The
  * command dir honors `HERA_CONFIG_ROOT`/`OPENCODE_CONFIG_ROOT`, so a sandboxed
  * root keeps a generated plugin from touching a live install. Returns empty
- * strings for an empty spec list (no command support requested).
+ * strings when no spec is safe/present (no command support requested).
  */
 export function generateCommandsFragment(specs: CommandFragmentSpec[]): {
   helper: string;
   call: string;
 } {
-  if (specs.length === 0) return { helper: "", call: "" };
-  const safe = specs.map((s) => ({
-    name: s.name,
-    agent: s.agent,
-    description: sanitizeCommandDescription(s.description),
-  }));
+  const seen = new Set<string>();
+  const safe: CommandFragmentSpec[] = [];
+  for (const s of specs) {
+    if (!validateCommandName(s.name).valid) continue; // skip unsafe/invalid names
+    if (seen.has(s.name)) continue; // drop silent duplicate-command collisions
+    seen.add(s.name);
+    safe.push({
+      name: s.name,
+      agent: sanitizeAgentRef(s.agent),
+      description: sanitizeCommandDescription(s.description),
+    });
+  }
+  if (safe.length === 0) return { helper: "", call: "" };
   const arrayLiteral = JSON.stringify(safe, null, 2);
   const helper = `
+const GENERATED_COMMAND_MARKER = ${JSON.stringify(GENERATED_COMMAND_MARKER)};
+
 function getCommandDir(): string {
   const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
   if (configRoot) return join(configRoot, "command");
@@ -98,8 +121,16 @@ async function writePluginCommands(): Promise<void> {
     const dir = getCommandDir();
     await mkdir(dir, { recursive: true });
     for (const c of PLUGIN_COMMANDS) {
-      const md = "---\\ndescription: " + c.description + "\\nagent: " + c.agent + "\\n---\\n\\n$ARGUMENTS\\n";
-      await writeFile(join(dir, c.name + ".md"), md, "utf-8");
+      const file = join(dir, c.name + ".md");
+      try {
+        // Don't overwrite a same-named command we didn't generate.
+        const existing = await readFile(file, "utf-8");
+        if (!existing.includes(GENERATED_COMMAND_MARKER)) continue;
+      } catch {
+        // File absent → safe to create.
+      }
+      const md = "---\\ndescription: " + c.description + "\\nagent: " + c.agent + "\\n---\\n\\n" + GENERATED_COMMAND_MARKER + "\\n$ARGUMENTS\\n";
+      await writeFile(file, md, "utf-8");
     }
   } catch {
     // best-effort: commands are a convenience; agent injection still works

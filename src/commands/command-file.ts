@@ -30,12 +30,16 @@ export interface CommandSpec {
   body?: string;
 }
 
+/** Windows reserved device names — a file named `con.md`, `nul.md`, etc. cannot be created. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+
 /**
  * A command name must be a single safe filename segment: start with a lowercase
  * letter, contain only lowercase letters/digits/hyphens, no trailing hyphen,
- * max 50 chars. This blocks path-traversal (`../x`) before the name is joined
- * with the command directory. (No reserved-name check — unlike agents, a command
- * may legitimately be named e.g. `system`.)
+ * max 50 chars, and not be a Windows reserved device name. This blocks
+ * path-traversal (`../x`) before the name is joined with the command directory.
+ * (No reserved-agent-name check — unlike agents, a command may legitimately be
+ * named e.g. `system`.)
  */
 export function validateCommandName(name: string): { valid: boolean; error?: string } {
   if (!name || name.length === 0) {
@@ -51,16 +55,49 @@ export function validateCommandName(name: string): { valid: boolean; error?: str
         "Command name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens.",
     };
   }
+  if (WINDOWS_RESERVED.test(name)) {
+    return {
+      valid: false,
+      error: `"${name}" is a reserved device name and cannot be used as a command.`,
+    };
+  }
   return { valid: true };
 }
 
-/** Render the markdown for a command file that routes `/name` to `agent`. */
+/**
+ * Collapse a description to one YAML-front-matter-safe line: no newlines (which
+ * would break out of the front-matter block), no quotes/colons (which could
+ * inject or confuse YAML), capped at 120 chars. Empty input falls back to a
+ * safe default. This is the single source of truth shared by the live
+ * `hera_create_command` path and the plugin-export path.
+ */
+export function sanitizeCommandDescription(s: string): string {
+  const clean = (s || "").replace(/\s+/g, " ").replace(/["':]/g, "").trim().slice(0, 120);
+  return clean || "OpenCode agent";
+}
+
+/**
+ * Reduce an agent reference to a single front-matter-safe token: only the
+ * characters legal in an agent name survive, so a newline or `:` in the input
+ * cannot inject additional YAML keys or break out of the `agent:` line.
+ */
+export function sanitizeAgentRef(agent: string): string {
+  return (agent || "").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 60);
+}
+
+/**
+ * Render the markdown for a command file that routes `/name` to `agent`. The
+ * front-matter fields are sanitized so untrusted `description`/`agent` values
+ * (e.g. containing a newline + `---`) cannot inject front-matter keys or break
+ * out into an attacker-controlled command body. The body is intentionally left
+ * verbatim — it is the command's own template.
+ */
 export function buildCommandMarkdown(spec: CommandSpec): string {
   const body = spec.body ?? ARGUMENTS_PLACEHOLDER;
   return [
     "---",
-    `description: ${spec.description}`,
-    `agent: ${spec.agent}`,
+    `description: ${sanitizeCommandDescription(spec.description)}`,
+    `agent: ${sanitizeAgentRef(spec.agent)}`,
     "---",
     "",
     body,

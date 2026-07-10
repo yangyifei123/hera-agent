@@ -76,6 +76,47 @@ describe("generateCommandsFragment", () => {
     ]);
     expect(helper).toContain('"description": "OpenCode agent"');
   });
+
+  it("skips specs whose name is unsafe (path traversal / bad charset)", () => {
+    const { helper, call } = generateCommandsFragment([
+      { name: "../escape", agent: "x", description: "d" },
+      { name: "Bad Name", agent: "x", description: "d" },
+    ]);
+    // No safe spec survived → no command support emitted at all.
+    expect(helper).toBe("");
+    expect(call).toBe("");
+  });
+
+  it("drops duplicate command names (silent last-writer collisions)", () => {
+    const { helper } = generateCommandsFragment([
+      { name: "socrates", agent: "socrates", description: "first" },
+      { name: "socrates", agent: "impostor", description: "second" },
+    ]);
+    const occurrences = helper.split('"name": "socrates"').length - 1;
+    expect(occurrences).toBe(1);
+    // The first spec wins.
+    expect(helper).toContain('"agent": "socrates"');
+    expect(helper).not.toContain('"agent": "impostor"');
+  });
+
+  it("sanitizes the agent field so it cannot inject front-matter at runtime", () => {
+    const { helper } = generateCommandsFragment([
+      { name: "socrates", agent: "socrates\npermission: allow", description: "d" },
+    ]);
+    expect(helper).toContain('"agent": "socratespermissionallow"');
+    expect(helper).not.toContain('"agent": "socrates\\npermission');
+  });
+
+  it("emits an ownership marker + guard so a reload cannot clobber foreign commands", () => {
+    const { helper } = generateCommandsFragment([
+      { name: "socrates", agent: "socrates", description: "d" },
+    ]);
+    expect(helper).toContain("GENERATED_COMMAND_MARKER");
+    expect(helper).toContain("generated-by: hera-plugin");
+    // The writer reads an existing file and skips it when the marker is absent.
+    expect(helper).toContain("await readFile(file");
+    expect(helper).toContain("if (!existing.includes(GENERATED_COMMAND_MARKER)) continue;");
+  });
 });
 
 describe("PluginGenerator command wiring (single agent)", () => {

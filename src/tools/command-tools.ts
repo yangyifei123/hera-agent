@@ -82,6 +82,9 @@ export function createCommandTools(ctx: PluginContext) {
       async execute(args) {
         const check = validateCommandName(args.name);
         if (!check.valid) return `Error: ${check.error}`;
+        if (args.name === "mode") {
+          return "Error: /mode is a built-in Hera command and cannot be deleted here (it is re-created on startup).";
+        }
         try {
           await unlink(join(commandDir(), `${args.name}.md`));
           return `Deleted /${args.name}.`;
