@@ -1,7 +1,6 @@
-import { join } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { atomicWriteText, errorMessage } from "../helpers.js";
+import { errorMessage } from "../helpers.js";
 import { heraLog } from "../logger.js";
+import { writeCommandFile } from "../commands/command-file.js";
 
 /**
  * Markdown body for the native `/mode` command file. Front-matter routes the
@@ -37,12 +36,9 @@ export const MODE_COMMAND_MARKDOWN = [
  * because the chat.message fallback still makes `/mode` work without the file.
  */
 export async function writeModeCommandFile(configRoot: string): Promise<void> {
-  const dir = join(configRoot, "command");
-  const filePath = join(dir, "mode.md");
   try {
-    await mkdir(dir, { recursive: true });
-    await atomicWriteText(filePath, MODE_COMMAND_MARKDOWN);
+    await writeCommandFile(configRoot, "mode", MODE_COMMAND_MARKDOWN);
   } catch (err) {
-    heraLog("warn", `Could not write ${filePath}: ${errorMessage(err)}`);
+    heraLog("warn", `Could not write command/mode.md: ${errorMessage(err)}`);
   }
 }

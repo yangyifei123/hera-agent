@@ -12,6 +12,7 @@ import { createLoopTools } from "./loop-tools.js";
 import { createRecoveryTools } from "./recovery-tools.js";
 import { createProgramTools } from "./program-tools.js";
 import { createProgramScaffoldTools } from "./program-scaffold-tools.js";
+import { createCommandTools } from "./command-tools.js";
 
 export function createAllTools(ctx: PluginContext) {
   const tools = {
@@ -28,6 +29,7 @@ export function createAllTools(ctx: PluginContext) {
     ...createRecoveryTools(ctx),
     ...createProgramTools(ctx),
     ...createProgramScaffoldTools(ctx),
+    ...createCommandTools(ctx),
   };
   const disabled = new Set(ctx.config.disabled_tools ?? []);
   if (disabled.size === 0) return tools;

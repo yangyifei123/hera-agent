@@ -13,6 +13,7 @@
 import type { TeamDefinition, AgentDefinition, SkillDefinition } from "../types.js";
 import {
   PluginGenerator,
+  generateCommandsFragment,
   type PluginPackage,
   type PluginFile,
   type CommandRunner,
@@ -156,9 +157,17 @@ export class TeamPluginGenerator {
     team: TeamDefinition,
     members: AgentDefinition[],
     resolvedSkills: SkillDefinition[],
-    withEngine = true
+    withEngine = true,
+    withCommands = true
   ): string {
     const pluginVar = camelCase(teamPluginName(team.name)) + "Plugin";
+
+    // Native /keyword commands: one per member, so `/socrates …` invokes @socrates.
+    const { helper: commandHelper, call: commandCall } = withCommands
+      ? generateCommandsFragment(
+          members.map((m) => ({ name: m.name, agent: m.name, description: m.description }))
+        )
+      : { helper: "", call: "" };
 
     const agentBlocks: string[] = [];
     for (const member of members) {
@@ -303,9 +312,9 @@ async function searchMemory(
 }
 `;
 
-    return `${prologue}
+    return `${prologue}${commandHelper}
 const ${pluginVar}: Plugin = async (input) => {
-${engineBootstrap}  return {
+${engineBootstrap}${commandCall}  return {
     async config(input) {
       // Register every team member agent
       input.agent = input.agent ?? {};
@@ -370,11 +379,12 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
     team: TeamDefinition,
     members: AgentDefinition[],
     resolvedSkills: SkillDefinition[],
-    opts: { withEngine?: boolean } = {}
+    opts: { withEngine?: boolean; withCommands?: boolean } = {}
   ): PluginPackage {
     heraLog("debug", `Generating team plugin package for: ${team.name}`);
 
     const withEngine = opts.withEngine ?? true;
+    const withCommands = opts.withCommands ?? true;
     const files: PluginFile[] = [
       {
         path: "package.json",
@@ -386,7 +396,7 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
       },
       {
         path: "src/index.ts",
-        content: this.generatePluginIndex(team, members, resolvedSkills, withEngine),
+        content: this.generatePluginIndex(team, members, resolvedSkills, withEngine, withCommands),
       },
       {
         path: "INSTALL.md",

@@ -46,6 +46,69 @@ export interface BuildInstallResult {
   steps: BuildInstallStep[];
 }
 
+export interface CommandFragmentSpec {
+  /** The `/keyword` and command filename. */
+  name: string;
+  /** Agent the command routes to. */
+  agent: string;
+  /** One-line description for OpenCode's command list. */
+  description: string;
+}
+
+/** Collapse to one YAML-front-matter-safe line (no newlines/quotes/colons). */
+function sanitizeCommandDescription(s: string): string {
+  const clean = (s || "").replace(/\s+/g, " ").replace(/["':]/g, "").trim().slice(0, 120);
+  return clean || "OpenCode agent";
+}
+
+/**
+ * Build the inlined command-writing fragment for a generated plugin's
+ * `src/index.ts`. On load the plugin writes `<configRoot>/command/<name>.md` for
+ * each spec, so the bundled agents get native `/<name>` keyword commands in
+ * OpenCode's autocomplete — the mechanism omo-style plugins use. Returns
+ * `helper` (module-scope code) and `call` (an `await` inside the plugin body).
+ * Runtime writes are best-effort: agent injection still works if they fail. The
+ * command dir honors `HERA_CONFIG_ROOT`/`OPENCODE_CONFIG_ROOT`, so a sandboxed
+ * root keeps a generated plugin from touching a live install. Returns empty
+ * strings for an empty spec list (no command support requested).
+ */
+export function generateCommandsFragment(specs: CommandFragmentSpec[]): {
+  helper: string;
+  call: string;
+} {
+  if (specs.length === 0) return { helper: "", call: "" };
+  const safe = specs.map((s) => ({
+    name: s.name,
+    agent: s.agent,
+    description: sanitizeCommandDescription(s.description),
+  }));
+  const arrayLiteral = JSON.stringify(safe, null, 2);
+  const helper = `
+function getCommandDir(): string {
+  const configRoot = process.env.HERA_CONFIG_ROOT || process.env.OPENCODE_CONFIG_ROOT;
+  if (configRoot) return join(configRoot, "command");
+  const home = process.env.USERPROFILE || process.env.HOME || homedir();
+  return join(home, ".config", "opencode", "command");
+}
+
+const PLUGIN_COMMANDS: Array<{ name: string; agent: string; description: string }> = ${arrayLiteral};
+
+async function writePluginCommands(): Promise<void> {
+  try {
+    const dir = getCommandDir();
+    await mkdir(dir, { recursive: true });
+    for (const c of PLUGIN_COMMANDS) {
+      const md = "---\\ndescription: " + c.description + "\\nagent: " + c.agent + "\\n---\\n\\n$ARGUMENTS\\n";
+      await writeFile(join(dir, c.name + ".md"), md, "utf-8");
+    }
+  } catch {
+    // best-effort: commands are a convenience; agent injection still works
+  }
+}
+`;
+  return { helper, call: `  await writePluginCommands();\n` };
+}
+
 /**
  * Default command runner — uses Bun.spawn (Bun runtime guaranteed).
  */
@@ -161,9 +224,19 @@ export class PluginGenerator {
   generatePluginIndex(
     agent: AgentDefinition,
     resolvedSkills: SkillDefinition[] = [],
-    withEngine = true
+    withEngine = true,
+    withCommands = true
   ): string {
     const fullPrompt = buildAgentPrompt(agent, resolvedSkills);
+
+    // Conditional native `/<agent>` command fragment. On load the plugin writes
+    // command/<agent>.md so the bundled agent gets a keyword command in
+    // OpenCode's autocomplete (the mechanism omo-style plugins use).
+    const { helper: commandHelper, call: commandCall } = withCommands
+      ? generateCommandsFragment([
+          { name: agent.name, agent: agent.name, description: agent.description },
+        ])
+      : { helper: "", call: "" };
 
     const agentConfig = {
       description: agent.description,
@@ -292,9 +365,9 @@ async function searchMemory(
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, limit);
 }
-
+${commandHelper}
 const ${camelCase(agent.name)}Plugin: Plugin = async (input) => {
-${engineBootstrap}  return {
+${engineBootstrap}${commandCall}  return {
     async config(input) {
       // Register agent — same pattern as Hera's own config hook
       input.agent = input.agent ?? {};
@@ -427,11 +500,12 @@ opencode --agent ${pluginName} "Hello, are you working?"
   generate(
     agentDef: AgentDefinition,
     resolvedSkills: SkillDefinition[] = [],
-    opts: { withEngine?: boolean } = {}
+    opts: { withEngine?: boolean; withCommands?: boolean } = {}
   ): PluginPackage {
     heraLog("debug", `Generating plugin package for agent: ${agentDef.name}`);
 
     const withEngine = opts.withEngine ?? true;
+    const withCommands = opts.withCommands ?? true;
     const files: PluginFile[] = [];
 
     const pkgJson = this.generatePackageJson(agentDef, withEngine);
@@ -447,7 +521,7 @@ opencode --agent ${pluginName} "Hello, are you working?"
 
     files.push({
       path: "src/index.ts",
-      content: this.generatePluginIndex(agentDef, resolvedSkills, withEngine),
+      content: this.generatePluginIndex(agentDef, resolvedSkills, withEngine, withCommands),
     });
 
     files.push({
