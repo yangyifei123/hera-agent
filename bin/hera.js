@@ -154,6 +154,9 @@ function buildAgentMarkdown(def) {
     def.template ? `template: ${def.template}` : "",
     `createdAt: ${def.createdAt}`,
     `skillsJson: ${jsonFrontmatter(def.skills)}`,
+    def.nativeTools && def.nativeTools.length > 0
+      ? `nativeToolsJson: ${jsonFrontmatter(def.nativeTools)}`
+      : "",
     // Persist the RAW author prompt (base64) so it round-trips on reload instead
     // of falling back to the fully-rendered body; matches
     // src/agents/registry.ts buildFrontmatter/parseMarkdownAgent exactly.
@@ -164,10 +167,11 @@ function buildAgentMarkdown(def) {
     "",
     def.prompt,
     "",
-    "## Built-in Skills",
+    "## Skills (load on demand with hera_load_skill)",
     "",
-    `This agent inherits: ${def.skills.join(", ")}.`,
+    ...def.skills.map((s) => `- ${s}`),
     "",
+    "Call hera_load_skill(name) to load a skill's full guidance when it is relevant to the task.",
   ]
     .filter((line) => line !== "")
     .join("\n");

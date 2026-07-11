@@ -55,6 +55,20 @@ export const DEFAULT_SKILLS = [
   "skill-creator",
 ] as const;
 
+// === Progressive disclosure / tool catalog ===
+
+/** Tools every child agent keeps natively registered (full schema in context). */
+export const DEFAULT_CHILD_NATIVE_TOOLS = [
+  "hera_find_tools",
+  "hera_run_tool",
+  "hera_load_skill",
+  "hera_remember",
+  "hera_recall",
+] as const;
+
+/** Tool domains Hera itself keeps natively registered (factory core). */
+export const HERA_NATIVE_DOMAINS = ["agent", "skill", "team"] as const;
+
 // === Runtime Paths ===
 
 export type ConfigRootPlatform = NodeJS.Platform;

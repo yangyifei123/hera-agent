@@ -164,6 +164,11 @@ From the 2025-2026 research scouts, mapped onto Hera's architecture:
   prompt; add `hera_load_skill` / `hera_find_tools` to pull full bodies on demand.
   Simultaneously **fixes the prompt-drift sharp edge** and lets an agent carry 30+
   skills. (high impact / medium effort) — *strong synergy with backlog #1.*
+  ✅ SHIPPED 2026-07 as **tool catalog retrieval** (`src/dispatch/`: in-memory
+  deterministic keyword scoring — no embeddings, no SQLite) plus
+  manifest-everywhere skill disclosure across all three prompt paths (pinned by
+  `src/agents/prompt-parity.test.ts`). See
+  `docs/superpowers/specs/2026-07-11-progressive-disclosure-tool-catalog-design.md`.
 - **LLM-as-judge acceptance checks** (`{type:'llm_judge', rubric, threshold}`).
   Makes anti-perfunctory (滥竽充数) completion **semantic**, not just file/regex
   presence, with a human-readable "why it failed" trail. (high / low-med)
@@ -447,10 +452,21 @@ From the 2025-2026 research scouts, mapped onto Hera's architecture:
 
 - **[high/medium] Deferred tool loading + Tool Search (tool RAG)** — Hera's createAllTools() merges 8 tool domains (agent/skill/team/memory/evolution/system/package/workflow) and injects ALL of them, plus the full skill catalog, into every child agent and every HDTE engine-injected plugin. For a north star of 500+ tasks and many spawned agents/teams, that is a large fixed per-turn tax and a known accuracy drag. Hera has no tool RAG or lazy loading today.
   - Idea: Add a 'tool manifest + hera_find_tools' retrieval layer: keep only a lightweight per-domain index (name+1-line description) in the base prompt and gate the 8 domains behind a search/expand tool that materializes a domain's full schemas on demand. Persist each agent's frequently-used domains in its .md so hot tools stay eager and cold ones defer. Measure token + acceptance-pass deltas across a 50-task batch.
+  - ✅ SHIPPED 2026-07 as **tool catalog retrieval** (`src/dispatch/`: `hera_find_tools`
+    over an in-memory deterministic keyword catalog — no embeddings, no SQLite).
+    The finding above describes the 2026-06 codebase; `createAllToolsWithDomains()`
+    (`src/tools/index.ts`) now merges **14** domains. See
+    `docs/superpowers/specs/2026-07-11-progressive-disclosure-tool-catalog-design.md`.
 - **[high/high] Code-execution tools (MCP-as-filesystem-code APIs)** — HDTE already runs a concurrency executor + declarative acceptance checks and aims for long, supervised loops. Today each tool is a separate model-mediated call, so a 500-task loop pays full inference + context cost per step. A code-execution surface would let one task body batch many Hera tool calls and keep bulky intermediate data (memory dumps, team transcripts, task ledgers) out of the model's context.
-  - Idea: Add an optional 'codegen task body' execution mode to the HDTE executor: expose the 8 tool domains as a generated typed SDK (heraTools.memory.recall(), .team.message(), .task.update()) inside a Bun sandbox, let a task emit one script that orchestrates many calls, and only surface logged/returned values to the model. Acceptance checks run against the script's structured return, reducing perfunctory completion.
+  - Idea: Add an optional 'codegen task body' execution mode to the HDTE executor: expose the 8 tool domains (14 as of 2026-07) as a generated typed SDK (heraTools.memory.recall(), .team.message(), .task.update()) inside a Bun sandbox, let a task emit one script that orchestrates many calls, and only surface logged/returned values to the model. Acceptance checks run against the script's structured return, reducing perfunctory completion.
 - **[high/medium] Progressive disclosure for skills (3-stage SKILL.md loading)** — Hera ALREADY has the right shape: 11 built-in skills + on-disk SkillPackages (SKILL.json/SKILL.md/extra files) under hera-data/skills/<name>/. But prompt assembly (buildAgentPrompt + the config hook) embeds skill bodies into agent .md, and CLAUDE.md flags this exact path as drift-prone with 'duplicated/mismatched embedded skill sections'. There is no name/description-only discovery tier — full skill content goes in eagerly.
   - Idea: Refactor skill injection to two-tier progressive disclosure: bake only each skill's name+description into the agent prompt, and add a hera_load_skill tool that pulls the full SKILL.md body (and references/ files) into context on activation. This directly fixes the documented prompt-drift sharp edge AND shrinks per-agent context, letting an agent carry 30+ skills instead of a hand-picked few.
+  - ✅ SHIPPED 2026-07 as **manifest-everywhere skill disclosure**: the eager-embedding
+    behavior above reflects the 2026-06 state; `buildAgentPrompt()` and the other two
+    prompt paths now render a name+description manifest only (never full bodies,
+    pinned by `src/agents/prompt-parity.test.ts`), with `hera_load_skill` pulling
+    full SKILL.md content on demand. See
+    `docs/superpowers/specs/2026-07-11-progressive-disclosure-tool-catalog-design.md`.
 - **[medium/low] Idempotent tool-result caching + prompt-cache breakpoints** — A 500-task supervised HDTE loop with self-healing and scheduled recovery will re-issue tons of idempotent reads: MemoryStore recalls, team_recall blackboard reads, task ledger gets, doctor/system checks. Nothing in Hera caches tool results today; every retry and every recovered crash re-pays the full read.
   - Idea: Add a TTL'd, content-hashed tool-result cache in the tool dispatch layer with an explicit per-tool idempotent flag (memory recall, team_recall, task_get, system reads = cacheable; writes/spawns = never). Key on tool+normalized-args, invalidate writes by namespace, expose hit-rate in `hera doctor`. Big win for retry/self-healing storms where the same reads recur.
 - **[medium/high] Self-distilling composable skill library (skills-as-code from successful runs)** — Hera has a DistillationEngine, extractMemories(), auto-evolution prompting, and a SkillPackage format already on disk — but distillation currently produces MEMORIES, not executable SKILLS. The engine's self-healing fixes and 500 completed tasks are a goldmine of reusable procedure that never gets promoted into the skill library.

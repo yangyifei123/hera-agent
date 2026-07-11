@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { SkillManager } from "./manager.js";
+import { describe, test, it, expect, beforeEach, afterEach } from "bun:test";
+import { SkillManager, buildSkillManifestSection, makeDisclosureInstruction } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -332,5 +332,37 @@ describe("SkillManager", () => {
       await reloaded.init();
       expect(reloaded.getSkillPackage("release-notes")?.program).toBe("run.ts");
     });
+  });
+});
+
+describe("buildSkillManifestSection", () => {
+  const summaries = [
+    { name: "caveman", description: "Ultra-compressed output" },
+    { name: "memory", description: "Persist knowledge  across\nsessions" },
+  ];
+
+  it("renders header, one line per skill, and the loader instruction", () => {
+    const s = buildSkillManifestSection(summaries);
+    expect(s).toContain("## Skills (load on demand with hera_load_skill)");
+    expect(s).toContain("- caveman: Ultra-compressed output");
+    expect(s).toContain("- memory: Persist knowledge across sessions");
+    expect(s).toContain("Call hera_load_skill(name)");
+  });
+
+  it("parameterizes the loader tool name (for exported plugins)", () => {
+    const s = buildSkillManifestSection(summaries, "greek_load_skill");
+    expect(s).toContain("## Skills (load on demand with greek_load_skill)");
+    expect(s).toContain("Call greek_load_skill(name)");
+    expect(s).not.toContain("hera_load_skill");
+  });
+
+  it("returns empty string for no skills", () => {
+    expect(buildSkillManifestSection([])).toBe("");
+  });
+});
+
+describe("makeDisclosureInstruction", () => {
+  it("names the loader", () => {
+    expect(makeDisclosureInstruction("x_load_skill")).toContain("x_load_skill(name)");
   });
 });

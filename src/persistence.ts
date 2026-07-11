@@ -246,3 +246,89 @@ export async function removeAgent(
   await agentRegistry.unregister(name);
   return store.delete("agent", `agent-${name}`);
 }
+
+const LEGACY_BODY_MARKER = "## Built-in Skill:";
+
+/**
+ * Reconstruct the raw author prompt from a legacy rendered body. Agent .md
+ * files written before promptB64 existed have no round-trippable raw prompt,
+ * so parseMarkdownAgent falls back to def.prompt = <entire rendered body>:
+ * the "# Agent: <name>" header, the raw prompt, then every embedded legacy
+ * skill section (and evolution block). Everything from the first legacy
+ * section heading onward is re-renderable from structured fields (skill
+ * manifest from def.skills, evolution block from def.evolutionLog), so drop
+ * it; also drop the duplicated header that buildAgentPrompt re-adds.
+ */
+function extractLegacyRawPrompt(prompt: string, name: string): string {
+  let raw = prompt;
+  const markerIdx = raw.indexOf(LEGACY_BODY_MARKER);
+  if (markerIdx !== -1) raw = raw.slice(0, markerIdx);
+  const header = `# Agent: ${name}`;
+  if (raw.startsWith(header)) raw = raw.slice(header.length);
+  return raw.trim();
+}
+
+/** Does the file's frontmatter block carry a promptB64 field? */
+function frontmatterHasPromptB64(content: string): boolean {
+  const fm = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  return fm ? /^promptB64:/m.test(fm[1]) : false;
+}
+
+/**
+ * One-time idempotent migration (spec §5): rewrite agent .md files that still
+ * embed full skill bodies to the compact-manifest rendering. Backs up each
+ * file first; register() writes atomically. Safe to run every startup — the
+ * marker disappears after the first rewrite.
+ *
+ * Genuine pre-promptB64 files need extra care: their def was parsed via the
+ * body fallback, so def.prompt is the whole rendered body (marker, embedded
+ * skill bodies, duplicated "# Agent:" header included). Re-registering that
+ * verbatim would bake the legacy bodies into promptB64 forever and the marker
+ * would never disappear — so the raw prompt is reconstructed first and the
+ * in-memory def updated to match what was written.
+ */
+export async function migrateLegacyAgentMarkdown(
+  registeredAgents: Map<string, AgentDefinition>,
+  skills: Map<string, SkillDefinition>,
+  agentRegistry: AgentRegistry
+): Promise<string[]> {
+  const migrated: string[] = [];
+  for (const [name, def] of registeredAgents) {
+    try {
+      const content = await agentRegistry.readAgentFile(name);
+      if (!content || !content.includes(LEGACY_BODY_MARKER)) continue;
+      const promptHasMarker = def.prompt.includes(LEGACY_BODY_MARKER);
+      if (promptHasMarker && frontmatterHasPromptB64(content)) {
+        // The marker comes from the author's own round-tripped prompt, not
+        // from a legacy render: rewriting can never remove it, so migrating
+        // would re-backup + rewrite on every startup for nothing.
+        heraLog(
+          "debug",
+          `Agent "${name}" prompt legitimately contains the legacy marker; skipping migration`
+        );
+        continue;
+      }
+      await backupAgent(name, registeredAgents, agentRegistry);
+      let defToWrite = def;
+      if (promptHasMarker) {
+        defToWrite = { ...def, prompt: extractLegacyRawPrompt(def.prompt, name) };
+        registeredAgents.set(name, defToWrite);
+      }
+      await agentRegistry.register(defToWrite, skills);
+      migrated.push(name);
+    } catch (err) {
+      heraLog(
+        "warn",
+        `Legacy prompt migration failed for agent "${name}"; leaving file as-is`,
+        err
+      );
+    }
+  }
+  if (migrated.length > 0) {
+    heraLog(
+      "info",
+      `Migrated ${migrated.length} agent file(s) to manifest prompts: ${migrated.join(", ")}`
+    );
+  }
+  return migrated;
+}

@@ -304,34 +304,34 @@ describe("PluginGenerator", () => {
   // (parity with md mode via buildAgentPrompt)
   // ============================================================
   describe("full prompt assembly (P0)", () => {
-    it("should embed built-in caveman skill content into generated prompt", () => {
+    it("bakes a manifest prompt, not skill bodies", () => {
       const agent = makeTestAgent({ prompt: "BASE_PROMPT_MARKER" });
       const code = generator.generatePluginIndex(agent);
-      // The generated agent prompt must contain caveman skill prompt content
-      expect(code).toContain("Caveman Mode");
+      expect(code).toContain("## Skills (load on demand with");
+      expect(code).not.toContain("## Built-in Skill:");
       expect(code).toContain("BASE_PROMPT_MARKER");
     });
 
-    it("should embed built-in memory skill content into generated prompt", () => {
+    it("emits a namespaced skill loader + skills/ files", () => {
       const agent = makeTestAgent();
-      const code = generator.generatePluginIndex(agent);
-      expect(code).toContain("Autonomous Knowledge Persistence");
+      const pkg = generator.generate(agent);
+      const index = pkg.files.find((f) => f.path === "src/index.ts")!.content;
+      expect(index).toContain("_load_skill: tool({");
+      const skillFiles = pkg.files.filter((f) => f.path.startsWith("skills/"));
+      expect(skillFiles.length).toBeGreaterThanOrEqual(11); // built-ins at minimum
+      expect(skillFiles.some((f) => f.path === "skills/caveman/SKILL.md")).toBe(true);
+      const pkgJson = JSON.parse(pkg.files.find((f) => f.path === "package.json")!.content);
+      expect(pkgJson.files).toContain("skills");
     });
 
-    it("should embed built-in init skill content into generated prompt", () => {
+    it("the manifest instruction references the namespaced loader, not hera_load_skill", () => {
       const agent = makeTestAgent();
       const code = generator.generatePluginIndex(agent);
-      // Init skill prompt mentions context gathering
-      expect(code.toLowerCase()).toContain("init");
+      expect(code).not.toContain("hera_load_skill");
+      expect(code).toContain("test_coder_load_skill");
     });
 
-    it("should embed built-in evolution skill content into generated prompt", () => {
-      const agent = makeTestAgent();
-      const code = generator.generatePluginIndex(agent);
-      expect(code.toLowerCase()).toContain("evolution");
-    });
-
-    it("should embed additional user skills when provided", () => {
+    it("should list additional user skills in the manifest (bodies ship as files)", () => {
       const agent = makeTestAgent({ skills: ["caveman", "memory", "my-custom-skill"] });
       const userSkill: SkillDefinition = {
         name: "my-custom-skill",
@@ -341,8 +341,9 @@ describe("PluginGenerator", () => {
         category: "user",
       };
       const code = generator.generatePluginIndex(agent, [userSkill]);
-      expect(code).toContain("CUSTOM_SKILL_BODY_MARKER");
+      // Manifest lists the skill; the body is NOT baked into the prompt.
       expect(code).toContain("my-custom-skill");
+      expect(code).not.toContain("CUSTOM_SKILL_BODY_MARKER");
     });
 
     it("should bake evolution log directives into generated prompt", () => {
@@ -394,7 +395,7 @@ describe("PluginGenerator", () => {
       expect(code).not.toContain("ROLLED_BACK_DIRECTIVE");
     });
 
-    it("generate() should accept resolvedSkills and embed them", () => {
+    it("generate() should accept resolvedSkills and ship their bodies as skills/ files", () => {
       const agent = makeTestAgent({ skills: ["caveman", "extra-skill"] });
       const extraSkill: SkillDefinition = {
         name: "extra-skill",
@@ -406,7 +407,12 @@ describe("PluginGenerator", () => {
       const pkg = generator.generate(agent, [extraSkill]);
       const indexFile = pkg.files.find((f) => f.path === "src/index.ts");
       expect(indexFile).toBeDefined();
-      expect(indexFile!.content).toContain("EXTRA_SKILL_BODY");
+      // Manifest lists the skill; the body ships as a file, not in the prompt.
+      expect(indexFile!.content).toContain("extra-skill");
+      expect(indexFile!.content).not.toContain("EXTRA_SKILL_BODY");
+      const skillFile = pkg.files.find((f) => f.path === "skills/extra-skill/SKILL.md");
+      expect(skillFile).toBeDefined();
+      expect(skillFile!.content).toContain("EXTRA_SKILL_BODY");
     });
 
     it("should include tsconfig.json so the generated plugin can be built standalone", () => {

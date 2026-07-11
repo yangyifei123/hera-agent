@@ -9,16 +9,8 @@ import type {
 import { DEFAULT_HERA_MAX_STEPS, DEFAULT_CHILD_MAX_STEPS, DEFAULT_SKILLS } from "../constants.js";
 import { getDefaultPermission } from "../helpers.js";
 import { getCavemanPrompt } from "../skills/caveman.js";
-import { getInitPrompt } from "../skills/init.js";
-import { getMemoryPrompt } from "../skills/memory.js";
-import { getEvolutionPrompt, buildEvolutionBlock } from "../skills/evolution.js";
-import { getSkillComboPrompt } from "../skills/skill-combo.js";
-import { getSubagentPrompt } from "../skills/subagent.js";
-import { getCommunicatePrompt } from "../skills/communicate.js";
-import { getAutoCompactPrompt } from "../skills/auto-compact.js";
-import { getWorkflowOrchestrationPrompt } from "../skills/workflow-orchestration.js";
-import { getBrainstormingPrompt } from "../skills/brainstorming.js";
-import { getSkillCreatorPrompt } from "../skills/skill-creator.js";
+import { buildEvolutionBlock } from "../skills/evolution.js";
+import { buildSkillManifestSection } from "../skills/manager.js";
 
 export const AGENT_TEMPLATES: Record<AgentTemplateName, AgentTemplate> = {
   general: {
@@ -272,7 +264,11 @@ export function createChildAgentConfig(
   };
 }
 
-export function buildAgentPrompt(def: AgentDefinition, resolvedSkills: SkillDefinition[]): string {
+export function buildAgentPrompt(
+  def: AgentDefinition,
+  resolvedSkills: SkillDefinition[],
+  opts: { loaderToolName?: string } = {}
+): string {
   const sections: string[] = [];
 
   sections.push(`# Agent: ${def.name}`);
@@ -280,60 +276,18 @@ export function buildAgentPrompt(def: AgentDefinition, resolvedSkills: SkillDefi
   sections.push(def.prompt);
   sections.push("");
 
-  // Embed core skills
-  sections.push("## Built-in Skill: Caveman");
-  sections.push(getCavemanPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Init");
-  sections.push(getInitPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Memory");
-  sections.push(getMemoryPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Evolution");
-  sections.push(getEvolutionPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Skill-Combo");
-  sections.push(getSkillComboPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Subagent");
-  sections.push(getSubagentPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Communicate");
-  sections.push(getCommunicatePrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Auto-Compact");
-  sections.push(getAutoCompactPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Workflow-Orchestration");
-  sections.push(getWorkflowOrchestrationPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Brainstorming");
-  sections.push(getBrainstormingPrompt());
-  sections.push("");
-
-  sections.push("## Built-in Skill: Skill-Creator");
-  sections.push(getSkillCreatorPrompt());
-  sections.push("");
-
-  // Embed additional user skills
-  for (const skill of resolvedSkills) {
-    if ((DEFAULT_SKILLS as readonly string[]).includes(skill.name)) continue;
-    sections.push(`## Skill: ${skill.name}`);
-    sections.push(skill.prompt);
+  // Progressive disclosure (spec §5): compact manifest instead of full bodies.
+  // The identical section is rendered by the live config hook and by exports;
+  // src/agents/prompt-parity.test.ts pins the three paths together.
+  const manifest = buildSkillManifestSection(
+    resolvedSkills.map((s) => ({ name: s.name, description: s.description })),
+    opts.loaderToolName
+  );
+  if (manifest) {
+    sections.push(manifest);
     sections.push("");
   }
 
-  // Append evolution log if present
   if (def.evolutionLog && def.evolutionLog.length > 0) {
     sections.push(buildEvolutionBlock(def.evolutionLog));
     sections.push("");

@@ -1,6 +1,6 @@
 import type { Plugin, PluginInput, Hooks, Config } from "@opencode-ai/plugin";
 import { MemoryStore } from "./memory/store.js";
-import { SkillManager, SKILL_DISCLOSURE_INSTRUCTION } from "./skills/manager.js";
+import { SkillManager, buildSkillManifestSection } from "./skills/manager.js";
 import { TeamManager } from "./team/manager.js";
 import { WorkflowManager } from "./workflow/manager.js";
 import { DistillationEngine } from "./distillation/engine.js";
@@ -9,11 +9,21 @@ import { createEngine } from "./engine/index.js";
 import { buildActiveWorkContext } from "./engine/active-work.js";
 import type { Engine } from "./engine/index.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
-import { createAllTools } from "./tools/index.js";
+import { createAllToolsWithDomains } from "./tools/index.js";
+import { ToolCatalog, renderCatalogPrimer } from "./dispatch/catalog.js";
+import { createDispatchTools } from "./dispatch/meta-tools.js";
+import { buildNativeToolsMap, computeHeraHotSet } from "./dispatch/policy.js";
 import { createProgramRunner } from "./program/index.js";
+import { migrateLegacyAgentMarkdown } from "./persistence.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
-import { DEFAULT_MEMORY_LIMIT, DEFAULT_TEAM_TIMEOUT_MS, getConfigRoot } from "./constants.js";
+import {
+  DEFAULT_CHILD_NATIVE_TOOLS,
+  DEFAULT_MEMORY_LIMIT,
+  DEFAULT_TEAM_TIMEOUT_MS,
+  getConfigRoot,
+} from "./constants.js";
 import { join } from "node:path";
+import { getDefaultSkills } from "./helpers.js";
 import { heraLog } from "./logger.js";
 import { fetchSessionMessages, saveAutoMemories } from "./memory/session-messages.js";
 import { isFirstRun, runOnboarding } from "./onboarding.js";
@@ -241,6 +251,14 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     }
   }
 
+  // One-time idempotent migration (spec §5): rewrite legacy full-body agent
+  // .md files to the compact skill-manifest form.
+  try {
+    await migrateLegacyAgentMarkdown(registeredAgents, skillManager.getSkillMap(), agentRegistry);
+  } catch (err) {
+    heraLog("warn", "Legacy agent markdown migration failed; continuing", err);
+  }
+
   const ctx: PluginContext = {
     store,
     skillManager,
@@ -260,17 +278,43 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     programRunner,
   };
 
-  const tools = createAllTools(ctx);
+  const { tools: baseTools, domains: toolDomains } = createAllToolsWithDomains(ctx);
+  const catalog = new ToolCatalog(baseTools, toolDomains);
+  const dispatchTools = createDispatchTools({ catalog, registeredAgents, config });
+  // disabled_tools already filtered inside createAllToolsWithDomains; apply the
+  // same filter to the meta-tools so users can disable dispatch entirely.
+  const disabledToolNames = new Set(config.disabled_tools ?? []);
+  const tools = Object.fromEntries(
+    Object.entries({ ...baseTools, ...dispatchTools }).filter(([n]) => !disabledToolNames.has(n))
+  );
+
+  const heraToolNames = Object.keys(tools).filter((n) => n.startsWith("hera_"));
+  // Dispatch is off when either meta-tool was filtered out via disabled_tools.
+  // Without dispatch, narrowing native registration would make authorized tools
+  // unreachable (spec §2: the hot set is a performance knob only, never an
+  // authorization change), and the primer would point at tools that do not
+  // exist — so the config hook falls back to legacy full-native registration
+  // and skips the primer entirely.
+  const dispatchEnabled = "hera_find_tools" in tools && "hera_run_tool" in tools;
+  const catalogPrimer = dispatchEnabled ? renderCatalogPrimer(catalog) : "";
 
   const hooks: Hooks = {
     async config(input: Config) {
       const model = config.default_model ?? input.model ?? "";
       const skills = skillManager.getAllSkills();
 
-      // Inject Hera itself
+      // Inject Hera itself — with its factory-core hot set and the catalog primer.
       const configInput = input as ConfigWithAgents;
       configInput.agent = configInput.agent ?? {};
-      configInput.agent["hera"] = createHeraAgent(model, skills);
+      const heraCfg = createHeraAgent(model, skills);
+      if (dispatchEnabled) {
+        heraCfg.prompt = [heraCfg.prompt, catalogPrimer].filter(Boolean).join("\n\n");
+        heraCfg.tools = buildNativeToolsMap({
+          hotSet: computeHeraHotSet(toolDomains),
+          heraToolNames,
+        });
+      }
+      configInput.agent["hera"] = heraCfg;
 
       // Inject all child agents
       for (const [name, def] of registeredAgents) {
@@ -281,21 +325,11 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
         // not abort injection for the whole roster. Fall back to def.prompt for
         // just that agent and keep going.
         try {
-          // Progressive disclosure: embed a compact skill manifest (name +
-          // one-line description) instead of full skill bodies. The agent pulls a
-          // skill's full guidance on demand via hera_load_skill, shrinking the
-          // live per-agent context and letting an agent carry many skills.
-          const skillManifest = skillManager.describeSkills(def.skills);
-          const skillPrompts =
-            skillManifest.trim().length > 0
-              ? [
-                  "## Skills (load on demand with hera_load_skill)",
-                  "",
-                  skillManifest,
-                  "",
-                  SKILL_DISCLOSURE_INSTRUCTION,
-                ].join("\n")
-              : "";
+          // Progressive disclosure: compact skill manifest; full bodies load on demand
+          // via hera_load_skill. One shared renderer across live/disk/export (spec §5).
+          const skillPrompts = buildSkillManifestSection(
+            skillManager.skillSummaries(getDefaultSkills(def.skills))
+          );
 
           // Include evolution log if present
           let evolutionBlock = "";
@@ -312,10 +346,40 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
             }
           }
 
+          // Per-agent dispatch opt-out: an author's explicit
+          // `hera_run_tool: false` in def.tools (the authorization truth)
+          // removes the only invocation path for non-native tools, so a
+          // narrowed native registration would strand every other authorized
+          // tool (spec §2: the hot set is a performance knob only, never an
+          // authorization change). Mirror the global dispatch-disabled
+          // fallback: keep the author's tools map unchanged so every
+          // authorized tool stays natively registered, and skip the primer
+          // for this agent.
+          const agentDispatch = dispatchEnabled && def.tools?.["hera_run_tool"] !== false;
+
           const teamBlock = teamManager.getAgentTeamContext(name);
-          const fullPrompt = [def.prompt, skillPrompts, teamBlock, evolutionBlock]
+          const fullPrompt = [
+            def.prompt,
+            skillPrompts,
+            teamBlock,
+            evolutionBlock,
+            agentDispatch ? catalogPrimer : "",
+          ]
             .filter((part) => part.trim().length > 0)
             .join("\n\n");
+
+          // "hera" itself is in registeredAgents (its hera.md is on disk), so
+          // this loop re-injects it and wins over the dedicated block above —
+          // give it its factory-core hot set (spec §2), not the child default.
+          const defaultHotSet =
+            name === "hera" ? computeHeraHotSet(toolDomains) : [...DEFAULT_CHILD_NATIVE_TOOLS];
+          const nativeMap = agentDispatch
+            ? buildNativeToolsMap({
+                hotSet: def.nativeTools ?? defaultHotSet,
+                heraToolNames,
+                defTools: def.tools,
+              })
+            : def.tools;
 
           const childConfig = createChildAgentConfig(
             name,
@@ -323,7 +387,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
             fullPrompt,
             def.model ?? model,
             def.mode as import("./types.js").AgentMode,
-            { permission: def.permission, tools: def.tools, maxSteps: def.maxSteps }
+            { permission: def.permission, tools: nativeMap, maxSteps: def.maxSteps }
           );
           configInput.agent[name] = childConfig;
         } catch (err) {

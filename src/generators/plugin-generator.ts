@@ -7,6 +7,7 @@
 
 import type { AgentDefinition, SkillDefinition } from "../types.js";
 import { buildAgentPrompt } from "../agents/hera.js";
+import { BUILTIN_SKILLS } from "../skills/manager.js";
 import { heraLog } from "../logger.js";
 import { join } from "node:path";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -172,6 +173,44 @@ function camelCase(name: string): string {
     .join("");
 }
 
+/** Plugin-scoped identifier fragment for generated tool names. */
+export function toolSafeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+/** Union of built-in + resolved skills, deduped by name (resolved wins). */
+export function collectExportSkills(resolvedSkills: SkillDefinition[]): SkillDefinition[] {
+  const byName = new Map<string, SkillDefinition>();
+  for (const s of BUILTIN_SKILLS) byName.set(s.name, s);
+  for (const s of resolvedSkills) byName.set(s.name, s);
+  return [...byName.values()];
+}
+
+/** Emitted-code fragment: a fs-reading skill loader tool (progressive exports, spec §6). */
+export function generateSkillLoaderFragment(loaderToolName: string, skillNames: string[]): string {
+  const known = skillNames.map((n) => JSON.stringify(n)).join(", ");
+  return `
+    ${loaderToolName}: tool({
+      description: "Load the full guidance for one of this agent's skills (progressive disclosure).",
+      args: { name: z.string().describe("Skill name from the manifest") },
+      async execute(args) {
+        const requested = String(args.name).toLowerCase().trim();
+        const known = [${known}];
+        if (!known.includes(requested)) {
+          return \`Error: unknown skill "\${requested}". Available: \${known.join(", ")}.\`;
+        }
+        try {
+          return await readFile(join(PLUGIN_ROOT, "skills", requested, "SKILL.md"), "utf-8");
+        } catch {
+          return \`Error: skill file missing for "\${requested}". Reinstall the plugin.\`;
+        }
+      },
+    }),`;
+}
+
 // === PluginGenerator class ===
 
 export class PluginGenerator {
@@ -230,7 +269,7 @@ export class PluginGenerator {
         "@opencode-ai/plugin": "^1.4.6",
         ...(withEngine ? { "hera-agent": "^2.2.1" } : {}),
       },
-      files: ["dist", "INSTALL.md"],
+      files: ["dist", "INSTALL.md", "skills"],
       license: "MIT",
     };
   }
@@ -239,9 +278,11 @@ export class PluginGenerator {
    * Generate src/index.ts — uses the exact same Plugin → config hook pattern as Hera.
    *
    * The prompt baked into the generated plugin is assembled via `buildAgentPrompt`,
-   * which embeds the built-in skills (caveman, init, memory, evolution) plus any
-   * additional `resolvedSkills` and the non-rolledBack evolution log directives —
-   * giving the generated agent prompt parity with the .md mode.
+   * which renders a compact skill manifest (built-ins plus any additional
+   * `resolvedSkills`) and the non-rolledBack evolution log directives — giving
+   * the generated agent prompt parity with the .md mode (progressive
+   * disclosure, spec §5/§6). Skill bodies ship as `skills/<name>/SKILL.md`
+   * files loaded on demand via a plugin-namespaced `<plugin>_load_skill` tool.
    *
    * Also inlines `hera_remember` and `hera_recall` tool implementations so the
    * agent's memory skill is actually functional. The tools read/write the same
@@ -258,7 +299,9 @@ export class PluginGenerator {
     withEngine = true,
     withCommands = true
   ): string {
-    const fullPrompt = buildAgentPrompt(agent, resolvedSkills);
+    const exportSkills = collectExportSkills(resolvedSkills);
+    const loaderToolName = `${toolSafeName(agent.name)}_load_skill`;
+    const fullPrompt = buildAgentPrompt(agent, exportSkills, { loaderToolName });
 
     // Conditional native `/<agent>` command fragment. On load the plugin writes
     // command/<agent>.md so the bundled agent gets a keyword command in
@@ -315,11 +358,15 @@ function getHeraDataDir(): string {
     const code = `import { tool } from "@opencode-ai/plugin";
 import type { Plugin } from "@opencode-ai/plugin";
 ${engineImport}import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 
 const z = tool.schema;
+
+// dist/index.js sits one level below the package root; skills/ sits at the root.
+const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Memory category → on-disk subdirectory (mirrors Hera's store layout)
 const SUBDIR: Record<string, string> = {
@@ -405,7 +452,11 @@ ${engineBootstrap}${commandCall}  return {
       input.agent["${agent.name}"] = ${JSON.stringify(agentConfig, null, 6).split("\n").join("\n      ")};
     },
     tool: {
-${engineToolsSpread}      hera_remember: tool({
+${engineToolsSpread}${generateSkillLoaderFragment(
+      loaderToolName,
+      exportSkills.map((s) => s.name)
+    )}
+      hera_remember: tool({
         description: "Store information in Hera's persistent memory (shared with Hera and other generated agents).",
         args: {
           content: z.string().describe("Information to remember"),
@@ -525,8 +576,9 @@ opencode --agent ${pluginName} "Hello, are you working?"
   /**
    * Generate a complete PluginPackage from an AgentDefinition.
    *
-   * Pass `resolvedSkills` so additional user skills (anything beyond the four
-   * built-ins always embedded by buildAgentPrompt) are baked into the prompt.
+   * Pass `resolvedSkills` so additional user skills (beyond the built-ins) are
+   * listed in the baked manifest and shipped as `skills/<name>/SKILL.md` files
+   * for the generated loader tool to read on demand.
    */
   generate(
     agentDef: AgentDefinition,
@@ -559,6 +611,15 @@ opencode --agent ${pluginName} "Hello, are you working?"
       path: "INSTALL.md",
       content: this.generateInstallMd(agentDef, `/path/to/${agentDef.name}`),
     });
+
+    // Progressive disclosure (spec §6): skill bodies ship as files, loaded on
+    // demand by the generated `<plugin>_load_skill` tool.
+    const exportSkills = collectExportSkills(resolvedSkills);
+    const skillFiles: PluginFile[] = exportSkills.map((s) => ({
+      path: `skills/${s.name}/SKILL.md`,
+      content: `# Skill: ${s.name}\n\n${s.description}\n\n${s.prompt}\n`,
+    }));
+    files.push(...skillFiles);
 
     const pkg: PluginPackage = {
       name: agentDef.name,

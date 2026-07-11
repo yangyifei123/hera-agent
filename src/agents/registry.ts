@@ -26,7 +26,9 @@ export class AgentRegistry {
     def: AgentDefinition,
     skills: Map<string, SkillDefinition>
   ): Promise<{ config: Record<string, unknown>; fileWritten: string }> {
-    const resolvedSkills = def.skills
+    // Resolve the DEFAULT_SKILLS ∪ def.skills union so the rendered manifest
+    // covers inherited defaults too (unknown names are skipped).
+    const resolvedSkills = getDefaultSkills(def.skills)
       .map((name) => skills.get(name))
       .filter((skill): skill is SkillDefinition => skill !== undefined);
 
@@ -130,6 +132,15 @@ export class AgentRegistry {
     }
   }
 
+  /** Raw agent .md content, or undefined if the file is missing/unreadable. */
+  async readAgentFile(name: string): Promise<string | undefined> {
+    try {
+      return await readFile(join(this.agentsDir, `${name}.md`), "utf-8");
+    } catch {
+      return undefined;
+    }
+  }
+
   async readDefinition(name: string): Promise<AgentDefinition | null> {
     try {
       const content = await readFile(join(this.agentsDir, `${name}.md`), "utf-8");
@@ -194,6 +205,9 @@ export class AgentRegistry {
     if (def.createdAt) lines.push(`createdAt: ${def.createdAt}`);
     if (def.evolvedAt) lines.push(`evolvedAt: ${def.evolvedAt}`);
     if (def.skills.length > 0) lines.push(`skillsJson: ${jsonFrontmatter(def.skills)}`);
+    if (def.nativeTools && def.nativeTools.length > 0) {
+      lines.push(`nativeToolsJson: ${jsonFrontmatter(def.nativeTools)}`);
+    }
     if (def.tools) lines.push(`toolsJson: ${jsonFrontmatter(def.tools)}`);
     if (def.permission) lines.push(`permissionJson: ${jsonFrontmatter(def.permission)}`);
     if (def.evolutionLog && def.evolutionLog.length > 0) {
@@ -234,6 +248,7 @@ export class AgentRegistry {
     const evolvedAt = get("evolvedAt");
     const template = get("template");
     const parsedSkills = parseJsonField<string[]>(get("skillsJson"), isStringArray);
+    const parsedNativeTools = parseJsonField<string[]>(get("nativeToolsJson"), isStringArray);
     const parsedTools = parseJsonField<Record<string, boolean>>(get("toolsJson"), isBooleanRecord);
     const parsedPermission = parseJsonField<AgentDefinition["permission"]>(
       get("permissionJson"),
@@ -265,6 +280,7 @@ export class AgentRegistry {
       evolvedAt: evolvedAt ? parseInt(evolvedAt, 10) : undefined,
       evolutionLog: parsedEvolutionLog ?? [],
       workflow: parsedWorkflow,
+      ...(parsedNativeTools ? { nativeTools: parsedNativeTools } : {}),
     };
   }
 
