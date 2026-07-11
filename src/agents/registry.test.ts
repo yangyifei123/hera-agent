@@ -49,6 +49,7 @@ describe("AgentRegistry metadata round-trip", () => {
         steps: [{ id: "step-1", name: "Step 1", type: "agent", executor: "metadata-agent" }],
         createdAt: 9999,
       },
+      nativeTools: ["hera_find_tools", "hera_run_tool", "hera_load_skill", "hera_run_task"],
     };
     const skills = new Map<string, SkillDefinition>([
       [
@@ -74,6 +75,22 @@ describe("AgentRegistry metadata round-trip", () => {
     expect(read!.workflow).toEqual(def.workflow);
     expect(read!.maxSteps).toBe(42);
     expect(read!.model).toBe("test/model");
+    expect(read!.nativeTools).toEqual(def.nativeTools);
+  });
+
+  it("omits nativeToolsJson when the field is unset and parses back undefined", async () => {
+    const def: AgentDefinition = {
+      name: "no-native",
+      description: "No native tools",
+      mode: "subagent",
+      prompt: "body",
+      skills: ["caveman"],
+      createdAt: 1,
+    };
+    await registry.register(def, new Map<string, SkillDefinition>());
+    const read = await registry.readDefinition("no-native");
+    expect(read).toBeDefined();
+    expect(read!.nativeTools).toBeUndefined();
   });
 
   it("round-trips the raw author prompt so built-in skills are not double-embedded", async () => {

@@ -194,6 +194,9 @@ export class AgentRegistry {
     if (def.createdAt) lines.push(`createdAt: ${def.createdAt}`);
     if (def.evolvedAt) lines.push(`evolvedAt: ${def.evolvedAt}`);
     if (def.skills.length > 0) lines.push(`skillsJson: ${jsonFrontmatter(def.skills)}`);
+    if (def.nativeTools && def.nativeTools.length > 0) {
+      lines.push(`nativeToolsJson: ${jsonFrontmatter(def.nativeTools)}`);
+    }
     if (def.tools) lines.push(`toolsJson: ${jsonFrontmatter(def.tools)}`);
     if (def.permission) lines.push(`permissionJson: ${jsonFrontmatter(def.permission)}`);
     if (def.evolutionLog && def.evolutionLog.length > 0) {
@@ -234,6 +237,7 @@ export class AgentRegistry {
     const evolvedAt = get("evolvedAt");
     const template = get("template");
     const parsedSkills = parseJsonField<string[]>(get("skillsJson"), isStringArray);
+    const parsedNativeTools = parseJsonField<string[]>(get("nativeToolsJson"), isStringArray);
     const parsedTools = parseJsonField<Record<string, boolean>>(get("toolsJson"), isBooleanRecord);
     const parsedPermission = parseJsonField<AgentDefinition["permission"]>(
       get("permissionJson"),
@@ -265,6 +269,7 @@ export class AgentRegistry {
       evolvedAt: evolvedAt ? parseInt(evolvedAt, 10) : undefined,
       evolutionLog: parsedEvolutionLog ?? [],
       workflow: parsedWorkflow,
+      ...(parsedNativeTools ? { nativeTools: parsedNativeTools } : {}),
     };
   }
 

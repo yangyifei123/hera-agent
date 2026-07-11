@@ -233,6 +233,9 @@ export interface AgentDefinition {
   evolvedAt?: number;
   evolutionLog?: EvolutionEntry[];
   workflow?: WorkflowDefinition;
+  /** Tools natively registered (full schema in context). Performance knob only —
+   *  authorization stays with `tools` + disabled_tools. Default: DEFAULT_CHILD_NATIVE_TOOLS. */
+  nativeTools?: string[];
 }
 
 export interface EvolutionEntry {
