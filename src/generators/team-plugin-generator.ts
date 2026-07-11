@@ -1,8 +1,10 @@
 /**
  * TeamPluginGenerator - Generates an OpenCode plugin that registers a whole
  * team of agents as one package. Each member agent gets the standard prompt
- * (built-in skills + evolution log) augmented with team context so the agent
- * knows it's a member of the team and who else is on it.
+ * (compact skill manifest + evolution log) augmented with team context so the
+ * agent knows it's a member of the team and who else is on it. Skill bodies
+ * ship once as skills/<name>/SKILL.md files, loaded on demand via a single
+ * team-scoped `<team>_load_skill` tool shared by all members (spec §6).
  *
  * Shared infrastructure (tsconfig, writeToDisk, install/installWithBuild) is
  * delegated to PluginGenerator. The differing part — generatePluginIndex —
@@ -14,6 +16,9 @@ import type { TeamDefinition, AgentDefinition, SkillDefinition } from "../types.
 import {
   PluginGenerator,
   generateCommandsFragment,
+  toolSafeName,
+  collectExportSkills,
+  generateSkillLoaderFragment,
   type PluginPackage,
   type PluginFile,
   type CommandRunner,
@@ -22,12 +27,50 @@ import {
 import { buildAgentPrompt } from "../agents/hera.js";
 import { heraLog } from "../logger.js";
 import { TEAM_MANAGEMENT_DESCRIPTIONS } from "../constants.js";
+import { createHash } from "node:crypto";
 
 function camelCase(name: string): string {
   return name
     .split("-")
     .map((part, i) => (i === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)))
     .join("");
+}
+
+/**
+ * Namespace fragment for the team's generated skill-loader tool (spec §6).
+ *
+ * Unlike agent names (validateAgentName enforces `^[a-z][a-z0-9-]*$` and
+ * reserves "hera"), team names are NOT validated at creation, so the
+ * derivation must be hardened:
+ * - `toolSafeName()` returns "" for non-ASCII names (e.g. "团队") → fall back
+ *   to a deterministic `team_<hash>` so two such plugins never collide on a
+ *   bare `_load_skill` tool name;
+ * - a digit-leading result (e.g. "3d-squad" → "3d_squad") would make the
+ *   emitted object key a JS SyntaxError → prefix `team_`;
+ * - "hera"/"Hera" would emit literally `hera_load_skill`, colliding with
+ *   Hera's real loader tool when installed side by side → rename to
+ *   `hera_team` (no real Hera tool is named `hera_team_load_skill`).
+ */
+function loaderNamespace(teamName: string): string {
+  let ns = toolSafeName(teamName);
+  if (!ns) {
+    ns = `team_${createHash("sha256").update(teamName).digest("hex").slice(0, 8)}`;
+  } else if (/^[0-9]/.test(ns)) {
+    ns = `team_${ns}`;
+  }
+  if (ns === "hera") ns = "hera_team";
+  return ns;
+}
+
+/**
+ * Emitted `const <var>: Plugin` identifier. Hardened for the same reason as
+ * loaderNamespace: strip non-identifier characters and guard digit-leading
+ * results (`const 3dSquadTeamPlugin` is a SyntaxError).
+ */
+function pluginVarName(teamName: string): string {
+  const raw = camelCase(teamPluginName(teamName)).replace(/[^0-9A-Za-z_$]/g, "");
+  const safe = /^[0-9]/.test(raw) ? `_${raw}` : raw || "team";
+  return `${safe}Plugin`;
 }
 
 /** Plugin name suffix to distinguish team plugins from single-agent ones. */
@@ -141,7 +184,7 @@ export class TeamPluginGenerator {
         "@opencode-ai/plugin": "^1.4.6",
         ...(withEngine ? { "hera-agent": "^2.2.1" } : {}),
       },
-      files: ["dist", "INSTALL.md"],
+      files: ["dist", "INSTALL.md", "skills"],
       license: "MIT",
     };
   }
@@ -160,7 +203,12 @@ export class TeamPluginGenerator {
     withEngine = true,
     withCommands = true
   ): string {
-    const pluginVar = camelCase(teamPluginName(team.name)) + "Plugin";
+    const pluginVar = pluginVarName(team.name);
+
+    // Progressive disclosure (spec §6): one team-scoped loader shared by all
+    // members; skill bodies ship as skills/<name>/SKILL.md files.
+    const exportSkills = collectExportSkills(resolvedSkills);
+    const loaderToolName = `${loaderNamespace(team.name)}_load_skill`;
 
     // Native /keyword commands: one per member, so `/socrates …` invokes @socrates.
     const { helper: commandHelper, call: commandCall } = withCommands
@@ -175,7 +223,7 @@ export class TeamPluginGenerator {
         ...member,
         prompt: `${member.prompt}\n\n${buildTeamContext(team, member.name)}`,
       };
-      const fullPrompt = buildAgentPrompt(augmented, resolvedSkills);
+      const fullPrompt = buildAgentPrompt(augmented, exportSkills, { loaderToolName });
 
       const agentConfig = {
         description: augmented.description,
@@ -229,11 +277,15 @@ function getHeraDataDir(): string {
     const prologue = `import { tool } from "@opencode-ai/plugin";
 import type { Plugin } from "@opencode-ai/plugin";
 ${engineImport}import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 
 const z = tool.schema;
+
+// dist/index.js sits one level below the package root; skills/ sits at the root.
+const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Memory category → on-disk subdirectory (mirrors Hera's store layout)
 const SUBDIR: Record<string, string> = {
@@ -321,7 +373,11 @@ ${engineBootstrap}${commandCall}  return {
 ${agentBlocks.join("\n")}
     },
     tool: {
-${engineToolsSpread}${MEMORY_TOOL_BLOCK}
+${engineToolsSpread}${generateSkillLoaderFragment(
+      loaderToolName,
+      exportSkills.map((s) => s.name)
+    )}
+${MEMORY_TOOL_BLOCK}
     },
   };
 };
@@ -403,6 +459,15 @@ ${team.members.map((m) => `opencode --agent ${m.agentName} "your task"`).join("\
         content: this.generateInstallMd(team, `/path/to/${teamPluginName(team.name)}`),
       },
     ];
+
+    // Progressive disclosure (spec §6): skill bodies ship as files, loaded on
+    // demand by the generated `<team>_load_skill` tool shared by all members.
+    const exportSkills = collectExportSkills(resolvedSkills);
+    const skillFiles: PluginFile[] = exportSkills.map((s) => ({
+      path: `skills/${s.name}/SKILL.md`,
+      content: `# Skill: ${s.name}\n\n${s.description}\n\n${s.prompt}\n`,
+    }));
+    files.push(...skillFiles);
 
     return {
       name: teamPluginName(team.name),

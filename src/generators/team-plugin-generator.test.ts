@@ -64,6 +64,69 @@ describe("TeamPluginGenerator", () => {
       expect(parsed.name).toMatch(/team/);
       expect(parsed.name).toContain("review-squad");
     });
+
+    it("emits one team-scoped loader and a shared skills/ dir", () => {
+      const team = makeTeam();
+      const members = team.members.map((m) => makeAgent(m.agentName));
+      const pkg = gen.generate(team, members, []);
+      const index = pkg.files.find((f) => f.path === "src/index.ts")!.content;
+      const loaderMatches = index.match(/_load_skill: tool\(\{/g) ?? [];
+      expect(loaderMatches).toHaveLength(1);
+      expect(index).toContain(`${team.name.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_load_skill`);
+      expect(pkg.files.some((f) => f.path === "skills/caveman/SKILL.md")).toBe(true);
+      expect(index).not.toContain("hera_load_skill");
+      const pkgJson = JSON.parse(pkg.files.find((f) => f.path === "package.json")!.content);
+      expect(pkgJson.files).toContain("skills");
+    });
+  });
+
+  describe("loader namespace hardening (unvalidated team names)", () => {
+    const membersOf = (team: TeamDefinition) => team.members.map((m) => makeAgent(m.agentName));
+
+    it("a team named 'hera' never emits hera_load_skill (collides with Hera's real loader)", () => {
+      const team = makeTeam({ name: "hera" });
+      const code = gen.generatePluginIndex(team, membersOf(team), []);
+      expect(code).not.toContain("hera_load_skill");
+      // Still exactly one loader, renamed deterministically.
+      expect(code.match(/_load_skill: tool\(\{/g) ?? []).toHaveLength(1);
+      expect(code).toContain("hera_team_load_skill");
+      // Every member's manifest header references the renamed loader.
+      const manifests = code.match(/## Skills \(load on demand with hera_team_load_skill\)/g) ?? [];
+      expect(manifests).toHaveLength(3);
+    });
+
+    it("catches case variants like 'Hera' too", () => {
+      const team = makeTeam({ name: "Hera" });
+      const code = gen.generatePluginIndex(team, membersOf(team), []);
+      expect(code).not.toContain("hera_load_skill");
+      expect(code).toContain("hera_team_load_skill");
+    });
+
+    it("a non-ASCII team name still gets a non-empty, deterministic, per-team namespace", () => {
+      const team = makeTeam({ name: "团队" });
+      const code = gen.generatePluginIndex(team, membersOf(team), []);
+      // Never the bare, un-namespaced `_load_skill`.
+      expect(code).not.toMatch(/[^0-9A-Za-z_$]_load_skill: tool\(\{/);
+      const key = code.match(/([A-Za-z_$][0-9A-Za-z_$]*)_load_skill: tool\(\{/);
+      expect(key).not.toBeNull();
+      // Deterministic: regenerating yields the same loader name.
+      const again = gen.generatePluginIndex(team, membersOf(team), []);
+      expect(again).toContain(`${key![1]}_load_skill: tool({`);
+      // Two different non-ASCII team names must not collide on the loader name.
+      const other = gen.generatePluginIndex(makeTeam({ name: "小组" }), membersOf(team), []);
+      expect(other).not.toContain(`${key![1]}_load_skill: tool({`);
+    });
+
+    it("a digit-leading team name emits syntactically valid code", () => {
+      const team = makeTeam({ name: "3d-squad" });
+      const code = gen.generatePluginIndex(team, membersOf(team), []);
+      // The loader object key must be a valid JS identifier (cannot start with a digit).
+      expect(code).not.toMatch(/[^0-9A-Za-z_$]3d_squad_load_skill/);
+      expect(code).toContain("team_3d_squad_load_skill");
+      // The whole emitted module must parse (guards the plugin const name too).
+      const transpiler = new Bun.Transpiler({ loader: "ts" });
+      expect(() => transpiler.transformSync(code)).not.toThrow();
+    });
   });
 
   describe("generatePluginIndex (team)", () => {
@@ -89,23 +152,18 @@ describe("TeamPluginGenerator", () => {
       expect(code).toContain("qa-engineer");
     });
 
-    it("each member's prompt embeds the 11 built-in skills (parity with md mode)", () => {
+    it("each member's prompt bakes the skill manifest, not skill bodies (parity with md mode)", () => {
       const team = makeTeam();
       const members = team.members.map((m) => makeAgent(m.agentName));
       const code = gen.generatePluginIndex(team, members, []);
-      // The skill prompts appear ONCE per member (3 members × N skills),
-      // but each must appear at least once.
-      expect(code).toContain("Caveman Mode");
-      expect(code).toContain("Environment Awareness");
-      expect(code).toContain("Autonomous Knowledge");
-      expect(code).toContain("Self-Improvement");
-      expect(code).toContain("Skill Combo");
-      expect(code).toContain("Delegate to Specialized");
-      expect(code).toContain("Team Coordination");
-      expect(code).toContain("Context Window Discipline");
-      expect(code).toContain("Workflow Orchestration");
-      expect(code).toContain("Brainstorming");
-      expect(code).toContain("Skill Creator");
+      // One manifest section per member (3 members), all pointing at the
+      // single team-scoped loader tool.
+      const manifests = code.match(/## Skills \(load on demand with dev_team_load_skill\)/g) ?? [];
+      expect(manifests).toHaveLength(3);
+      // Skills appear as one-line manifest entries; full bodies are not embedded.
+      expect(code).toContain("- caveman: Ultra-compressed communication mode.");
+      expect(code).not.toContain("Caveman Mode");
+      expect(code).not.toContain("## Built-in Skill:");
     });
 
     it("describes management mode and the shared workspace blackboard", () => {
