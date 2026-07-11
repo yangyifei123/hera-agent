@@ -15,7 +15,7 @@ import { WORKFLOW_ORCHESTRATION } from "./workflow-orchestration.js";
 import { BRAINSTORMING } from "./brainstorming.js";
 import { SKILL_CREATOR } from "./skill-creator.js";
 
-const BUILTIN_SKILLS: SkillDefinition[] = [
+export const BUILTIN_SKILLS: SkillDefinition[] = [
   CAVEMAN_SKILL,
   INIT_SKILL,
   SKILL_COMBO_SKILL,
