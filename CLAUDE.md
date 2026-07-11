@@ -69,7 +69,8 @@ On plugin startup, Hera:
 5. Rewrites `hera.md` so Hera itself is always natively discoverable by OpenCode
 6. Runs first-run onboarding via `src/onboarding.ts`
 7. Loads agents from disk first, then fills missing ones from memory-store backups
-8. Builds the merged tool map via `src/tools/index.ts`
+8. Runs the one-time idempotent legacy-prompt migration (`migrateLegacyAgentMarkdown()` in `src/persistence.ts`): agent `.md` files that still embed full skill bodies are rewritten to the manifest form (with a backup)
+9. Builds the merged tool map with domain labels via `createAllToolsWithDomains()` in `src/tools/index.ts`, then derives the in-memory `ToolCatalog` and the `hera_find_tools`/`hera_run_tool` meta-tools from `src/dispatch/`
 
 Disk is authoritative for agents; the memory store is a fallback, not the primary source.
 
@@ -85,14 +86,15 @@ Disk is authoritative for agents; the memory store is a fallback, not the primar
 
 `removeAgent()`, `backupAgent()`, `listBackups()`, and `restoreAgent()` also live there. Do not scatter agent CRUD logic across random tool files.
 
-### 4. Prompt assembly is a sharp edge
+### 4. Prompt assembly: three paths, one manifest invariant
 
-Prompt construction currently spans multiple paths:
+Prompt construction spans three paths, and all three must render the **same compact skill manifest** via `buildSkillManifestSection()` in `src/skills/manager.ts`:
 
+- the plugin `config` hook in `src/index.ts` builds the runtime prompt for live agent injection
 - `buildAgentPrompt()` in `src/agents/hera.ts` renders the persisted Markdown body
-- the plugin `config` hook in `src/index.ts` builds the runtime prompt used for live agent injection
+- the generators in `src/generators/` bake the prompt into exported plugins (with a plugin-namespaced loader tool name)
 
-This is easy to drift: disk-backed agents are parsed back from rendered `.md` bodies, so changing only one path can cause duplicated or mismatched embedded skill sections. If you touch prompt composition, verify the full flow: create agent -> reload/restart -> invoke agent.
+Skill bodies are never embedded in prompts. Agents load them on demand via `hera_load_skill`; exported plugins ship bodies as `skills/<name>/SKILL.md` files read by a generated `<plugin>_load_skill` tool. `src/agents/prompt-parity.test.ts` pins the invariant (disk rendering contains the identical manifest section as the live path, and never full skill bodies) — keep it green whenever you touch prompt composition, and never re-embed bodies in only one path.
 
 ### 5. Skills are both built-in prompts and on-disk packages
 
@@ -118,9 +120,9 @@ Teams also have two collaboration channels:
 - inbox-style messages (`hera_team_message`, `hera_get_team_messages`, `hera_ack_team_messages`)
 - shared blackboard memory (`hera_team_remember`, `hera_team_recall`)
 
-### 7. Tooling is split into 11 domains
+### 7. Tooling is split into 14 domains plus a dispatch layer
 
-`createAllTools()` merges these tool groups:
+`createAllToolsWithDomains()` in `src/tools/index.ts` merges these tool groups and keeps a `name -> domain` label map (`createAllTools()` delegates to it):
 
 - `agent-tools`
 - `skill-tools`
@@ -133,8 +135,22 @@ Teams also have two collaboration channels:
 - `task-tools`
 - `loop-tools`
 - `recovery-tools`
+- `program-tools`
+- `program-scaffold-tools`
+- `command-tools`
 
-Tools listed in `hera.json` `disabled_tools` are filtered out of the merged map.
+Tools listed in `hera.json` `disabled_tools` are filtered out of the merged map (and its domain labels).
+
+On top of the merged map, `src/dispatch/` implements progressive disclosure:
+
+- `catalog.ts` — in-memory `ToolCatalog` built once at startup; deterministic keyword scoring (no embeddings, no SQLite, derived from code so it can never go stale)
+- `policy.ts` — `checkDispatch()` (authorization for dispatched calls: agent `tools` map + `disabled_tools` + meta-tools-never-dispatchable) and `buildNativeToolsMap()` (per-agent allow/deny map from the hot set)
+- `meta-tools.ts` — `hera_find_tools` (search/browse, results pre-filtered by the caller's policy) and `hera_run_tool` (authorize -> zod-validate -> execute passthrough; never throws to the session)
+
+Two invariants to preserve:
+
+1. The hot set (`DEFAULT_CHILD_NATIVE_TOOLS` / `HERA_NATIVE_DOMAINS` in `src/constants.ts`, overridable per agent via `nativeTools`) is a **performance knob only** — authorization always stays with the agent `tools` map plus `disabled_tools`.
+2. Safety fallbacks: disabling either meta-tool via `disabled_tools` reverts all agents to full-native registration (and drops the catalog primer); a per-agent `hera_run_tool: false` opts that one agent out the same way.
 
 `src/types.ts` defines per-domain context-slice interfaces, but the current tool factories still accept the full `PluginContext` and destructure what they need. Treat the slice interfaces as the architectural seam, not as something already fully enforced.
 
@@ -162,7 +178,7 @@ The engine's `taskStore`, `loopManager`, and `supervisor` land on `PluginContext
 - `src/generators/plugin-generator.ts` and `src/generators/team-plugin-generator.ts` export agents/teams as standalone OpenCode plugins
 - `src/tools/package-tools.ts` packages and unpacks agents as `.tar.gz` archives, optionally with related memory
 
-One subtle path detail: generated plugin memory helpers look at `HERA_DIR`, while the main plugin runtime and standalone CLI resolve the OpenCode config root via `HERA_CONFIG_ROOT`. Keep those env-var contracts straight when editing path logic.
+One subtle path detail: generated plugin memory helpers resolve the config root via `HERA_CONFIG_ROOT`/`OPENCODE_CONFIG_ROOT` first and additionally accept `HERA_DIR` as a legacy fallback; the main plugin runtime and standalone CLI never read `HERA_DIR`. Keep those env-var contracts straight when editing path logic.
 
 ## Path and Config Resolution
 

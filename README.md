@@ -79,7 +79,8 @@ opencode run --agent hera "recall: coding style"
 | **Team Coordination** | Parallel, sequential, or DAG execution with real OpenCode sessions |
 | **Team Recipes** | Editable step-by-step recipes for team behavior, with preview and override support |
 | **Plugin Export** | Agents and teams export as standalone OpenCode plugins |
-| **Skill Composition** | 11 built-in skills inherited by every agent |
+| **Skill Composition** | 11 built-in skills inherited by every agent, loaded on demand |
+| **Progressive Disclosure** | Agents carry a small native tool hot set and search the full tool catalog on demand |
 | **Workflow Engine** | Auto-detects task complexity; proposes workflows for multi-step tasks |
 | **Session Distillation** | Extract structured knowledge from conversations |
 | **Agent Packaging** | Package/export/import agents with memory as `.tar.gz` |
@@ -183,7 +184,7 @@ Need the full decision guide? See [Agent Modes](docs/MODES.md).
 
 ## Built-in Skills
 
-Every agent created by Hera inherits these 11 skills:
+Every agent created by Hera inherits these 11 skills. They appear in the agent's prompt as a compact one-line-per-skill manifest; the agent calls `hera_load_skill` to pull a skill's full guidance only when it is relevant:
 
 | Skill | What it does |
 |-------|-------------|
@@ -198,6 +199,41 @@ Every agent created by Hera inherits these 11 skills:
 | **workflow-orchestration** | Plan and coordinate multi-step workflows |
 | **brainstorming** | Explore requirements before implementation |
 | **skill-creator** | Create and refine reusable skills |
+
+## Progressive Disclosure & Tool Catalog
+
+Hera has 75 management tools across 14 domains. Registering all of them (plus full skill bodies) in every agent's context window would be expensive, so agents get a compact view and pull details on demand:
+
+- **Skills** are listed as a one-line manifest; `hera_load_skill` loads the full guidance when needed.
+- **Tools** are natively registered only for a small per-agent **hot set**. Everything else stays reachable through two meta-tools: `hera_find_tools` (search the catalog) and `hera_run_tool` (invoke by name).
+
+Child agents keep a 5-tool hot set: `hera_find_tools`, `hera_run_tool`, `hera_load_skill`, `hera_remember`, `hera_recall`. Hera itself additionally keeps its factory-core domains (agent, skill, team) native and dispatches the long tail (workflow, task, loop, recovery, package, and the rest).
+
+```text
+# 1. Discover — hera_find_tools({}) with no arguments lists the 14 domains with counts
+hera_find_tools({ query: "background task" })
+# → hera_enqueue_task (task) — Enqueue a durable task. The task is complete only
+#   when its declarative acceptance checks pass; it retries to budget otherwise.
+#   args: goal: string, executor?: string, acceptance: array, maxAttempts?: number, dependsOn?: array
+
+# 2. Invoke
+hera_run_tool({
+  tool: "hera_enqueue_task",
+  args: { goal: "run the release gate", acceptance: [{ type: "shell", command: "bun test" }] }
+})
+```
+
+Catalog retrieval is deterministic, in-memory keyword scoring over tool names, descriptions, and domains, derived at startup from the live tool map — no embeddings, no database, nothing to go stale.
+
+**Authorization vs registration.** The hot set is purely a performance knob: it controls which tool schemas sit in the context window, never what an agent may do. Authorization stays where it always was — the agent's `tools` allow/deny map plus `disabled_tools` in `hera.json`. `hera_run_tool` re-checks that same authorization and validates arguments against the target tool's schema before executing, so a dispatched call is exactly as strict as a native one.
+
+Tuning and opt-outs:
+
+- **Per-agent hot set**: an agent definition's optional `nativeTools` field (persisted in the agent's `.md` frontmatter as `nativeToolsJson`) overrides the default hot set for agents that lean on specific tools.
+- **Per-agent opt-out**: setting `hera_run_tool: false` in one agent's `tools` map disables dispatch for that agent; all of its authorized tools revert to native registration.
+- **Global off switch**: adding `hera_find_tools`/`hera_run_tool` to `disabled_tools` in `hera.json` turns dispatch off entirely and reverts every agent to full-native registration.
+
+Exported plugins are progressive too: the generated prompt embeds the skill manifest, skill bodies ship as `skills/<name>/SKILL.md` files inside the plugin, and a namespaced `<plugin>_load_skill` tool reads them on demand. Exports do not carry the find/run meta-tools — they bundle only their own few tools, so there is no catalog worth searching.
 
 ## Skill Upgrade Workflows
 
@@ -293,6 +329,8 @@ opencode run --agent hera "export my-dev as plugin"
 opencode run --agent hera "unpack agent from /path/to/my-dev-package.tar.gz"
 ```
 
+Exported plugins follow the same progressive-disclosure model as Hera itself: the baked prompt contains the skill manifest, the plugin ships `skills/<name>/SKILL.md` files, and a generated `<plugin>_load_skill` tool loads them on demand.
+
 ## Configuration
 
 Hera creates `~/.config/opencode/hera.json` on first load:
@@ -356,11 +394,21 @@ Windows PowerShell:
 node "$env:USERPROFILE\.config\opencode\node_modules\hera-agent\bin\hera.js" doctor
 ```
 
-See [Tool Reference](#tool-reference) for all 75 management tools across 14 domains.
+See [Tool Reference](#tool-reference) for all 75 management tools across 14 domains, plus the two dispatch meta-tools.
 
 ---
 
 ## Tool Reference
+
+<details>
+<summary><strong>Tool Discovery & Dispatch</strong></summary>
+
+- `hera_find_tools` - Search the tool catalog by keyword/domain; no arguments lists all domains with counts
+- `hera_run_tool` - Invoke any authorized catalog tool by name with validated args (meta-dispatch)
+
+These two meta-tools sit outside the 14 domains and are natively registered for every agent (see [Progressive Disclosure & Tool Catalog](#progressive-disclosure--tool-catalog)).
+
+</details>
 
 <details>
 <summary><strong>Agent Management</strong></summary>
@@ -382,6 +430,7 @@ See [Tool Reference](#tool-reference) for all 75 management tools across 14 doma
 
 - `hera_create_skill` - Create a reusable skill
 - `hera_list_skills` - List all skills
+- `hera_load_skill` - Load a skill's full guidance on demand (progressive disclosure)
 - `hera_delete_skill` - Delete a user-created skill
 - `hera_upgrade_to_agent` - Upgrade skills into a full agent; supports `dry_run` preview
 - `hera_upgrade_to_team` - Upgrade skills into a coordinated agent team; supports `dry_run` preview
