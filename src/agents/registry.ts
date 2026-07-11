@@ -26,7 +26,9 @@ export class AgentRegistry {
     def: AgentDefinition,
     skills: Map<string, SkillDefinition>
   ): Promise<{ config: Record<string, unknown>; fileWritten: string }> {
-    const resolvedSkills = def.skills
+    // Resolve the DEFAULT_SKILLS ∪ def.skills union so the rendered manifest
+    // covers inherited defaults too (unknown names are skipped).
+    const resolvedSkills = getDefaultSkills(def.skills)
       .map((name) => skills.get(name))
       .filter((skill): skill is SkillDefinition => skill !== undefined);
 
@@ -127,6 +129,15 @@ export class AgentRegistry {
     } catch (err) {
       heraLog("debug", `Failed to list registered agents in ${this.agentsDir}`, err);
       return [];
+    }
+  }
+
+  /** Raw agent .md content, or undefined if the file is missing/unreadable. */
+  async readAgentFile(name: string): Promise<string | undefined> {
+    try {
+      return await readFile(join(this.agentsDir, `${name}.md`), "utf-8");
+    } catch {
+      return undefined;
     }
   }
 

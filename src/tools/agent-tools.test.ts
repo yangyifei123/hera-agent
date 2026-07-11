@@ -186,9 +186,11 @@ describe("createAgentTools (integration)", () => {
       expect(files).toContain("test-coder.md");
 
       const md = await readFile(join(harness.ctx.paths.agentsDir, "test-coder.md"), "utf-8");
-      expect(md).toContain("Caveman Mode");
-      expect(md).toContain("Autonomous Knowledge");
-      expect(md).toContain("Self-Improvement");
+      // Progressive disclosure: manifest lines instead of full skill bodies.
+      expect(md).toContain("- caveman:");
+      expect(md).toContain("- memory:");
+      expect(md).toContain("- evolution:");
+      expect(md).not.toContain("## Built-in Skill:");
     });
 
     it("rejects invalid agent names", async () => {
@@ -301,7 +303,10 @@ describe("createAgentTools (integration)", () => {
       const indexContent = await readFile(join(generatedDir, "src", "index.ts"), "utf-8");
       expect(indexContent).toContain("plugin-bot");
       expect(indexContent).toContain("hera_remember");
-      expect(indexContent).toContain("Caveman Mode");
+      // Progressive disclosure: the baked prompt carries the skill manifest,
+      // never full skill bodies (bodies ship as skill files from Task 11 on).
+      expect(indexContent).toContain("- caveman:");
+      expect(indexContent).not.toContain("## Built-in Skill:");
     });
   });
 
@@ -429,7 +434,9 @@ describe("createAgentTools (integration)", () => {
         join(harness.ctx.paths.agentsDir, "restore-latest.md"),
         "utf-8"
       );
-      expect(restoredMarkdown).toContain("CUSTOM_SKILL_BODY");
+      // Progressive disclosure: the manifest line is embedded, never the body.
+      expect(restoredMarkdown).toContain("- custom-skill:");
+      expect(restoredMarkdown).not.toContain("CUSTOM_SKILL_BODY");
     });
 
     it("rejects invalid restore names and timestamps", async () => {

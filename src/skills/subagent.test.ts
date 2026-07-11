@@ -7,7 +7,7 @@ import { SkillManager } from "./manager.js";
 import { MemoryStore } from "../memory/store.js";
 import { DEFAULT_SKILLS } from "../constants.js";
 import { buildAgentPrompt } from "../agents/hera.js";
-import type { AgentDefinition } from "../types.js";
+import type { AgentDefinition, SkillDefinition } from "../types.js";
 
 describe("SUBAGENT_SKILL", () => {
   it("should export a SkillDefinition with correct identity", () => {
@@ -62,7 +62,7 @@ describe("new builtin skills — integration", () => {
     expect(DEFAULT_SKILLS).toContain("auto-compact");
   });
 
-  it("buildAgentPrompt embeds all 7 builtin skill prompts", () => {
+  it("buildAgentPrompt renders a manifest line per builtin skill, no full bodies", () => {
     const def: AgentDefinition = {
       name: "test",
       description: "test",
@@ -70,15 +70,18 @@ describe("new builtin skills — integration", () => {
       prompt: "BASE",
       skills: [...DEFAULT_SKILLS],
     };
-    const out = buildAgentPrompt(def, []);
-    expect(out).toContain("Caveman Mode");
-    expect(out).toContain("Environment Awareness");
-    expect(out).toContain("Autonomous Knowledge Persistence");
-    expect(out).toContain("Self-Improvement");
-    expect(out).toContain("Skill Combo");
-    expect(out).toContain("Delegate to Specialized Agents");
-    expect(out).toContain("Team Coordination");
-    expect(out).toContain("Context Window Discipline");
+    const map = skills.getSkillMap();
+    const resolved = [...DEFAULT_SKILLS]
+      .map((name) => map.get(name))
+      .filter((s): s is SkillDefinition => s !== undefined);
+    expect(resolved.length).toBe(DEFAULT_SKILLS.length);
+    const out = buildAgentPrompt(def, resolved);
+    // Progressive disclosure: one manifest line per skill instead of the body.
+    for (const name of DEFAULT_SKILLS) {
+      expect(out).toContain(`- ${name}:`);
+    }
+    expect(out).not.toContain("## Built-in Skill:");
+    expect(out).not.toContain(getSubagentPrompt());
   });
 
   async function _cleanup() {

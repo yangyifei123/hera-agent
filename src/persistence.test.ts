@@ -1,10 +1,11 @@
 import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   backupAgent,
   listBackups,
+  migrateLegacyAgentMarkdown,
   persistAgent,
   removeAgent,
   restoreAgent,
@@ -200,7 +201,7 @@ describe("backup/list/restore integration", () => {
     expect(qaBackups[0].filePath).not.toContain("qa-engineer");
   });
 
-  it("restores markdown with custom skill prompts re-embedded", async () => {
+  it("restores markdown with the skill manifest re-rendered", async () => {
     const customSkill: SkillDefinition = {
       name: "custom-skill",
       description: "Custom skill",
@@ -220,7 +221,9 @@ describe("backup/list/restore integration", () => {
       join(tmp, "agents", "hera", "restorable-agent.md"),
       "utf-8"
     );
-    expect(originalMarkdown).toContain("CUSTOM_SKILL_BODY");
+    // Progressive disclosure: the manifest line is embedded, never the body.
+    expect(originalMarkdown).toContain(`- ${customSkill.name}:`);
+    expect(originalMarkdown).not.toContain("CUSTOM_SKILL_BODY");
 
     await removeAgent("restorable-agent", registeredAgents, registry, store);
 
@@ -239,6 +242,86 @@ describe("backup/list/restore integration", () => {
       join(tmp, "agents", "hera", "restorable-agent.md"),
       "utf-8"
     );
-    expect(restoredMarkdown).toContain("CUSTOM_SKILL_BODY");
+    expect(restoredMarkdown).toContain(`- ${customSkill.name}:`);
+    expect(restoredMarkdown).not.toContain("CUSTOM_SKILL_BODY");
+  });
+
+  it("migrates legacy full-body agent markdown to manifest form, once", async () => {
+    const skillsMap = new Map<string, SkillDefinition>();
+    const def = makeAgentDef({ name: "legacy-agent" });
+    await persistAgent(def, skillsMap, registeredAgents, registry, store);
+
+    // Forge a legacy file: inject a full-body skill section like pre-migration builds.
+    const file = join(tmp, "agents", "hera", "legacy-agent.md");
+    const current = await readFile(file, "utf-8");
+    await writeFile(file, current + "\n## Built-in Skill: Caveman\nFULL LEGACY BODY\n");
+
+    const migrated = await migrateLegacyAgentMarkdown(registeredAgents, skillsMap, registry);
+    expect(migrated).toEqual(["legacy-agent"]);
+
+    const after = await readFile(file, "utf-8");
+    expect(after).not.toContain("## Built-in Skill:");
+    // A backup snapshot exists.
+    const backups = await listBackups("legacy-agent", registeredAgents, registry);
+    expect(backups.length).toBeGreaterThan(0);
+
+    // Second run is a no-op.
+    expect(await migrateLegacyAgentMarkdown(registeredAgents, skillsMap, registry)).toEqual([]);
+  });
+
+  it("migrates genuine pre-promptB64 legacy files idempotently (readDefinition body-fallback)", async () => {
+    const skillsMap = new Map<string, SkillDefinition>();
+
+    // Forge a file exactly as pre-promptB64 builds wrote them: frontmatter
+    // WITHOUT promptB64, body = "# Agent:" header + raw prompt + full
+    // embedded skill bodies (commit b87497c-era rendering).
+    const file = join(tmp, "agents", "hera", "old-agent.md");
+    const legacyFile = [
+      "---",
+      "name: old-agent",
+      'description: "Old agent"',
+      "mode: subagent",
+      'skillsJson: ["caveman","init","memory","evolution"]',
+      "---",
+      "",
+      "# Agent: old-agent",
+      "",
+      "You are old.",
+      "",
+      "## Built-in Skill: Caveman",
+      "FULL CAVEMAN BODY",
+      "",
+      "## Built-in Skill: Memory",
+      "FULL MEMORY BODY",
+      "",
+    ].join("\n");
+    await writeFile(file, legacyFile);
+
+    // Load the def via readDefinition exactly like startup does (index.ts):
+    // with no promptB64, def.prompt falls back to the whole rendered body.
+    const def = await registry.readDefinition("old-agent");
+    expect(def).not.toBeNull();
+    expect(def!.prompt).toContain("## Built-in Skill:");
+    registeredAgents.set("old-agent", def!);
+
+    // First run migrates: marker and skill bodies gone, header not duplicated.
+    expect(await migrateLegacyAgentMarkdown(registeredAgents, skillsMap, registry)).toEqual([
+      "old-agent",
+    ]);
+    const after1 = await readFile(file, "utf-8");
+    expect(after1).not.toContain("## Built-in Skill:");
+    expect(after1).not.toContain("FULL CAVEMAN BODY");
+    expect(after1.match(/# Agent: old-agent/g)).toHaveLength(1);
+
+    // The raw author prompt survives — in memory and across a reload.
+    expect(registeredAgents.get("old-agent")!.prompt).toBe("You are old.");
+    const reloaded = await registry.readDefinition("old-agent");
+    expect(reloaded!.prompt).toBe("You are old.");
+
+    // Second run is a no-op: nothing migrated, no extra backup, file unchanged.
+    expect(await listBackups("old-agent", registeredAgents, registry)).toHaveLength(1);
+    expect(await migrateLegacyAgentMarkdown(registeredAgents, skillsMap, registry)).toEqual([]);
+    expect(await listBackups("old-agent", registeredAgents, registry)).toHaveLength(1);
+    expect(await readFile(file, "utf-8")).toBe(after1);
   });
 });

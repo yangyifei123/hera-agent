@@ -14,6 +14,7 @@ import { ToolCatalog, renderCatalogPrimer } from "./dispatch/catalog.js";
 import { createDispatchTools } from "./dispatch/meta-tools.js";
 import { buildNativeToolsMap, computeHeraHotSet } from "./dispatch/policy.js";
 import { createProgramRunner } from "./program/index.js";
+import { migrateLegacyAgentMarkdown } from "./persistence.js";
 import type { AgentDefinition, HeraConfig, HeraPaths, PluginContext } from "./types.js";
 import {
   DEFAULT_CHILD_NATIVE_TOOLS,
@@ -248,6 +249,14 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     } catch {
       heraLog("debug", `Failed to parse stored agent definition`);
     }
+  }
+
+  // One-time idempotent migration (spec §5): rewrite legacy full-body agent
+  // .md files to the compact skill-manifest form.
+  try {
+    await migrateLegacyAgentMarkdown(registeredAgents, skillManager.getSkillMap(), agentRegistry);
+  } catch (err) {
+    heraLog("warn", "Legacy agent markdown migration failed; continuing", err);
   }
 
   const ctx: PluginContext = {
