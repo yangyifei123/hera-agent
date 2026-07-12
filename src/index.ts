@@ -9,6 +9,7 @@ import { createEngine } from "./engine/index.js";
 import { buildActiveWorkContext } from "./engine/active-work.js";
 import type { Engine } from "./engine/index.js";
 import { createHeraAgent, createChildAgentConfig } from "./agents/hera.js";
+import { JUDGE_AGENT_NAME, createJudgeAgent } from "./agents/judge.js";
 import { createAllToolsWithDomains } from "./tools/index.js";
 import { ToolCatalog, renderCatalogPrimer } from "./dispatch/catalog.js";
 import { createDispatchTools } from "./dispatch/meta-tools.js";
@@ -194,6 +195,7 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
     config,
     teamManager,
     singleton: true,
+    judgeAgent: JUDGE_AGENT_NAME,
   });
   try {
     await engine.init();
@@ -318,6 +320,19 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
 
       // Inject all child agents
       for (const [name, def] of registeredAgents) {
+        // Impersonation guard: the engine routes every llm_judge check to
+        // JUDGE_AGENT_NAME, so a persisted agent with that name (created via
+        // hera_create_agent, or hand-dropped as a .md file, which bypasses
+        // name validation entirely) would replace the zero-tool judge with an
+        // author-controlled, full-tool agent that can rubber-stamp acceptance.
+        // Never inject it; the built-in judge is injected after this loop.
+        if (name === JUDGE_AGENT_NAME) {
+          heraLog(
+            "warn",
+            `Ignoring persisted agent "${name}": the name is reserved for the built-in acceptance judge`
+          );
+          continue;
+        }
         if (config.disabled_agents?.includes(name)) continue;
 
         // Per-agent isolation: one corrupt definition (e.g. a bad evolution-log
@@ -410,6 +425,16 @@ const HeraPlugin: Plugin = async (input: PluginInput, options?: Record<string, u
           }
         }
       }
+
+      // Built-in acceptance judge: zero tools, low temperature, judge-only
+      // persona. Injected like Hera itself (not persisted, not in
+      // registeredAgents) — and AFTER the child loop, so no other injection
+      // path can overwrite the judge slot (Global Constraint: the judge never
+      // gets tools).
+      configInput.agent[JUDGE_AGENT_NAME] = createJudgeAgent(
+        config.judge_model ?? model,
+        heraToolNames
+      );
     },
 
     tool: tools,
