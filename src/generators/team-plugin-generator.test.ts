@@ -225,6 +225,12 @@ describe("TeamPluginGenerator", () => {
       expect(code).not.toContain("hera-agent/engine");
       expect(code).not.toContain("createEngine(");
     });
+
+    it("passes the first member as the engine judgeAgent", () => {
+      const team = makeTeam();
+      const code = gen.generatePluginIndex(team, [makeAgent("alpha"), makeAgent("beta")], []);
+      expect(code).toContain('judgeAgent: "alpha"');
+    });
   });
 
   describe("writeToDisk", () => {
