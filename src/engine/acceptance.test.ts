@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AcceptanceEvaluator } from "./acceptance.js";
+import type { AcceptanceCheck } from "./task-types.js";
 
 describe("AcceptanceEvaluator", () => {
   let dir: string;
@@ -68,7 +69,7 @@ describe("AcceptanceEvaluator", () => {
 
   it("llm_judge passes when the judge returns pass + score >= threshold", async () => {
     const judge = new AcceptanceEvaluator({
-      judge: async () => '{"pass": true, "score": 0.9, "reasoning": "solid work"}',
+      judge: async () => '{"criteria":[{"id":"c1","reasoning":"solid work","score":0.9}]}',
     });
     const r = await judge.evaluate(
       [{ type: "llm_judge", rubric: "the function must be implemented" }],
@@ -81,7 +82,7 @@ describe("AcceptanceEvaluator", () => {
 
   it("llm_judge fails when score is below threshold", async () => {
     const judge = new AcceptanceEvaluator({
-      judge: async () => 'Here: {"pass": true, "score": 0.4, "reasoning": "shallow"} ok',
+      judge: async () => 'Here: {"criteria":[{"id":"c1","reasoning":"shallow","score":0.4}]} ok',
     });
     const r = await judge.evaluate(
       [{ type: "llm_judge", rubric: "x", threshold: 0.7 }],
@@ -110,6 +111,86 @@ describe("AcceptanceEvaluator", () => {
     );
     expect(r[0].passed).toBe(false);
     expect(r[0].detail).toContain("unparseable");
+  });
+
+  it("llm_judge: analytic rubric produces a structured verdict on the result", async () => {
+    const evalr2 = new AcceptanceEvaluator({
+      judge: async () => '{"criteria":[{"id":"c1","reasoning":"solid","score":0.9}]}',
+      judgeAgentName: "hera-judge",
+    });
+    const r = await evalr2.evaluate(
+      [{ type: "llm_judge", rubric: "is it good" }],
+      { output: "work", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(true);
+    expect(r[0].verdict?.criteria[0].score).toBe(0.9);
+    expect(r[0].verdict?.judgeAgent).toBe("hera-judge");
+    expect(r[0].detail).toContain("0.90");
+  });
+
+  it("llm_judge: multi-criterion critical veto fails the check", async () => {
+    const evalr2 = new AcceptanceEvaluator({
+      judge: async () =>
+        '{"criteria":[{"id":"c1","reasoning":"r","score":1},{"id":"docs","reasoning":"r","score":0.5}]}',
+    });
+    const r = await evalr2.evaluate(
+      [
+        {
+          type: "llm_judge",
+          rubric: [
+            { requirement: "works" },
+            { id: "docs", requirement: "documented", critical: true },
+          ],
+        },
+      ],
+      { output: "work", cwd: dir },
+      1
+    );
+    expect(r[0].passed).toBe(false);
+    expect(r[0].verdict?.pass).toBe(false);
+  });
+
+  it("llm_judge: junk rubric type fails closed instead of rejecting (corrupted ledger)", async () => {
+    // A hand-edited/corrupted ledger entry (loaded without re-validation) can
+    // carry a rubric that is neither string nor array. RubricJudge throws a
+    // TypeError from normalizeCriteria in that case; the evaluator must
+    // contain it as a failed check, never reject out of evaluate() — a
+    // rejection escapes runAttempt AFTER the token-costing agent run and burns
+    // every retry until maxAttempts (fail-closed Global Constraint).
+    const evalr2 = new AcceptanceEvaluator({
+      judge: async () => '{"criteria":[{"id":"c1","reasoning":"r","score":1}]}',
+    });
+    const junk = { type: "llm_judge", rubric: 42 } as unknown as AcceptanceCheck;
+    const r = await evalr2.evaluate([junk], { output: "w", cwd: dir }, 1);
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toBeTruthy();
+  });
+
+  it("llm_judge: non-array evidence.files fails closed instead of rejecting", async () => {
+    const evalr2 = new AcceptanceEvaluator({
+      judge: async () => '{"criteria":[{"id":"c1","reasoning":"r","score":1}]}',
+    });
+    const junk = {
+      type: "llm_judge",
+      rubric: "x",
+      evidence: { files: 7 },
+    } as unknown as AcceptanceCheck;
+    const r = await evalr2.evaluate([junk], { output: "w", cwd: dir }, 1);
+    expect(r[0].passed).toBe(false);
+    expect(r[0].detail).toBeTruthy();
+  });
+
+  it("verdict survives JSON persistence round-trip", async () => {
+    const evalr2 = new AcceptanceEvaluator({
+      judge: async () => '{"criteria":[{"id":"c1","reasoning":"r","score":0.8}]}',
+    });
+    const r = await evalr2.evaluate(
+      [{ type: "llm_judge", rubric: "good" }],
+      { output: "w", cwd: dir },
+      1
+    );
+    expect(JSON.parse(JSON.stringify(r[0]))).toEqual(r[0]);
   });
 
   it("matches regex against output", async () => {
