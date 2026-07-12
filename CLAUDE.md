@@ -159,6 +159,7 @@ Two invariants to preserve:
 `src/engine/` is a self-contained subsystem behind `createEngine()` (`src/engine/index.ts`):
 
 - **Task supervisor** (`supervisor.ts`, `task-store.ts`, `executor.ts`): persisted background tasks executed in OpenCode sessions, with acceptance criteria validation (`acceptance.ts`)
+- **Acceptance judge** (`judge.ts`): `llm_judge` checks delegate to `RubricJudge` — an analytic multi-criterion rubric (weights, `critical` veto, bounded file evidence, optional k-sample median voting) whose structured verdicts persist on `TaskRecord.proof[].verdict`. The judge backend agent is configurable via `EngineOptions.judgeAgent`: the plugin passes the injected zero-tool `hera-judge` agent, exported plugins pass their own agent, and the `judge_*` fields in `hera.json` tune model/samples/timeout/evidence budget.
 - **Loop manager** (`loop-manager.ts`, `loop-store.ts`): recurring/looping work
 - **Active work context** (`active-work.ts`): tracks in-flight work for crash recovery; `engine.recover()` runs on startup before `engine.start()`
 
