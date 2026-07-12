@@ -263,7 +263,8 @@ function getHeraDataDir(): string {
 
     // Conditional engine bootstrap (only when withEngine)
     const engineBootstrap = withEngine
-      ? `  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client, singleton: true });
+      ? `  // llm_judge runs on the first member agent (not an isolated judge) — a documented limitation of exported team plugins.
+  const engine = createEngine({ dataDir: getHeraDataDir(), cwd: getHeraDataDir(), client: input.client, singleton: true, judgeAgent: ${JSON.stringify(members[0]?.name ?? team.name)} });
   await engine.init();
   await engine.recover();
   engine.start();

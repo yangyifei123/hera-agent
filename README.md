@@ -316,6 +316,57 @@ opencode run --agent hera "refactor auth, add OAuth, write tests, update docs"
 
 See [Workflow Templates](#workflow-templates) for 10 pre-defined templates.
 
+## Task Acceptance & the LLM Judge
+
+Background tasks (`hera_enqueue_task`) and loops complete only when **all** of their declarative acceptance checks pass. Four check types are supported:
+
+| Check | Verifies |
+|-------|----------|
+| `shell` | A command exits successfully (optionally a specific exit code) |
+| `file_exists` | A path exists |
+| `regex` | A pattern matches the task output or a file |
+| `llm_judge` | An LLM scores the work against a rubric - semantic acceptance for work that shell/regex cannot verify |
+
+### Analytic `llm_judge` rubrics
+
+`rubric` accepts a plain string (kept for backward compatibility; wrapped as a single criterion) or an analytic multi-criterion array:
+
+```json
+{
+  "type": "llm_judge",
+  "rubric": [
+    { "requirement": "the summary covers all three incidents", "weight": 2 },
+    { "id": "cites", "requirement": "every claim cites a source file", "critical": true }
+  ],
+  "threshold": 0.75,
+  "samples": 3,
+  "evidence": { "files": ["report.md"] }
+}
+```
+
+- **`requirement`** - what must be true of the work. Each criterion is scored 0-1, with the judge required to write its reasoning before the score.
+- **`weight`** (default 1) - the overall score is the weighted mean of per-criterion scores; the check passes when it reaches `threshold` (default 0.7).
+- **`critical`** - a critical criterion's score must independently reach the threshold, or the check fails even when the weighted total passes.
+- **`samples`** (default 1, max 5) - runs the judge k times and takes the per-criterion median, for variance control on high-stakes checks.
+- **`evidence.files`** - files read from the task's working directory (bounded: 64 KB per file, 256 KB total, truncation explicitly labeled) and shown to the judge, so file deliverables are judged by their content rather than the worker's claims. A missing file is presented to the judge as `MISSING` - absence is signal, not an error.
+
+Verdicts are structured and persist with the task: `hera_task_status` renders a per-criterion `✓/✗ requirement — score — reasoning` breakdown, so a failed check tells you exactly which requirement fell short and why.
+
+### The `hera-judge` agent
+
+Judging runs on a built-in `hera-judge` agent: **zero tools** (every `hera_*` tool plus edit/bash/webfetch denied), temperature 0.1, and a judge-only persona - not the full Hera factory persona that may have delegated the work being judged. It is injected at session start like Hera itself, never written to disk, and the name is reserved: a persisted agent named `hera-judge` is ignored rather than allowed to replace the judge.
+
+Optional `hera.json` settings (not written by default):
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `judge_model` | `default_model` → session model | Model for the built-in `hera-judge` agent |
+| `judge_samples_default` | 1 (hard cap 5) | k used when a check omits `samples` |
+| `judge_timeout_ms` | 120000 | Deadline per judge call in ms |
+| `judge_evidence_max_bytes` | 262144 | Total evidence budget per check in bytes |
+
+The judge **fails closed**: no judge backend available ("no judge configured"), an empty rubric, or zero parseable samples (timeouts and malformed replies are dropped) all fail the check with an explanatory detail - a task can never pass because judging silently broke.
+
 ## Agent Packaging & Migration
 
 ```bash
@@ -478,8 +529,8 @@ If onboarding needs to be re-run manually, delete `hera-data/.onboarded` under t
 <details>
 <summary><strong>Task Engine</strong></summary>
 
-- `hera_enqueue_task` - Enqueue a background task for the engine to execute
-- `hera_task_status` - Get the status/result of a queued or running task
+- `hera_enqueue_task` - Enqueue a background task for the engine to execute; requires non-empty acceptance checks (`shell`/`file_exists`/`regex`/`llm_judge`, see [Task Acceptance & the LLM Judge](#task-acceptance--the-llm-judge))
+- `hera_task_status` - Get the status/result of a queued or running task, including per-criterion `llm_judge` verdicts
 - `hera_list_tasks` - List background tasks
 - `hera_cancel_task` - Cancel a queued or running task
 - `hera_enqueue_batch` - Enqueue a batch of related tasks

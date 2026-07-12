@@ -324,6 +324,14 @@ export interface HeraConfig {
   loop_default_max_iterations?: number;
   loop_min_interval_ms?: number;
   loop_max_consecutive_failures?: number;
+  /** Model for the built-in hera-judge agent (default: default_model → session model). */
+  judge_model?: string;
+  /** Default k for llm_judge sampling when a check omits `samples` (default 1, hard cap 5). */
+  judge_samples_default?: number;
+  /** Judge call deadline in ms (default 120000). */
+  judge_timeout_ms?: number;
+  /** Total evidence budget per llm_judge check in bytes (default 262144). */
+  judge_evidence_max_bytes?: number;
   team_defaults?: {
     coordination?: "parallel" | "sequential" | "adaptive";
     timeout?: number;

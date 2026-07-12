@@ -615,5 +615,11 @@ describe("PluginGenerator", () => {
       expect(code).not.toContain("hera-agent/engine");
       expect(code).not.toContain("createEngine(");
     });
+
+    it("passes the agent name as the engine judgeAgent", () => {
+      const agent = makeTestAgent();
+      const code = generator.generatePluginIndex(agent);
+      expect(code).toContain('judgeAgent: "test-coder"');
+    });
   });
 });

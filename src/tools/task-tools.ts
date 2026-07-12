@@ -1,8 +1,17 @@
 // src/tools/task-tools.ts
 import { tool } from "@opencode-ai/plugin";
 import type { PluginContext } from "../types.js";
-import type { AcceptanceCheck, TaskRecord, TaskStatus } from "../engine/task-types.js";
-import { TASK_DEFAULT_MAX_ATTEMPTS, TASK_DEFAULT_BACKOFF_MS } from "../constants.js";
+import type {
+  AcceptanceCheck,
+  AcceptanceResult,
+  TaskRecord,
+  TaskStatus,
+} from "../engine/task-types.js";
+import {
+  TASK_DEFAULT_MAX_ATTEMPTS,
+  TASK_DEFAULT_BACKOFF_MS,
+  JUDGE_DEFAULT_THRESHOLD,
+} from "../constants.js";
 import { randomUUID } from "node:crypto";
 import { acceptanceCheckSchema, validateAcceptanceChecks } from "./acceptance-schema.js";
 
@@ -61,6 +70,27 @@ function buildTask(input: EnqueueInput, batchId: string | undefined, now: number
   };
 }
 
+/** Human-readable proof rendering; per-criterion breakdown for llm_judge verdicts. */
+export function formatProof(proof: AcceptanceResult[]): string {
+  return proof
+    .map((r) => {
+      const head = `${r.passed ? "✓" : "✗"} [${r.check.type}] ${r.detail ?? ""}`.trimEnd();
+      if (!r.verdict) return head;
+      const threshold =
+        r.check.type === "llm_judge"
+          ? (r.check.threshold ?? JUDGE_DEFAULT_THRESHOLD)
+          : JUDGE_DEFAULT_THRESHOLD;
+      const lines = r.verdict.criteria.map((c) => {
+        const mark = c.score >= threshold ? "✓" : "✗";
+        const crit = c.critical ? " (critical)" : "";
+        const reason = c.reasoning.split("\n")[0];
+        return `  ${mark} ${c.requirement} — ${c.score.toFixed(2)}${crit} — ${reason}`;
+      });
+      return [head, ...lines].join("\n");
+    })
+    .join("\n");
+}
+
 export function createTaskTools(ctx: PluginContext) {
   const { taskStore } = ctx;
   return {
@@ -73,7 +103,8 @@ export function createTaskTools(ctx: PluginContext) {
         acceptance: z
           .array(acceptanceCheckSchema)
           .describe(
-            "Acceptance checks (shell/file_exists/regex); ALL must pass. Required, non-empty."
+            "Acceptance checks (shell/file_exists/regex/llm_judge); ALL must pass. Required, non-empty. " +
+              "llm_judge supports an analytic rubric: [{requirement, weight?, critical?}] plus samples and evidence files."
           ),
         maxAttempts: z.number().optional().describe("Retry budget (default from config)"),
         dependsOn: z.array(z.string()).optional().describe("Task ids that must succeed first"),
@@ -135,7 +166,7 @@ export function createTaskTools(ctx: PluginContext) {
         return [
           `Task ${task.id}: ${task.status} (attempt ${task.attempts}/${task.maxAttempts})`,
           task.lastError ? `Last error: ${task.lastError}` : "",
-          task.proof ? `Proof: ${JSON.stringify(task.proof)}` : "",
+          task.proof ? `Proof:\n${formatProof(task.proof)}` : "",
         ]
           .filter(Boolean)
           .join("\n");

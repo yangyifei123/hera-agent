@@ -120,6 +120,20 @@ Retrieval is in-memory keyword scoring — no embeddings, no SQLite; the catalog
 
 The two dispatch meta-tools (`hera_find_tools`, `hera_run_tool`) live in `src/dispatch/meta-tools.ts`, outside the 14 domains, and are merged on top of the domain map in `src/index.ts`.
 
+### Background Engine (`src/engine/`)
+
+A self-contained subsystem behind `createEngine()`; its `taskStore`, `loopManager`, and `supervisor` land on `PluginContext` and back the task/loop/recovery tool domains:
+
+| Module | File | Responsibility |
+|--------|------|---------------|
+| **Engine Factory** | `src/engine/index.ts` | `createEngine()` (`init()` → `recover()` → `start()`); process-wide singleton per `dataDir`; `EngineOptions.judgeAgent` selects the `llm_judge` backend agent (the plugin passes `hera-judge`; exported plugins pass their own agent) |
+| **Task Supervisor** | `supervisor.ts`, `task-store.ts`, `executor.ts` | Disk-persisted task ledger with leases; executes tasks in OpenCode sessions |
+| **Acceptance Evaluator** | `acceptance.ts` | Declarative checks (`shell`/`file_exists`/`regex`/`llm_judge`); all must pass; fail-closed |
+| **Rubric Judge** | `judge.ts` | Analytic `llm_judge` pipeline: evidence → prompt → k samples → median aggregate → verdict; structured verdicts persist on `TaskRecord.proof[].verdict` |
+| **Loop Manager** | `loop-manager.ts`, `loop-store.ts` | Recurring/looping work; shares the acceptance evaluator |
+| **Active Work** | `active-work.ts` | Tracks in-flight work for crash recovery |
+| **Agent Runner** | `opencode-agent-runner.ts` | Runs a prompt on a named agent in a fresh OpenCode session; also the judge backend |
+
 ## Data Flow
 
 ### Plugin Initialization
@@ -132,10 +146,14 @@ The two dispatch meta-tools (`hera_find_tools`, `hera_run_tool`) live in `src/di
 5. Initialize SkillManager → load built-in + user skills
 6. Initialize TeamManager → load team definitions
 7. Initialize MemoryStore → load memory files
-8. Migrate legacy full-body agent .md files to manifest form (one-time, idempotent)
-9. Register all tools (14 domains) → build ToolCatalog → add dispatch meta-tools
-10. Register hooks (config, tool, system.transform, session.compacting)
+8. Create background engine via createEngine() → init() → recover() → start() (judgeAgent: "hera-judge")
+9. Migrate legacy full-body agent .md files to manifest form (one-time, idempotent)
+10. Register all tools (14 domains) → build ToolCatalog → add dispatch meta-tools
+11. Register hooks (config, tool, system.transform, session.compacting)
     └ config hook: per-agent native tools map = hot set ∩ authorization + catalog primer
+    └ config hook injects the built-in hera-judge acceptance judge (zero tools, temperature 0.1,
+      model: judge_model → default_model → session model) — injected only, never persisted;
+      a persisted agent claiming the reserved name is ignored
 ```
 
 ### Session Compacting Flow
