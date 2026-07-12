@@ -21,6 +21,7 @@ import {
   LOOP_DEFAULT_MAX_ITERATIONS,
   LOOP_MIN_INTERVAL_MS,
   LOOP_MAX_CONSECUTIVE_FAILURES,
+  JUDGE_TIMEOUT_MS,
 } from "../constants.js";
 
 export { TaskStore } from "./task-store.js";
@@ -42,6 +43,10 @@ export interface EngineConfig {
   loop_default_max_iterations?: number;
   loop_min_interval_ms?: number;
   loop_max_consecutive_failures?: number;
+  judge_model?: string;
+  judge_samples_default?: number;
+  judge_timeout_ms?: number;
+  judge_evidence_max_bytes?: number;
 }
 
 export interface EngineOptions {
@@ -59,6 +64,11 @@ export interface EngineOptions {
    * effects, last-writer-wins). The singleton makes them share one store.
    */
   singleton?: boolean;
+  /**
+   * Agent name the llm_judge backend runs on (default "hera"). The Hera plugin
+   * passes "hera-judge"; generated plugins pass their own agent.
+   */
+  judgeAgent?: string;
 }
 
 // Process-wide engine registry keyed by absolute dataDir.
@@ -89,11 +99,16 @@ export function createEngine(opts: EngineOptions): Engine {
   const taskStore = new TaskStore(opts.dataDir);
   const loopStore = new LoopStore(opts.dataDir);
   const runner = new OpenCodeAgentRunner(opts.client, opts.cwd);
+  const judgeAgentName = opts.judgeAgent ?? "hera";
   const evaluator = new AcceptanceEvaluator({
     shellEnabled: getDefaultPermission()?.bash !== "deny",
     defaultTimeoutMs: c.task_lease_ms ?? TASK_LEASE_MS,
     // Reuse the agent runner as the llm_judge backend when a client is present.
-    judge: opts.client ? (prompt) => runner.run("hera", prompt) : undefined,
+    judge: opts.client ? (prompt) => runner.run(judgeAgentName, prompt) : undefined,
+    judgeTimeoutMs: c.judge_timeout_ms ?? JUDGE_TIMEOUT_MS,
+    judgeAgentName,
+    judgeDefaultSamples: c.judge_samples_default,
+    judgeEvidenceTotalCap: c.judge_evidence_max_bytes,
   });
   const executor = new TaskExecutor(
     taskStore,
