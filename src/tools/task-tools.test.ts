@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TaskStore } from "../engine/task-store.js";
-import { createTaskTools } from "./task-tools.js";
+import { createTaskTools, formatProof } from "./task-tools.js";
 
 function ctxWith(store: TaskStore) {
   return { taskStore: store } as unknown as Parameters<typeof createTaskTools>[0];
@@ -173,5 +173,55 @@ describe("task-tools", () => {
     expect(String(res)).toContain("1 succeeded");
     expect(String(res)).toContain("1 failed");
     expect(String(res)).toContain("x");
+  });
+});
+
+describe("formatProof", () => {
+  it("renders per-criterion verdict lines with pass/fail marks", () => {
+    const out = formatProof([
+      {
+        check: { type: "llm_judge", rubric: "r", threshold: 0.7 },
+        passed: false,
+        detail: "judge 0.55 (threshold 0.7, 1 sample(s)): fail.",
+        at: 1,
+        verdict: {
+          criteria: [
+            {
+              id: "c1",
+              requirement: "works",
+              weight: 1,
+              critical: false,
+              score: 0.9,
+              reasoning: "compiles and runs",
+            },
+            {
+              id: "docs",
+              requirement: "documented",
+              weight: 2,
+              critical: true,
+              score: 0.4,
+              reasoning: "README unchanged",
+            },
+          ],
+          overallScore: 0.55,
+          pass: false,
+          samples: 1,
+          aggregation: "single",
+          judgeAgent: "hera-judge",
+          elapsedMs: 42,
+        },
+      },
+    ]);
+    expect(out).toContain("✗ [llm_judge]");
+    expect(out).toContain("✓ works — 0.90");
+    expect(out).toContain("✗ documented — 0.40 (critical)");
+    expect(out).toContain("README unchanged");
+  });
+
+  it("renders non-judge checks as one line each", () => {
+    const out = formatProof([
+      { check: { type: "file_exists", path: "a" }, passed: true, detail: "exists", at: 1 },
+    ]);
+    expect(out).toContain("✓ [file_exists] exists");
   });
 });
