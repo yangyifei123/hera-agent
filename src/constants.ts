@@ -203,3 +203,18 @@ export const LOOP_TASK_RETENTION = 50;
 
 /** Total wall-clock budget for one program run before its child tree is killed. */
 export const PROGRAM_TOTAL_TIMEOUT_MS = 300000;
+
+// === LLM-as-judge acceptance ===
+
+/** Default weighted-total threshold for llm_judge checks. */
+export const JUDGE_DEFAULT_THRESHOLD = 0.7;
+/** Per-evidence-file read cap (chars ≈ bytes for utf-8 source text). */
+export const JUDGE_EVIDENCE_FILE_CAP = 65536;
+/** Total evidence budget per check. */
+export const JUDGE_EVIDENCE_TOTAL_CAP = 262144;
+/** Hard cap on k-sample voting. */
+export const JUDGE_MAX_SAMPLES = 5;
+/** Default judge call deadline. */
+export const JUDGE_TIMEOUT_MS = 120000;
+/** Max agent steps for the built-in judge agent (text-only, no tool loops). */
+export const JUDGE_MAX_STEPS = 3;
