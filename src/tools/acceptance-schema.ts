@@ -6,6 +6,13 @@ import { tool } from "@opencode-ai/plugin";
 
 const z = tool.schema;
 
+const rubricCriterionSchema = z.object({
+  id: z.string().min(1).optional(),
+  requirement: z.string().min(1),
+  weight: z.number().positive().optional(),
+  critical: z.boolean().optional(),
+});
+
 export const acceptanceCheckSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("shell"),
@@ -24,11 +31,49 @@ export const acceptanceCheckSchema = z.discriminatedUnion("type", [
     path: z.string().optional(),
     pattern: z.string().min(1),
   }),
-  z.object({
-    type: z.literal("llm_judge"),
-    rubric: z.string().min(1),
-    threshold: z.number().optional(),
-  }),
+  z
+    .object({
+      type: z.literal("llm_judge"),
+      rubric: z.union([z.string().min(1), z.array(rubricCriterionSchema).min(1)]),
+      threshold: z.number().min(0).max(1).optional(),
+      samples: z.number().int().min(1).max(5).optional(),
+      evidence: z
+        .object({
+          files: z.array(z.string().min(1)).min(1),
+          maxBytesPerFile: z.number().int().positive().optional(),
+          maxTotalBytes: z.number().int().positive().optional(),
+        })
+        .optional(),
+    })
+    .superRefine((check, ctx) => {
+      if (!Array.isArray(check.rubric)) return;
+      // Reject duplicate EFFECTIVE criterion ids. Downstream normalization
+      // (RubricJudge.normalizeCriteria) drops blank requirements, then defaults
+      // a missing id to "c<position>" — so [{requirement:"a"},{id:"c1",...}]
+      // collides even though the user wrote no duplicate. Duplicates would make
+      // one judged score silently apply to two different requirements (and
+      // double-count its weight), so the enqueue gate must reject them loudly.
+      const kept = check.rubric
+        .map((criterion, originalIndex) => ({ criterion, originalIndex }))
+        .filter(({ criterion }) => criterion.requirement.trim().length > 0);
+      const seen = new Map<string, number>();
+      kept.forEach(({ criterion, originalIndex }, position) => {
+        const effectiveId = criterion.id?.trim() || `c${position + 1}`;
+        const firstIndex = seen.get(effectiveId);
+        if (firstIndex === undefined) {
+          seen.set(effectiveId, originalIndex);
+        } else {
+          ctx.addIssue({
+            code: "custom",
+            path: ["rubric", originalIndex, "id"],
+            message:
+              `duplicate rubric criterion id "${effectiveId}" (criteria #${firstIndex} and ` +
+              `#${originalIndex} collide; a criterion without an explicit id is auto-assigned ` +
+              `"c<position>"). Give each criterion a unique id.`,
+          });
+        }
+      });
+    }),
 ]);
 
 /**
